@@ -6,11 +6,15 @@ import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from celery import Task
 
 from app.tasks.celery_app import celery_app
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 
@@ -43,26 +47,22 @@ def _make_session_factory(settings):
     return engine, factory
 
 
-async def _cached_unit_story(
-    session, module_unit_id: uuid.UUID, language: str, unit_type: str | None = None
-) -> dict | None:
-    """The unit's story document, if it is a lesson unit and its story is ready.
+async def _cached_module_story(
+    session: AsyncSession, module_id: uuid.UUID, language: str
+) -> dict[str, Any] | None:
+    """The module's story document, if one is ready: cached, valid, published and fresh.
 
-    Ready means cached, published and fresh. Quiz, case-study and scenario
-    units have no story mode, so they are not even looked up.
+    Read from the cache only: the bundle never pays for generating a story.
     """
-    from app.domain.services.story_from_lesson_service import (
-        find_unit_story,
-        is_lesson_unit,
-        story_sources_are_fresh,
+    from app.domain.services.story_module_service import (
+        find_module_story,
+        module_story_is_fresh,
     )
 
-    if not is_lesson_unit(unit_type):
-        return None
-    record = await find_unit_story(session, module_unit_id, language)
+    record = await find_module_story(session, module_id, language)
     if record is None or not record.is_valid or record.status != "published":
         return None
-    if not await story_sources_are_fresh(session, record):
+    if not await module_story_is_fresh(session, record):
         return None
     return record.content
 
@@ -200,6 +200,23 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                         errors.append(err)
                         logger.warning("bundle_task.flashcard_failed", error=err)
 
+                    # Story mode — one story per module, and only one that is
+                    # already cached, valid and in step with its units, lessons
+                    # and quizzes: the bundle never pays for generating one.
+                    try:
+                        story = await _cached_module_story(session, mod.id, lang)
+                        if story is not None:
+                            zip_files.append(
+                                (
+                                    f"{mn:03d}_00_story_{lang}.json",
+                                    json.dumps(story, ensure_ascii=False).encode(),
+                                )
+                            )
+                    except Exception as exc:
+                        err = f"Module {mn} story: {exc}"
+                        errors.append(err)
+                        logger.warning("bundle_task.story_failed", error=err)
+
                     sorted_units = sorted(mod.units, key=lambda u: u.order_index)
                     for unit in sorted_units:
                         un = unit.unit_number
@@ -242,23 +259,6 @@ def generate_course_bundle_task(self, bundle_id: str) -> dict:
                             err = f"Module {mn} unit {un} lesson: {exc}"
                             errors.append(err)
                             logger.warning("bundle_task.lesson_failed", error=err)
-
-                        # Story mode — lesson units only, and only a story that is
-                        # already cached, valid and in step with its lesson: the
-                        # bundle never pays for generating one.
-                        try:
-                            story = await _cached_unit_story(session, unit.id, lang, unit.unit_type)
-                            if story is not None:
-                                zip_files.append(
-                                    (
-                                        f"{mn:03d}_{un}_story_{lang}.json",
-                                        json.dumps(story, ensure_ascii=False).encode(),
-                                    )
-                                )
-                        except Exception as exc:
-                            err = f"Module {mn} unit {un} story: {exc}"
-                            errors.append(err)
-                            logger.warning("bundle_task.story_failed", error=err)
 
                         # Quiz — only for quiz-typed units
                         if unit_type == "quiz":

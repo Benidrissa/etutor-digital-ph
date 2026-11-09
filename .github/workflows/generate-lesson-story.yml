@@ -1,16 +1,22 @@
-name: Generate Lesson Story
+name: Generate Module Story
 
-# Generate the story mode of chosen lessons on the server, without waiting for
-# a learner to open the Story tab. Runs backend/scripts/generate_lesson_stories.py
-# inside the backend container: it dispatches the same Celery task (and Redis
-# dedup key) a learner's first view would, waits for it and prints what was
-# stored; it fails unless every story is valid and published.
+# Generate the story of chosen modules on the server (story mode tells each
+# module as one story, one chapter per unit), without waiting for a learner to
+# open it from the module page. Runs backend/scripts/generate_lesson_stories.py
+# inside the backend container (the file names predate module stories and are
+# kept: this workflow runs from main, the script from the deployed image). The
+# script dispatches the same Celery task (and Redis dedup key) a learner's
+# first open would, waits for it and prints what was stored: chapters ready,
+# unavailable and checkpoint, questions, errors and warnings. It fails unless
+# every module story is valid and published.
 #
 # - After every successful Deploy run, it generates what
 #   backend/scripts/story_requests.json asks for, on the server that run
 #   deployed (production if its "Deploy to Production" job succeeded, else
-#   staging). A cached story that is still fresh is reused with no model call,
-#   so this costs nothing once the stories exist.
+#   staging). A cached module story that is still fresh is reused with no
+#   model call, so this costs nothing once the stories exist. A first run also
+#   generates the modules' missing lessons and quizzes, and can take several
+#   minutes per module: hence the 60-minute budget.
 # - Run it by hand to list courses (mode=list) or generate given courses.
 
 on:
@@ -26,7 +32,7 @@ on:
         options: [staging, production]
         default: staging
       mode:
-        description: "list = show courses, lesson 1 and cached stories; generate = make them; requests = what story_requests.json asks for"
+        description: "list = show courses, module 1's units, cached lessons and quizzes, chapters and module story; generate = make the module stories; requests = what story_requests.json asks for"
         required: true
         type: choice
         options: [list, generate, requests]
@@ -36,7 +42,7 @@ on:
         required: false
         default: "biolog,math"
       courses:
-        description: "generate: comma-separated course slugs or UUIDs"
+        description: "generate: comma-separated course slugs or UUIDs (module 1 of each)"
         required: false
         default: ""
       languages:
@@ -44,7 +50,7 @@ on:
         required: false
         default: "fr,en"
       force:
-        description: "generate/requests: regenerate even if a fresh story exists (paid)"
+        description: "generate/requests: remake every chapter even if the module story is fresh (paid)"
         required: false
         type: boolean
         default: false
@@ -55,7 +61,7 @@ permissions:
 
 jobs:
   story:
-    name: Lesson stories
+    name: Module stories
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -93,7 +99,7 @@ jobs:
           username: deploy
           key: ${{ steps.target.outputs.environment == 'production' && secrets.PROD_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
           envs: MODE,QUERIES,COURSES,LANGUAGES,FORCE
-          command_timeout: 30m
+          command_timeout: 60m
           script: |
             set -e
             cd ~/etutor

@@ -124,6 +124,17 @@ export interface Question {
   parts?: QuestionPart[];
   review_of?: string | number;
   points?: number;
+  /**
+   * Set on a question copied verbatim from a quiz unit's MCQ (contract C-1):
+   * the quiz unit's number and the quiz's own question id. Absent on the
+   * extra questions the story writes itself.
+   */
+  derived_from?: DerivedFrom;
+}
+
+export interface DerivedFrom {
+  quiz_unit: string;
+  question_id: string;
 }
 
 export interface MarkSchemeRow {
@@ -167,7 +178,14 @@ export interface Step {
   id?: string;
   title?: TextObject;
   ref?: string;
+  /**
+   * The deterministic frame lines of a lesson chapter (contract C-1). The
+   * module assembler rewrites steps by this marker, never by their text.
+   */
+  frame?: StepFrame;
 }
+
+export type StepFrame = "opener" | "objectives" | "finished" | "ask_tutor";
 
 export interface Scene {
   id: string;
@@ -180,6 +198,44 @@ export interface Chapter {
   id: string;
   title: TextObject;
   scenes: Scene[];
+  /** Which module unit this chapter tells; set on module stories only. */
+  covers?: ChapterCovers;
+}
+
+/**
+ * How a module story treats a unit (contract C-2): a lesson is retold as a
+ * chapter; a quiz or a case study is a short checkpoint scene that sends the
+ * learner to the unit's own page.
+ */
+export type ModuleUnitRole = "lesson" | "quiz_checkpoint" | "case_checkpoint";
+
+/** The `covers` block of a module story chapter (contract C-2). */
+export interface ChapterCovers {
+  /** The unit's UUID: the key resume progress is stored under. */
+  module_unit_id: string;
+  /** "1.2": the id the completion API and the unit route take. */
+  unit_number: string;
+  unit_type: string | null;
+  role: ModuleUnitRole;
+  /**
+   * ready: a lesson told as a chapter; unavailable: a lesson whose chapter
+   * could not be written (a "read it on its page" placeholder); checkpoint: a
+   * quiz or case-study unit.
+   */
+  status: "ready" | "unavailable" | "checkpoint";
+  /** True only for a ready lesson chapter: finishing it completes the unit. */
+  completes_unit: boolean;
+  /** The chapter's own `checks.max_points` (0 for checkpoints). */
+  max_points: number;
+}
+
+/** The top-level `module_story` block of a module story (contract C-2). */
+export interface ModuleStoryMeta {
+  module_id: string;
+  module_number: number;
+  assembler: number;
+  /** Changes whenever any chapter changes. */
+  revision: string;
 }
 
 /** One tappable thing in an items-shaped round (contract C5). */
@@ -272,6 +328,22 @@ export interface StoryCourse {
   art_requests?: { name: string; kind: string; description: string }[];
   engine_requests?: Record<string, unknown>[];
   checks?: Record<string, unknown>;
+  /** Set on a module story (one per module and language). */
+  module_story?: ModuleStoryMeta;
+  /** The chapter builder version a lesson chapter was written with. */
+  sira_builder?: number;
+}
+
+/**
+ * What the module page learns about a module story without downloading it
+ * (`GET /api/v1/story-courses/module/{id}/status`, contract C-4).
+ */
+export interface ModuleStoryStatus {
+  state: "ready" | "generating" | "not_ready" | "unavailable" | "disabled";
+  task_id: string | null;
+  chapters: number | null;
+  revision: string | null;
+  access: "ok" | "subscription_required";
 }
 
 /** A catalog row (the app's `catalog.json`). */

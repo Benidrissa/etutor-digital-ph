@@ -23,8 +23,12 @@ from app.domain.services.story_repair import (
     CHOICE_IDS,
     MAX_OBJECTIVES,
     MAX_PICKED_MCQS,
+    MENTOR_ID,
+    PEER_ID,
+    TUTOR_ID,
     LessonStoryContext,
     clean_text,
+    pinned_cast,
 )
 
 if TYPE_CHECKING:
@@ -177,7 +181,6 @@ def _schema(ctx: LessonStoryContext, plan: StoryPlan) -> str:
 {{
   "objectives": [{{"id": "o1", "en": "learning objective", "fr": "objectif"}}],
   "misconceptions": [{{"id": "m_short_slug", "en": "Thinks that ...", "fr": "Pense que ..."}}],
-  "characters": {{"mentor": "name of a mentor or teacher fitting the lesson", "peer": "name of a colleague or classmate"}},
   "chapter_titles": [{{"en": "...", "fr": "..."}}, {{"en": "...", "fr": "..."}}, {{"en": "...", "fr": "..."}}],
   "story": {{
     "opening": {{"en": "max 90 chars, speaks to {{child}}", "fr": "max 90 caractères"}},
@@ -264,14 +267,39 @@ def _derived_rule(ctx: LessonStoryContext, plan: StoryPlan) -> str:
     )
 
 
+def _cast_line(ctx: LessonStoryContext) -> str:
+    """The fixed cast, by name: the builder ignores any name the model writes."""
+    names = {member["id"]: member["name"] for member in pinned_cast(ctx.is_kids, ctx.target)}
+    return (
+        f"CAST (fixed, the same in every chapter of the module): the mentor is"
+        f" {names[MENTOR_ID]}, the peer is {names[PEER_ID]} and the AI tutor is"
+        f" {names[TUTOR_ID]}. Name no other character;"
+        ' in "example_dialogue", "who" is "mentor" or "peer".\n'
+    )
+
+
+#: The lesson is one chapter of the module story (contract C-1).
+CHAPTER_LINE = (
+    "MODULE STORY: this lesson is one chapter of the module's story, which runs"
+    ' through its lessons in order. "story.wrap_up" closes only this lesson\'s part,'
+    " not the module.\n"
+)
+
+
 def build_story_user_message(ctx: LessonStoryContext, plan: StoryPlan | None = None) -> str:
-    """The user message: the lesson, the quiz to derive from, and the contract."""
+    """The user message: the lesson, the quiz to derive from, and the contract.
+
+    The cast and the chapter line live here, in code, so an admin override of
+    the system prompt cannot drop them.
+    """
     plan = plan or plan_for(ctx)
     unit_title = ctx.unit_title[ctx.target]
     return (
         f'REQUEST: write the story-mode spine for unit {ctx.unit_number} — "{unit_title}"'
         f' of the module "{ctx.module_title[ctx.target]}".\n'
-        "STRICT CONSTRAINT: use ONLY the lesson and quiz below; stay on this unit.\n\n"
+        "STRICT CONSTRAINT: use ONLY the lesson and quiz below; stay on this unit.\n"
+        f"{CHAPTER_LINE}"
+        f"{_cast_line(ctx)}\n"
         f"=== LESSON ({ctx.target}) ===\n{_lesson_block(ctx)}\n\n"
         f"=== QUIZ ===\n{_quiz_block(ctx)}\n\n"
         f"=== OUTPUT ===\n{_schema(ctx, plan)}"

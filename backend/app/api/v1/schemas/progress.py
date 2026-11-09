@@ -51,6 +51,10 @@ class UnitProgressDetail(BaseModel):
     description_en: str | None = None
     estimated_minutes: int
     order_index: int
+    unit_type: str | None = Field(
+        default=None,
+        description="lesson | quiz | case-study | scenario; null for a legacy lesson",
+    )
     status: str = Field(description="pending | in_progress | completed")
 
 

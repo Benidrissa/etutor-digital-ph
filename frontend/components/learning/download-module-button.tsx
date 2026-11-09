@@ -103,15 +103,17 @@ export function DownloadModuleButton({
           <Progress value={progressPct} />
         </div>
 
-        {progress?.currentUnit && (
+        {/* The story is one per module, saved after the units: no unit number. */}
+        {progress?.currentContentType === 'story' ? (
+          <p className="text-xs text-amber-600">{t('downloadingModuleStory')}</p>
+        ) : progress?.currentUnit ? (
           <p className="text-xs text-amber-600">
             {progress.currentContentType === 'lesson' && t('downloadingLesson')}
             {progress.currentContentType === 'quiz' && t('downloadingQuiz')}
             {progress.currentContentType === 'case_study' && t('downloadingCaseStudy')}
-            {progress.currentContentType === 'story' && t('downloadingStory')}
             {' '}{progress.currentUnit}
           </p>
-        )}
+        ) : null}
 
         <Button
           variant="outline"

@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from app.ai.prompts.story_from_lesson import build_story_user_message
 from app.api.v1.schemas.story_course import StoryCourse, ValidationReport
 from app.domain.services import story_repair as repair
 from app.domain.services.story_course_validator import validate_story_course
@@ -489,19 +490,43 @@ class TestMisconceptions:
         assert declared["m_brand_new"]["from_test"] is False
         assert validate(doc).ok
 
-    def test_course_option_misconceptions_fill_in_for_the_model(self, raw):
+    @staticmethod
+    def _sentinel_ctx(raw: dict[str, Any]):
+        """The quiz with a sentinel in every wrong option's option_misconceptions slot."""
+        ctx = make_ctx(raw)
+        for mcq in ctx.mcqs:
+            mcq.option_misconceptions = [
+                None if i == mcq.correct_index else f"SENTINEL-COURSE-{mcq.ref}-{i}"
+                for i in range(len(mcq.options))
+            ]
+        return ctx
+
+    def test_course_option_misconceptions_never_fill_in_for_the_model(self, raw):
+        """Prompt input only: a gap the model leaves goes to the repair loop."""
+        ctx = self._sentinel_ctx(raw)
+        assert "SENTINEL-COURSE-q4-1" in build_story_user_message(ctx)
         spine = spine_for(raw)
         q4 = next(d for d in spine["derived"] if d["ref"] == "q4")
         q4["distractors"] = []
-        doc = repair.build_story_document(make_ctx(raw), spine).doc
-        question = next(q for q in doc["questions"] if q["id"] == "q4")
-        texts = {m["id"]: m["en"] for m in doc["misconceptions"]}
-        wrong = [c for c in question["choices"] if c["id"] != question["answer"]]
-        assert [texts[c["misconception"]] for c in wrong] == [
-            "Confuses SMC with school-age campaigns.",
-            "Thinks only newborns are at risk.",
-            "Confuses prevention with treatment.",
-        ]
+        build = repair.build_story_document(ctx, spine)
+        assert "SENTINEL-COURSE" not in json.dumps(build.doc, ensure_ascii=False)
+        question = next(q for q in build.doc["questions"] if q["id"] == "q4")
+        wrong = [i for i, c in enumerate(question["choices"]) if c["id"] != question["answer"]]
+        assert all("misconception" not in question["choices"][i] for i in wrong)
+        codes = {(e.code, e.path) for e in validate(build.doc).errors}
+        assert {
+            ("distractor_without_misconception", f"questions[q4].choices[{i}]") for i in wrong
+        } <= codes
+
+    def test_an_undeclared_reference_never_takes_the_courses_text(self, raw):
+        ctx = self._sentinel_ctx(raw)
+        spine = spine_for(raw)
+        spine["derived"][0]["distractors"][0]["misconception"] = "m_brand_new"
+        doc = repair.build_story_document(ctx, spine).doc
+        assert "SENTINEL-COURSE" not in json.dumps(doc, ensure_ascii=False)
+        declared = {m["id"]: m for m in doc["misconceptions"]}
+        assert "In the morning" in declared["m_brand_new"]["en"]
+        assert validate(doc).ok
 
     def test_missing_misconception_is_left_for_the_repair_loop(self, raw):
         spine = spine_for(raw)
@@ -789,13 +814,12 @@ class TestMissingTranslations:
             spine["derived"][0][field] = value
         assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {path}
 
-    def test_course_misconception_copied_for_a_wrong_option(self, raw):
+    def test_no_course_misconception_is_copied_for_a_wrong_option(self, raw):
+        # The gap is the validator's distractor_without_misconception (see
+        # TestMisconceptions), never a copy of the course's option_misconceptions.
         spine = spine_for(raw)
         next(d for d in spine["derived"] if d["ref"] == "q4")["distractors"] = []
-        paths = _issue_paths(repair.build_story_document(make_ctx(raw), spine))
-        assert paths == {
-            f"derived[q4].distractors[{letter}].misconception.fr" for letter in ("b", "c", "d")
-        }
+        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == set()
 
     def test_key_points_without_their_translation(self, raw):
         spine = spine_for(raw)

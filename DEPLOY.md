@@ -91,6 +91,31 @@ docker compose up -d backend
 
 After #2119 lands: `make prod-rollback` will fetch the previously-pinned digest from a recorded artifact and redeploy that.
 
+### Rolling back below a migration
+
+Migrations run only from `deploy.yml` (`alembic upgrade head`): swapping the image never runs a downgrade, and no container migrates at start-up. When the image you roll back to has an older Alembic head than the database, run the downgrade **with the current image, before the swap**:
+
+```bash
+docker compose exec -T -e PYTHONPATH=/app backend uv run alembic current
+docker compose exec -T -e PYTHONPATH=/app backend uv run alembic downgrade <older image's head>
+# then pull and start the older image as above
+```
+
+**Module stories (`107_story_module_binding`).** Before running any image whose Alembic head is older than `107_story_module_binding` (the per-lesson story release is at `106_add_story_unit_binding`; go further down if the older image needs it), run at least:
+
+```bash
+docker compose exec -T -e PYTHONPATH=/app backend uv run alembic downgrade 106_add_story_unit_binding
+```
+
+The downgrade deletes the module story rows (`module_id IS NOT NULL AND module_unit_id IS NULL`). Older code takes such a row for a hand-authored week: it would list every module story to every learner and serve it, paid units and quiz answers included, with `Cache-Control: public, max-age=3600`, bypassing the subscription gate and the story-mode switch. If the downgrade cannot run, delete those rows by hand before the older image starts:
+
+```bash
+docker compose exec -T postgres psql -U postgres santepublique_aof -c \
+  "DELETE FROM story_courses WHERE module_id IS NOT NULL AND module_unit_id IS NULL"
+```
+
+The lesson chapter rows stay. After the next forward deploy, module stories are merged again on demand from the cached chapters.
+
 ---
 
 ## Backup + restore

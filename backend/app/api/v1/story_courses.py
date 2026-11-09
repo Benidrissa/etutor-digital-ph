@@ -5,30 +5,37 @@ it in IndexedDB and runs offline. Authors validate and publish through the
 admin routes, and a week can only reach ``published`` with zero validator
 errors — the format's own rule, enforced here rather than trusted.
 
-Every lesson unit also has a story mode (``GET /story-courses/unit/...``):
-generated from that unit's lesson and quiz the first time a learner opens it,
-then cached like lessons and quizzes are. A lesson story is reachable only
-through that route, which applies the lesson's subscription gate, the story-mode
-switch and the staleness check; the slug routes never serve one to a learner.
+Story mode tells each module as one story
+(``GET /story-courses/module/{module_id}``), one chapter per unit: generated
+from the module's lessons and quizzes the first time a learner opens it, then
+cached like lessons and quizzes are. A generated row (a module story, or the
+lesson chapter it was assembled from) is reachable only through that route,
+which applies the module's subscription gate, the story-mode switch and the
+staleness check. The catalog never lists one, the slug route never serves one
+to a learner, and the authoring routes cannot write one.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from typing import Literal
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from app.api.deps import get_db as get_db_session
 from app.api.deps_local_auth import (
     AuthenticatedUser,
     get_current_user,
+    module_story_access,
     require_role,
-    require_subscription_or_first_unit,
+    require_subscription_or_free_module,
 )
 from app.api.v1._task_status import mark_dispatched as mark_task_dispatched
 from app.api.v1._task_status import vouch_while_owned
@@ -39,21 +46,26 @@ from app.api.v1.schemas.story_course import (
     StoryCourseListResponse,
     ValidationReport,
 )
-from app.domain.models.module_unit import ModuleUnit
+from app.domain.models.module import Module
 from app.domain.models.story_course import StoryCourseRecord
 from app.domain.models.user import UserRole
 from app.domain.services.country_utils import canonicalize_country
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
     RELEASE_IF_OWNER_SCRIPT,
-    find_unit_story,
-    is_lesson_unit,
-    story_dispatch_key,
     story_mode_enabled,
-    story_sources_are_fresh,
     upsert_story_course,
 )
-from app.tasks.content_generation import STORY_HARD_LIMIT, generate_story_task
+from app.domain.services.story_module_assembly import StoryUnit
+from app.domain.services.story_module_service import (
+    find_module_story,
+    load_story_units,
+    module_story_is_fresh,
+)
+from app.domain.services.story_module_service import (
+    story_dispatch_key as module_story_dispatch_key,
+)
+from app.tasks.content_generation import MODULE_STORY_DISPATCH_TTL_S, generate_module_story_task
 
 logger = get_logger(__name__)
 
@@ -107,6 +119,27 @@ def _parse(content: dict) -> StoryCourse:
         )
 
 
+#: Slugs the story generator owns: ``lesson-{unit hex}-{lang}`` (a chapter)
+#: and ``module-{module hex}-{lang}`` (a module story).
+_RESERVED_SLUG_PREFIXES = ("lesson-", "module-")
+
+
+def _is_generated(record: StoryCourseRecord) -> bool:
+    """A module story or a lesson chapter: bound to a module, made by the generator."""
+    return record.module_id is not None or record.module_unit_id is not None
+
+
+def _reserved_slug(slug: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "error": "reserved_slug",
+            "message": f"{slug!r} is a generated story's id; the 'lesson-' and 'module-'"
+            " prefixes are reserved for story mode.",
+        },
+    )
+
+
 def _to_list_item(record: StoryCourseRecord) -> StoryCourseListItem:
     content = record.content or {}
     return StoryCourseListItem(
@@ -140,11 +173,14 @@ async def list_story_courses(
 ) -> StoryCourseListResponse:
     """The weeks the app lists, newest week first.
 
-    Only published weeks are visible unless an admin asks for drafts. Lesson
-    stories are not catalog weeks — each is reached from its own lesson — so
-    they are left out.
+    Only published weeks are visible unless an admin asks for drafts. Generated
+    stories (a module story and its lesson chapters, both bound to a module)
+    are not catalog weeks: each is reached from its own module, through its
+    gate, so they are left out.
     """
-    stmt = select(StoryCourseRecord).where(StoryCourseRecord.module_unit_id.is_(None))
+    stmt = select(StoryCourseRecord).where(
+        StoryCourseRecord.module_id.is_(None), StoryCourseRecord.module_unit_id.is_(None)
+    )
     is_admin = current_user.role in _ADMIN_ROLES
     if not (include_drafts and is_admin):
         stmt = stmt.where(StoryCourseRecord.status == "published")
@@ -164,19 +200,20 @@ async def list_story_courses(
     )
 
 
-# -- Lesson story mode --------------------------------------------------------
+# -- Story mode: generation dedup ---------------------------------------------
 
-#: How long a dispatched story generation is remembered for a (unit, language),
-#: so concurrent first views share one task: the task's hard limit plus slack.
-_STORY_DISPATCH_TTL_S = STORY_HARD_LIMIT + 60
 _FINISHED_STATES = frozenset({"SUCCESS", "FAILURE", "REVOKED"})
 
-#: Every lesson story is per-learner gated content: never in a shared cache.
+#: Every generated story is per-learner gated content: never in a shared cache.
 _PRIVATE_NO_STORE = "private, no-store"
 
-
-def _story_dispatch_key(module_unit_id: uuid.UUID, language: str) -> str:
-    return story_dispatch_key(module_unit_id, language)
+#: How long a dispatched module story generation is remembered for a (module,
+#: language), so concurrent first views share one task: the task's hard limit
+#: plus slack (1320 s), from the dispatch and again from the moment the task
+#: starts (it re-arms the key), so a long queue wait never shortens its run's
+#: cover. It stays under the broker's 3600 s visibility timeout and the
+#: result backend's expiry, so a key never outlives what it names.
+_MODULE_STORY_DISPATCH_TTL_S = MODULE_STORY_DISPATCH_TTL_S
 
 
 async def _release_dispatch_key(key: str, task_id: str) -> None:
@@ -186,7 +223,7 @@ async def _release_dispatch_key(key: str, task_id: str) -> None:
     await redis_client.eval(RELEASE_IF_OWNER_SCRIPT, 1, key, task_id)
 
 
-async def _in_flight_story_task(key: str) -> str | None:
+async def _in_flight_story_task(key: str, *, release_finished: bool = True) -> str | None:
     """The task already generating this story, if it has not finished.
 
     While the key exists the task counts as alive, ``PENDING`` included: a
@@ -195,7 +232,8 @@ async def _in_flight_story_task(key: str) -> str | None:
     The key's TTL (the task's hard limit plus slack) is what bounds a task
     that was lost. Only a finished task (SUCCESS, FAILURE, REVOKED) is
     replaced, and its key is released with a compare-and-delete, so a key
-    another request has since claimed is never removed.
+    another request has since claimed is never removed. A reader that only
+    reports (``release_finished=False``) leaves the key to the next dispatch.
     """
     from app.infrastructure.cache.redis import redis_client
 
@@ -204,28 +242,29 @@ async def _in_flight_story_task(key: str) -> str | None:
         return None
     if AsyncResult(task_id).state not in _FINISHED_STATES:
         return task_id
-    await _release_dispatch_key(key, task_id)
+    if release_finished:
+        await _release_dispatch_key(key, task_id)
     return None
 
 
-async def _dispatch_story_generation(
+async def dispatch_module_story_generation(
     *,
     module_id: uuid.UUID,
-    unit_id: str,
-    module_unit_id: uuid.UUID,
     language: str,
     country: str,
     level: int,
     force_regenerate: bool,
 ) -> str:
-    """Start (or join) the generation of one unit story; returns the task id.
+    """Start (or join) the generation of one module story; returns the task id.
 
-    The first view claims a short-lived Redis key (SET NX, the pattern the
-    country backfill uses) holding the task id; concurrent views get that
+    Shared by ``GET /story-courses/module/{module_id}`` and the operators'
+    script (``scripts/generate_lesson_stories.py``), so both join the same
+    task. The first view claims a short-lived Redis key (SET NX, the pattern
+    the country backfill uses) holding the task id; concurrent views get that
     same id to poll instead of dispatching a second, paid, generation. The
     task releases the key when it ends (compare-and-delete on its own id).
-    Fails open: without Redis, every view dispatches and the task itself
-    returns the story another one already stored.
+    Fails open: without Redis, every view dispatches, and the task itself
+    returns the story another one already stored (its chapters are cached).
 
     Joined clients poll ``GET /content/status/{task_id}``, which reports a task
     still PENDING after its stall threshold as failed. A story task can
@@ -236,7 +275,7 @@ async def _dispatch_story_generation(
     """
     from app.infrastructure.cache.redis import redis_client
 
-    key = _story_dispatch_key(module_unit_id, language)
+    key = module_story_dispatch_key(module_id, language)
     task_id = str(uuid.uuid4())
     claimed = False
     try:
@@ -245,14 +284,18 @@ async def _dispatch_story_generation(
             return running
         # Before the claim, so a request that joins right after it never sees
         # an unvouched task. Harmless if the claim is lost: no key names this id.
-        await vouch_while_owned(task_id, key, _STORY_DISPATCH_TTL_S)
-        claimed = bool(await redis_client.set(key, task_id, nx=True, ex=_STORY_DISPATCH_TTL_S))
+        await vouch_while_owned(task_id, key, _MODULE_STORY_DISPATCH_TTL_S)
+        claimed = bool(
+            await redis_client.set(key, task_id, nx=True, ex=_MODULE_STORY_DISPATCH_TTL_S)
+        )
         if not claimed:
             winner = await redis_client.get(key)
             if winner:
                 return winner
             # The holder finished and released the key in between: claim once more.
-            claimed = bool(await redis_client.set(key, task_id, nx=True, ex=_STORY_DISPATCH_TTL_S))
+            claimed = bool(
+                await redis_client.set(key, task_id, nx=True, ex=_MODULE_STORY_DISPATCH_TTL_S)
+            )
             if not claimed:
                 winner = await redis_client.get(key)
                 if winner:
@@ -261,8 +304,8 @@ async def _dispatch_story_generation(
         logger.warning("Story dispatch dedup unavailable (dispatching)", error=str(exc))
 
     try:
-        generate_story_task.apply_async(
-            args=[str(module_id), unit_id, language, country, level, force_regenerate],
+        generate_module_story_task.apply_async(
+            args=[str(module_id), language, country, level, force_regenerate],
             kwargs={"dedup_key": key},
             task_id=task_id,
         )
@@ -277,95 +320,99 @@ async def _dispatch_story_generation(
         raise
     await mark_task_dispatched(task_id)
     logger.info(
-        "Story generation dispatched",
+        "Module story generation dispatched",
         module_id=str(module_id),
-        unit_id=unit_id,
         language=language,
+        force_regenerate=force_regenerate,
         task_id=task_id,
     )
     return task_id
 
 
-async def _resolve_unit(
-    db, module_id: str, unit_id: str
-) -> tuple[uuid.UUID, uuid.UUID, str | None]:
-    """``(module uuid, module_unit uuid, unit_type)``, or a 404."""
-    from app.api.v1.content import _resolve_module_id
+# -- Module story mode --------------------------------------------------------
 
+
+async def _resolve_module(db: AsyncSession, module_id: str) -> uuid.UUID:
+    """The module's UUID, or a 404 ``module_not_found``.
+
+    Only a UUID names a module here: a module code (``M01``) is shared by
+    every course, so it could not say which module's story is meant. A value
+    that is not a UUID is refused without a query.
+    """
     try:
-        resolved_module_id = await _resolve_module_id(module_id, db)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "module_not_found", "message": str(exc)},
-        )
-    row = (
-        await db.execute(
-            select(ModuleUnit.id, ModuleUnit.unit_type).where(
-                ModuleUnit.module_id == resolved_module_id, ModuleUnit.unit_number == unit_id
-            )
-        )
-    ).first()
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": "unit_not_found",
-                "message": f"Unit '{unit_id}' does not exist in this module.",
-            },
-        )
-    return resolved_module_id, row[0], row[1]
+        module_uuid = uuid.UUID(module_id)
+    except ValueError:
+        module_uuid = None
+    if module_uuid is not None:
+        found = (await db.execute(select(Module.id).where(Module.id == module_uuid))).first()
+        if found is not None:
+            return module_uuid
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={"error": "module_not_found", "message": f"No module {module_id!r}"},
+    )
+
+
+def _has_lesson(units: Sequence[StoryUnit]) -> bool:
+    return any(unit.role == "lesson" for unit in units)
 
 
 # Declared before ``/{slug}``: a slug never contains "/", so ``/{slug}`` could
-# not swallow this three-segment path anyway, but the order keeps that true
-# even if the slug route ever becomes a ``{slug:path}``.
+# not swallow these paths anyway, but the order keeps that true even if the
+# slug route ever becomes a ``{slug:path}``.
 @router.get(
-    "/unit/{module_id}/{unit_id}",
+    "/module/{module_id}",
     response_model=dict,
-    summary="A lesson's story mode, generated on first open",
+    summary="A module's story mode, generated on first open",
     responses={
         202: {"description": "Generating; poll GET /api/v1/content/status/{task_id}"},
+        403: {"description": "A subscription is required (subscription_required)"},
         404: {
-            "description": "Unknown module or unit (module_not_found, unit_not_found),"
-            " story mode disabled (story_mode_disabled), not a lesson unit"
-            " (not_a_lesson), or generate=false with no fresh cached story"
-            " (story_not_cached)"
+            "description": "Story mode disabled (story_mode_disabled), unknown module"
+            " (module_not_found), a module with no lesson unit (no_story_content), or"
+            " generate=false with no fresh cached story (story_not_cached)"
         },
         409: {"description": "The story could not be made valid (story_unavailable)"},
     },
 )
-async def get_unit_story(
+async def get_module_story(
     module_id: str,
-    unit_id: str,
     language: str = Query("fr", pattern="^(fr|en)$"),
     level: int = Query(1, ge=1, le=4, description="Preferred source lesson level"),
     country: str = Query("CI", description="Preferred source lesson country"),
-    force_regenerate: bool = Query(False, description="Admins only; ignored otherwise"),
+    force_regenerate: bool = Query(
+        False, description="Admins only, with generate=true; remakes every chapter"
+    ),
     generate: bool = Query(
         True,
         description="false: answer from the cache only (404 story_not_cached) and never"
         " start a generation, e.g. for an offline module download",
     ),
-    current_user: AuthenticatedUser = Depends(require_subscription_or_first_unit),
+    current_user: AuthenticatedUser = Depends(require_subscription_or_free_module),
     db=Depends(get_db_session),
 ) -> JSONResponse:
-    """The story-course/1 week telling this lesson, for the learner as hero.
+    """The story-course/1 week telling this module, for the learner as hero.
 
-    * **200** — the cached story, valid and still in step with the unit's
-      lesson and quiz. Strings carry the ``{child}`` placeholder; the client
-      substitutes the learner's first name.
-    * **202** — ``{"status": "generating", "task_id": ...}``: the story is being
-      generated (now, or by a request that came first). Poll
-      ``GET /api/v1/content/status/{task_id}``, then fetch this again.
-    * **409** — ``story_unavailable``: generation could not reach zero
-      validator errors; retried when the lesson or quiz changes.
-    * **404** — ``story_mode_disabled``, ``module_not_found``,
-      ``unit_not_found``, ``not_a_lesson`` (a quiz, case-study or scenario
-      unit: nothing is generated), or, with ``generate=false``,
-      ``story_not_cached`` (no fresh cached story; nothing is dispatched).
+    One chapter per unit, in teaching order: a lesson's chapter is its story,
+    and a quiz or case-study unit is a checkpoint scene that sends the learner
+    to its page.
 
-    Access follows the lesson's own gate (subscription, or a free unit).
+    * **200** — the cached story, valid and in step with the module's units,
+      lessons and quizzes. Strings carry the ``{child}`` placeholder; the
+      client substitutes the learner's first name.
+    * **202** — ``{"status": "generating", "task_id": ...}``: the story is
+      being generated (now, or by a request that came first); a first open
+      that must generate lessons and quizzes too can take several minutes.
+      Poll ``GET /api/v1/content/status/{task_id}``, then fetch this again.
+    * **409** — ``story_unavailable``: the story could not reach zero
+      validator errors; retried when a lesson, quiz or unit changes.
+    * **404** — ``story_mode_disabled`` (answered before any query),
+      ``module_not_found`` (an unknown module, or an id that is not a UUID),
+      ``no_story_content`` (the module has no lesson unit), or, with
+      ``generate=false``, ``story_not_cached`` (no fresh cached story;
+      nothing is dispatched).
+    * **403** — ``subscription_required``: the story tells every unit of the
+      module, so it needs a subscription unless every unit is free.
     """
     if not story_mode_enabled():
         raise HTTPException(
@@ -373,19 +420,20 @@ async def get_unit_story(
             detail={"error": "story_mode_disabled", "message": "Story mode is turned off"},
         )
 
-    resolved_module_id, module_unit_id, unit_type = await _resolve_unit(db, module_id, unit_id)
-    if not is_lesson_unit(unit_type):
+    module_uuid = await _resolve_module(db, module_id)
+    units = await load_story_units(db, module_uuid)
+    if not _has_lesson(units):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
-                "error": "not_a_lesson",
-                "message": f"Unit '{unit_id}' is a {unit_type} unit; only lessons have a story.",
+                "error": "no_story_content",
+                "message": "This module has no lesson to tell as a story.",
             },
         )
     force = force_regenerate and generate and current_user.role in _ADMIN_ROLES
 
-    record = await find_unit_story(db, module_unit_id, language)
-    if record is not None and not force and await story_sources_are_fresh(db, record):
+    record = await find_module_story(db, module_uuid, language)
+    if record is not None and not force and await module_story_is_fresh(db, record, units=units):
         if record.is_valid and record.status == "published":
             return JSONResponse(
                 content=record.content,
@@ -396,8 +444,8 @@ async def get_unit_story(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "error": "story_unavailable",
-                "message": "The story for this lesson could not be prepared. Read the lesson"
-                " instead; the story is retried when the lesson changes.",
+                "message": "The story of this module could not be prepared. Read its lessons"
+                " instead; the story is retried when a lesson or quiz changes.",
             },
         )
 
@@ -406,14 +454,12 @@ async def get_unit_story(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "error": "story_not_cached",
-                "message": "No story is ready for this lesson yet; none was started.",
+                "message": "No story is ready for this module yet; none was started.",
             },
         )
 
-    task_id = await _dispatch_story_generation(
-        module_id=resolved_module_id,
-        unit_id=unit_id,
-        module_unit_id=module_unit_id,
+    task_id = await dispatch_module_story_generation(
+        module_id=module_uuid,
         language=language,
         country=canonicalize_country(country),
         level=level,
@@ -427,6 +473,87 @@ async def get_unit_story(
         },
         status_code=status.HTTP_202_ACCEPTED,
     )
+
+
+class ModuleStoryStatus(BaseModel):
+    """Where a module's story stands, without downloading it."""
+
+    state: Literal["ready", "generating", "not_ready", "unavailable", "disabled"] = Field(
+        description="ready: GET returns it (200). generating: a task is making it (poll"
+        " task_id). not_ready: nothing is cached and nothing runs; GET starts it."
+        " unavailable: it could not be made valid, or the module has no lesson."
+        " disabled: story mode is turned off."
+    )
+    task_id: str | None = Field(None, description="The generating task (state generating)")
+    chapters: int | None = Field(None, description="Its chapters, one per unit (state ready)")
+    revision: str | None = Field(
+        None, description="module_story.revision of the ready story; changes with any chapter"
+    )
+    access: Literal["ok", "subscription_required"] = Field(
+        description="Whether this user may open it (GET answers 403 otherwise)"
+    )
+
+
+@router.get(
+    "/module/{module_id}/status",
+    response_model=ModuleStoryStatus,
+    summary="Whether a module's story is ready, without downloading or starting it",
+    responses={404: {"description": "Unknown module (module_not_found)"}},
+)
+async def get_module_story_status(
+    module_id: str,
+    response: Response,
+    language: str = Query("fr", pattern="^(fr|en)$"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db=Depends(get_db_session),
+) -> ModuleStoryStatus:
+    """The state of the module's story card. Never dispatches a generation.
+
+    ``access`` is reported whatever the state, so the card can say "for
+    subscribers" without a 403. ``generating`` comes from the same Redis key
+    the dedup uses, so it names the very task a GET would join.
+    """
+    module_uuid = await _resolve_module(db, module_id)
+    access: Literal["ok", "subscription_required"] = (
+        "ok"
+        if await module_story_access(db, current_user, module_uuid)
+        else "subscription_required"
+    )
+    response.headers["Cache-Control"] = _PRIVATE_NO_STORE
+    if not story_mode_enabled():
+        return ModuleStoryStatus(state="disabled", access=access)
+
+    units = await load_story_units(db, module_uuid)
+    if not _has_lesson(units):
+        return ModuleStoryStatus(state="unavailable", access=access)
+    record = await find_module_story(db, module_uuid, language)
+    if record is not None and await module_story_is_fresh(db, record, units=units):
+        if not (record.is_valid and record.status == "published"):
+            return ModuleStoryStatus(state="unavailable", access=access)
+        content = record.content if isinstance(record.content, dict) else {}
+        chapters = content.get("chapters")
+        module_story = content.get("module_story")
+        return ModuleStoryStatus(
+            state="ready",
+            chapters=len(chapters) if isinstance(chapters, list) else None,
+            revision=(
+                str(module_story["revision"])
+                if isinstance(module_story, dict) and module_story.get("revision")
+                else None
+            ),
+            access=access,
+        )
+
+    try:
+        task_id = await _in_flight_story_task(
+            module_story_dispatch_key(module_uuid, language), release_finished=False
+        )
+    except Exception as exc:
+        logger.warning("Story dispatch state unavailable", error=str(exc))
+        task_id = None
+    if task_id:
+        return ModuleStoryStatus(state="generating", task_id=task_id, access=access)
+    return ModuleStoryStatus(state="not_ready", access=access)
 
 
 @router.get(
@@ -447,29 +574,29 @@ async def get_story_course(
     IndexedDB and then runs with no network. Responses are gzipped by the
     global compression middleware.
 
-    Lesson stories (rows bound to a lesson unit) are not served here to
-    learners: their slugs are predictable, and only
-    ``GET /story-courses/unit/...`` applies the lesson's subscription gate,
-    the story-mode switch and the staleness check. Admins may read one, never
-    through a shared cache.
+    Generated stories (rows bound to a module: a module story or one of its
+    lesson chapters) are not served here to learners: their slugs are
+    predictable, and only ``GET /story-courses/module/{module_id}`` applies
+    the module's subscription gate, the story-mode switch and the staleness
+    check. Admins may read one, never through a shared cache.
     """
     record = (
         await db.execute(select(StoryCourseRecord).where(StoryCourseRecord.slug == slug))
     ).scalar_one_or_none()
 
     is_admin = current_user.role in _ADMIN_ROLES
-    is_lesson_story = record is not None and record.module_unit_id is not None
+    is_generated = record is not None and _is_generated(record)
     if (
         record is None
         or (record.status != "published" and not is_admin)
-        or (is_lesson_story and not is_admin)
+        or (is_generated and not is_admin)
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "story_course_not_found", "message": f"No week {slug!r}"},
         )
 
-    if is_lesson_story:
+    if is_generated:
         response.headers["Cache-Control"] = _PRIVATE_NO_STORE
     else:
         # Published weeks are immutable in practice but can be corrected, so
@@ -519,9 +646,13 @@ async def save_story_course(
     """Upsert a week by its format ``id``, validating before it is stored.
 
     An invalid file is still saved as a draft so the author can keep working on
-    it, but publishing is refused until the validator is clean.
+    it, but publishing is refused until the validator is clean. The ids of
+    generated stories (``lesson-…``, ``module-…``) are refused with 422
+    ``reserved_slug``: the generator alone writes those rows.
     """
     course = _parse(request.content)
+    if course.id.startswith(_RESERVED_SLUG_PREFIXES):
+        raise _reserved_slug(course.id)
     report = validate_story_course(course)
 
     if request.publish and not report.ok:
@@ -576,7 +707,12 @@ async def publish_story_course(
     current_user: AuthenticatedUser = Depends(_ADMIN),
     db=Depends(get_db_session),
 ) -> SaveStoryCourseResponse:
-    """Re-validate the stored file and publish it only if it is clean."""
+    """Re-validate the stored file and publish it only if it is clean.
+
+    A generated story is refused (422 ``reserved_slug``): the generator
+    publishes it only when it passes its own checks too, which the validator
+    alone does not repeat.
+    """
     record = (
         await db.execute(select(StoryCourseRecord).where(StoryCourseRecord.slug == slug))
     ).scalar_one_or_none()
@@ -585,6 +721,8 @@ async def publish_story_course(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "story_course_not_found", "message": f"No week {slug!r}"},
         )
+    if _is_generated(record):
+        raise _reserved_slug(slug)
 
     # Re-validate rather than trusting the stored flag: the engine or the
     # validator may have moved on since the file was saved.

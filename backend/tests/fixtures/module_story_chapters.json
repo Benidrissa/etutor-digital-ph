@@ -1,0 +1,5041 @@
+{
+ "_comment": "Module story fixture: a module's units and its ready lessons' chapter documents, made by the chapter pipeline from lesson_story_unit.json. Regenerate with STORY_FIXTURE_REGEN=1 (see test_story_module_assembly.py).",
+ "module": {
+  "module_id": "5e1d2c3b-4a59-4687-9a6b-5c4d3e2f1a0b",
+  "module_number": 1,
+  "module_title": {
+   "en": "Malaria control",
+   "fr": "Lutte contre le paludisme"
+  },
+  "course_title": {
+   "en": "Public health",
+   "fr": "Santé publique"
+  },
+  "previous_module": null,
+  "is_kids": false
+ },
+ "units": [
+  {
+   "module_unit_id": "0d6f1e5a-1111-4c2b-9a3e-000000000011",
+   "unit_number": "1.1",
+   "unit_type": "lesson",
+   "order_index": 0,
+   "title": {
+    "en": "How malaria spreads",
+    "fr": "Comment le paludisme se transmet"
+   }
+  },
+  {
+   "module_unit_id": "0d6f1e5a-1111-4c2b-9a3e-000000000012",
+   "unit_number": "1.2",
+   "unit_type": "lesson",
+   "order_index": 1,
+   "title": {
+    "en": "Preventing malaria in children",
+    "fr": "Prévenir le paludisme chez l'enfant"
+   }
+  },
+  {
+   "module_unit_id": "0d6f1e5a-1111-4c2b-9a3e-000000000013",
+   "unit_number": "1.3",
+   "unit_type": "quiz",
+   "order_index": 2,
+   "title": {
+    "en": "Quiz: malaria basics",
+    "fr": "Quiz : les bases du paludisme"
+   }
+  },
+  {
+   "module_unit_id": "0d6f1e5a-1111-4c2b-9a3e-000000000014",
+   "unit_number": "1.4",
+   "unit_type": "case-study",
+   "order_index": 3,
+   "title": {
+    "en": "A fever in Kaya",
+    "fr": "Une fièvre à Kaya"
+   }
+  },
+  {
+   "module_unit_id": "0d6f1e5a-1111-4c2b-9a3e-000000000015",
+   "unit_number": "1.5",
+   "unit_type": "lesson",
+   "order_index": 4,
+   "title": {
+    "en": "Treating simple malaria",
+    "fr": "Traiter le paludisme simple"
+   }
+  },
+  {
+   "module_unit_id": "0d6f1e5a-1111-4c2b-9a3e-000000000016",
+   "unit_number": "1.6",
+   "unit_type": null,
+   "order_index": 5,
+   "title": {
+    "en": "Working with the community",
+    "fr": "Travailler avec la communauté"
+   }
+  }
+ ],
+ "recipes": {
+  "1.1": {
+   "picks": [
+    "q2",
+    "q3"
+   ],
+   "extra_questions": true
+  },
+  "1.2": {
+   "picks": [
+    "q3",
+    "q4",
+    "q5"
+   ],
+   "extra_questions": false
+  },
+  "1.6": {
+   "picks": [
+    "q4",
+    "q5"
+   ],
+   "extra_questions": false
+  }
+ },
+ "quiz": {
+  "en": [
+   {
+    "id": "tb1",
+    "question": "How long does standard tuberculosis treatment last?",
+    "options": [
+     "Two weeks",
+     "Six months",
+     "Ten years",
+     "One day"
+    ],
+    "correct_answer": 1,
+    "explanation": "The standard regimen lasts six months.",
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-tb1-0",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-tb1-2",
+     "SENTINEL-OPTION-MISCONCEPTION-tb1-3"
+    ]
+   },
+   {
+    "id": "q1",
+    "question": "When do Anopheles mosquitoes mostly bite?",
+    "options": [
+     "In the morning",
+     "At midday",
+     "At night",
+     "In the afternoon"
+    ],
+    "correct_answer": 2,
+    "explanation": "Anopheles mosquitoes are night biters, which is why nets must be used every night.",
+    "difficulty": "easy",
+    "sources_cited": [
+     "WHO Malaria Guidelines Ch.3, p.22"
+    ],
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-q1-0",
+     "SENTINEL-OPTION-MISCONCEPTION-q1-1",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q1-3"
+    ]
+   },
+   {
+    "id": "q2",
+    "question": "What must be done for every suspected case before ACT is given?",
+    "options": [
+     "Confirm it with an RDT or microscopy",
+     "Measure the temperature twice",
+     "Wait three days to see if the fever goes",
+     "Give paracetamol first"
+    ],
+    "correct_answer": 0,
+    "explanation": "Testing first avoids treating fevers that are not malaria.",
+    "difficulty": "medium",
+    "sources_cited": [
+     "WHO Malaria Guidelines Ch.2, p.14"
+    ],
+    "option_misconceptions": [
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q2-1",
+     "SENTINEL-OPTION-MISCONCEPTION-q2-2",
+     "SENTINEL-OPTION-MISCONCEPTION-q2-3"
+    ]
+   },
+   {
+    "id": "q3",
+    "question": "A community health worker in Kaya sees a three-year-old with a fever of 39 °C during the rainy season. The rapid diagnostic test is negative. According to the lesson, what should she do next?",
+    "options": [
+     "Give ACT anyway because it is the rainy season",
+     "Look for another cause of the fever and refer if needed",
+     "Repeat the same test next month",
+     "Start seasonal chemoprevention straight away"
+    ],
+    "correct_answer": 1,
+    "explanation": "A negative RDT means the fever has another cause that must be found.",
+    "difficulty": "hard",
+    "sources_cited": [
+     "WHO Malaria Guidelines Ch.2, p.14"
+    ],
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-q3-0",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q3-2",
+     "SENTINEL-OPTION-MISCONCEPTION-q3-3"
+    ]
+   },
+   {
+    "id": "q4",
+    "question": "Which children receive seasonal malaria chemoprevention?",
+    "options": [
+     "Children aged 3-59 months",
+     "Children aged 5-15 years",
+     "Newborn babies only",
+     "Every child who has a fever"
+    ],
+    "correct_answer": 0,
+    "explanation": "SMC targets children aged 3-59 months, who are the most at risk.",
+    "difficulty": "medium",
+    "sources_cited": [
+     "WHO Malaria Guidelines Ch.3, p.22"
+    ],
+    "option_misconceptions": [
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q4-1",
+     "SENTINEL-OPTION-MISCONCEPTION-q4-2",
+     "SENTINEL-OPTION-MISCONCEPTION-q4-3"
+    ]
+   },
+   {
+    "id": "wash1",
+    "question": "When should hands be washed with soap?",
+    "options": [
+     "Only on Sundays",
+     "Before eating",
+     "Never",
+     "Once a year"
+    ],
+    "correct_answer": 1,
+    "explanation": "Washing before eating stops germs.",
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-wash1-0",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-wash1-2",
+     "SENTINEL-OPTION-MISCONCEPTION-wash1-3"
+    ]
+   }
+  ],
+  "fr": [
+   {
+    "id": "tb1",
+    "question": "Combien de temps dure le traitement standard de la tuberculose ?",
+    "options": [
+     "Deux semaines",
+     "Six mois",
+     "Dix ans",
+     "Un jour"
+    ],
+    "correct_answer": 1,
+    "explanation": "Le schéma standard dure six mois.",
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-tb1-0",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-tb1-2",
+     "SENTINEL-OPTION-MISCONCEPTION-tb1-3"
+    ]
+   },
+   {
+    "id": "q1",
+    "question": "À quel moment les anophèles piquent-ils surtout ?",
+    "options": [
+     "Le matin",
+     "À midi",
+     "La nuit",
+     "L'après-midi"
+    ],
+    "correct_answer": 2,
+    "explanation": "Les anophèles piquent la nuit : c'est pourquoi la moustiquaire doit servir chaque nuit.",
+    "difficulty": "easy",
+    "sources_cited": [],
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-q1-0",
+     "SENTINEL-OPTION-MISCONCEPTION-q1-1",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q1-3"
+    ]
+   },
+   {
+    "id": "q2",
+    "question": "Que faut-il faire pour chaque cas suspect avant de donner une CTA ?",
+    "options": [
+     "Le confirmer par un TDR ou une microscopie",
+     "Prendre la température deux fois",
+     "Attendre trois jours pour voir si la fièvre passe",
+     "Donner d'abord du paracétamol"
+    ],
+    "correct_answer": 0,
+    "explanation": "Tester d'abord évite de traiter des fièvres qui ne sont pas du paludisme.",
+    "difficulty": "medium",
+    "sources_cited": [],
+    "option_misconceptions": [
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q2-1",
+     "SENTINEL-OPTION-MISCONCEPTION-q2-2",
+     "SENTINEL-OPTION-MISCONCEPTION-q2-3"
+    ]
+   },
+   {
+    "id": "q3",
+    "question": "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?",
+    "options": [
+     "Donner quand même une CTA, car c'est la saison des pluies",
+     "Chercher une autre cause de la fièvre et référer si besoin",
+     "Refaire le même test le mois prochain",
+     "Commencer tout de suite la chimioprévention saisonnière"
+    ],
+    "correct_answer": 1,
+    "explanation": "Un TDR négatif signifie que la fièvre a une autre cause qu'il faut trouver.",
+    "difficulty": "hard",
+    "sources_cited": [],
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-q3-0",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q3-2",
+     "SENTINEL-OPTION-MISCONCEPTION-q3-3"
+    ]
+   },
+   {
+    "id": "q4",
+    "question": "Quels enfants reçoivent la chimioprévention du paludisme saisonnier ?",
+    "options": [
+     "Les enfants de 3 à 59 mois",
+     "Les enfants de 5 à 15 ans",
+     "Seulement les nouveau-nés",
+     "Tous les enfants qui ont de la fièvre"
+    ],
+    "correct_answer": 0,
+    "explanation": "La CPS cible les enfants de 3 à 59 mois, les plus à risque.",
+    "difficulty": "medium",
+    "sources_cited": [],
+    "option_misconceptions": [
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-q4-1",
+     "SENTINEL-OPTION-MISCONCEPTION-q4-2",
+     "SENTINEL-OPTION-MISCONCEPTION-q4-3"
+    ]
+   },
+   {
+    "id": "wash1",
+    "question": "Quand faut-il se laver les mains au savon ?",
+    "options": [
+     "Le dimanche",
+     "Avant de manger",
+     "Jamais",
+     "Une fois par an"
+    ],
+    "correct_answer": 1,
+    "explanation": "Se laver avant de manger arrête les microbes.",
+    "option_misconceptions": [
+     "SENTINEL-OPTION-MISCONCEPTION-wash1-0",
+     null,
+     "SENTINEL-OPTION-MISCONCEPTION-wash1-2",
+     "SENTINEL-OPTION-MISCONCEPTION-wash1-3"
+    ]
+   }
+  ]
+ },
+ "chapters": {
+  "en": {
+   "1.1": {
+    "format": "story-course/1",
+    "id": "lesson-0d6f1e5a11114c2b9a3e000000000011-en",
+    "sira_builder": 2,
+    "course": "Public health",
+    "unit": "1.1 · How malaria spreads",
+    "week": 1,
+    "title": {
+     "en": "How malaria spreads",
+     "fr": "Comment le paludisme se transmet"
+    },
+    "languages": {
+     "target": "en",
+     "home": "fr"
+    },
+    "learner": {
+     "first_name": "{child}"
+    },
+    "sources": [
+     {
+      "kind": "lesson",
+      "ref": "Lesson 1.1 — How malaria spreads",
+      "used_for": "story, concepts and key points"
+     },
+     {
+      "kind": "lesson",
+      "ref": "WHO Malaria Guidelines Ch.2, p.14",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "lesson",
+      "ref": "WHO Malaria Guidelines Ch.3, p.22",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "test",
+      "ref": "Unit 1.3 quiz",
+      "used_for": "questions, derived verbatim"
+     }
+    ],
+    "objectives": [
+     {
+      "id": "o1",
+      "en": "Explain how nets and chemoprevention prevent malaria",
+      "fr": "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+     }
+    ],
+    "glossary": [],
+    "calibration": [],
+    "misconceptions": [
+     {
+      "id": "m_day_biting",
+      "en": "Thinks Anopheles bite mostly during the day.",
+      "fr": "Pense que les anophèles piquent surtout le jour.",
+      "from_test": false
+     },
+     {
+      "id": "m_fever_is_proof",
+      "en": "Thinks a fever is enough to prove malaria.",
+      "fr": "Pense qu'une fièvre suffit à prouver le paludisme.",
+      "from_test": false
+     },
+     {
+      "id": "m_wait_and_see",
+      "en": "Thinks waiting is safe with a suspected case.",
+      "fr": "Pense qu'attendre est sans danger face à un cas suspect.",
+      "from_test": false
+     },
+     {
+      "id": "m_symptom_first",
+      "en": "Treats the symptom instead of confirming the cause.",
+      "fr": "Traite le symptôme au lieu de confirmer la cause.",
+      "from_test": false
+     },
+     {
+      "id": "m_smc_is_treatment",
+      "en": "Confuses prevention with treatment.",
+      "fr": "Confond prévention et traitement.",
+      "from_test": false
+     },
+     {
+      "id": "m_low_coverage",
+      "en": "Thinks a few nets protect the whole community.",
+      "fr": "Pense que quelques moustiquaires protègent toute la communauté.",
+      "from_test": false
+     }
+    ],
+    "cast": [
+     {
+      "id": "margo",
+      "name": "Margo",
+      "kind": "ai_tutor",
+      "art": "margo"
+     },
+     {
+      "id": "mentor",
+      "name": "Dr Kaboré",
+      "kind": "adult",
+      "art": "mr_kabore"
+     },
+     {
+      "id": "peer",
+      "name": "Awa",
+      "kind": "adult",
+      "art": "maman_olivia"
+     }
+    ],
+    "facts": [],
+    "chapters": [
+     {
+      "id": "ch1",
+      "title": {
+       "en": "Your first day on the team",
+       "fr": "Ton premier jour dans l'équipe"
+      },
+      "scenes": [
+       {
+        "id": "s1",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "This story is about you, {child}.",
+          "fr": "Cette histoire parle de toi, {child}.",
+          "frame": "opener"
+         },
+         {
+          "type": "narrate",
+          "en": "{child}, you join the district malaria team today.",
+          "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Welcome, {child}! Three tools protect children here. Let's learn them together.",
+          "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."
+         },
+         {
+          "type": "show",
+          "visual": "image",
+          "params": {
+           "source_image_id": "1b0d4c1e-7f3a-4a63-9a0e-2c51d1f0a001",
+           "figure_number": "2.1",
+           "alt": {
+            "en": "A clock showing mosquito bites concentrated between 10 pm and 4 am",
+            "fr": "Une horloge montrant les piqûres concentrées entre 22 h et 4 h"
+           }
+          },
+          "caption": {
+           "en": "When Anopheles mosquitoes bite",
+           "fr": "Quand les anophèles piquent"
+          }
+         },
+         {
+          "type": "concept",
+          "id": "c1",
+          "title": {
+           "en": "What you will learn",
+           "fr": "Ce que tu vas apprendre"
+          },
+          "en": [
+           "Explain how nets and chemoprevention prevent malaria"
+          ],
+          "fr": [
+           "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+          ],
+          "frame": "objectives"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s2",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c2",
+          "title": {
+           "en": "Nets work at night",
+           "fr": "Les moustiquaires agissent la nuit"
+          },
+          "en": [
+           "Treated nets kill or repel Anopheles mosquitoes.",
+           "These mosquitoes bite mostly at night.",
+           "At least 80% of people must sleep under a net to protect the community."
+          ],
+          "fr": [
+           "Les moustiquaires imprégnées tuent ou repoussent les anophèles.",
+           "Ces moustiques piquent surtout la nuit.",
+           "Au moins 80 % des personnes doivent dormir sous moustiquaire pour protéger la communauté."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q2"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s3",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c3",
+          "title": {
+           "en": "Test before you treat",
+           "fr": "Tester avant de traiter"
+          },
+          "en": [
+           "Confirm every suspected case with an RDT or microscopy.",
+           "Only then give ACT.",
+           "Untested fevers hide other diseases and waste medicines."
+          ],
+          "fr": [
+           "Confirme chaque cas suspect par un TDR ou une microscopie.",
+           "Ensuite seulement, donne une CTA.",
+           "Les fièvres non testées cachent d'autres maladies et gaspillent les médicaments."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q3"
+         }
+        ],
+        "objective": "o1"
+       }
+      ]
+     },
+     {
+      "id": "ch2",
+      "title": {
+       "en": "Out in Kaya",
+       "fr": "Sur le terrain à Kaya"
+      },
+      "scenes": [
+       {
+        "id": "s4",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c4",
+          "title": {
+           "en": "Seasonal chemoprevention",
+           "fr": "La chimioprévention saisonnière"
+          },
+          "en": [
+           "SMC gives children aged 3-59 months a monthly dose.",
+           "It runs through the rainy season, when transmission peaks.",
+           "All four monthly cycles are needed."
+          ],
+          "fr": [
+           "La CPS donne une dose mensuelle aux enfants de 3 à 59 mois.",
+           "Elle couvre la saison des pluies, quand la transmission est maximale.",
+           "Les quatre cycles mensuels sont nécessaires."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "x1"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s5",
+        "place": "market",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "You travel with Awa to the villages around Kaya.",
+          "fr": "Tu pars avec Awa dans les villages autour de Kaya."
+         },
+         {
+          "type": "concept",
+          "id": "c5",
+          "title": {
+           "en": "Kaya, Burkina Faso, 2022",
+           "fr": "Kaya, Burkina Faso, 2022"
+          },
+          "en": [
+           "Health workers combined SMC campaigns with net distribution.",
+           "Monthly cycles reached 92% of eligible children.",
+           "Confirmed cases in under-fives fell by almost half."
+          ],
+          "fr": [
+           "Les agents de santé ont combiné campagnes de CPS et distribution de moustiquaires.",
+           "Les cycles mensuels ont atteint 92 % des enfants éligibles.",
+           "Les cas confirmés chez les moins de cinq ans ont presque diminué de moitié."
+          ]
+         },
+         {
+          "type": "say",
+          "who": "peer",
+          "en": "Every month we visit each family with the SMC doses.",
+          "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "And the nets? Coverage is what protects the whole village.",
+          "fr": "Et les moustiquaires ? C'est la couverture qui protège tout le village."
+         },
+         {
+          "type": "game",
+          "ref": "g1"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "ch3",
+      "title": {
+       "en": "Your turn",
+       "fr": "À toi de jouer"
+      },
+      "scenes": [
+       {
+        "id": "s6",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c6",
+          "title": {
+           "en": "Key points",
+           "fr": "Points clés"
+          },
+          "en": [
+           "Anopheles mosquitoes bite mostly at night, so nets must be used every night.",
+           "Confirm every suspected case with an RDT before giving ACT.",
+           "SMC protects children aged 3-59 months during the rainy season.",
+           "Nets protect a whole community only when coverage is high."
+          ],
+          "fr": [
+           "Les anophèles piquent surtout la nuit : la moustiquaire doit servir chaque nuit.",
+           "Confirme chaque cas suspect par un TDR avant de donner une CTA.",
+           "La CPS protège les enfants de 3 à 59 mois pendant la saison des pluies.",
+           "Les moustiquaires ne protègent toute la communauté que si la couverture est élevée."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s7",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Now take a sheet of paper, {child}. Work it out yourself.",
+          "fr": "Prends maintenant une feuille, {child}. À toi de le faire."
+         },
+         {
+          "type": "photo",
+          "ref": "E1"
+         },
+         {
+          "type": "photo",
+          "ref": "E2"
+         },
+         {
+          "type": "narrate",
+          "en": "Tonight the children of Kaya sleep a little safer, thanks to you.",
+          "fr": "Ce soir, les enfants de Kaya dorment un peu plus en sécurité grâce à toi."
+         },
+         {
+          "type": "narrate",
+          "en": "Well done, {child}: you have finished this story.",
+          "fr": "Bravo, {child} : tu as terminé cette histoire.",
+          "frame": "finished"
+         },
+         {
+          "type": "say",
+          "who": "margo",
+          "en": "Questions about this lesson? Ask me any time, {child}.",
+          "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
+          "frame": "ask_tutor"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "questions": [
+     {
+      "id": "q2",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "When do Anopheles mosquitoes mostly bite?",
+       "fr": "À quel moment les anophèles piquent-ils surtout ?"
+      },
+      "answer": "c",
+      "choices": [
+       {
+        "id": "a",
+        "en": "In the morning",
+        "fr": "Le matin",
+        "misconception": "m_day_biting"
+       },
+       {
+        "id": "b",
+        "en": "At midday",
+        "fr": "À midi",
+        "misconception": "m_day_biting"
+       },
+       {
+        "id": "c",
+        "en": "At night",
+        "fr": "La nuit"
+       },
+       {
+        "id": "d",
+        "en": "In the afternoon",
+        "fr": "L'après-midi",
+        "misconception": "m_day_biting"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "a",
+        "misconception": "m_day_biting",
+        "hint": {
+         "en": "Most bites happen while people sleep.",
+         "fr": "La plupart des piqûres ont lieu pendant le sommeil."
+        }
+       },
+       {
+        "answer": "b",
+        "misconception": "m_day_biting",
+        "hint": {
+         "en": "Midday is the quietest time for these mosquitoes.",
+         "fr": "Midi est le moment le plus calme pour ces moustiques."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_day_biting",
+        "hint": {
+         "en": "Why would a net be used for sleeping?",
+         "fr": "Pourquoi utilise-t-on la moustiquaire pour dormir ?"
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think about when people are asleep.",
+        "fr": "Pense au moment où les gens dorment."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q1"
+      },
+      "explanation": {
+       "en": "Anopheles mosquitoes are night biters, which is why nets must be used every night.",
+       "fr": "Les anophèles piquent la nuit : c'est pourquoi la moustiquaire doit servir chaque nuit."
+      }
+     },
+     {
+      "id": "q3",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "What must be done for every suspected case before ACT is given?",
+       "fr": "Que faut-il faire pour chaque cas suspect avant de donner une CTA ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "en": "Confirm it with an RDT or microscopy",
+        "fr": "Le confirmer par un TDR ou une microscopie"
+       },
+       {
+        "id": "b",
+        "en": "Measure the temperature twice",
+        "fr": "Prendre la température deux fois",
+        "misconception": "m_fever_is_proof"
+       },
+       {
+        "id": "c",
+        "en": "Wait three days to see if the fever goes",
+        "fr": "Attendre trois jours pour voir si la fièvre passe",
+        "misconception": "m_wait_and_see"
+       },
+       {
+        "id": "d",
+        "en": "Give paracetamol first",
+        "fr": "Donner d'abord du paracétamol",
+        "misconception": "m_symptom_first"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_fever_is_proof",
+        "hint": {
+         "en": "A fever has many causes. What proves it is malaria?",
+         "fr": "Une fièvre a beaucoup de causes. Qu'est-ce qui prouve le paludisme ?"
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_wait_and_see",
+        "hint": {
+         "en": "Waiting can be dangerous for a small child.",
+         "fr": "Attendre peut être dangereux pour un petit enfant."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_symptom_first",
+        "hint": {
+         "en": "This treats the symptom, not the cause.",
+         "fr": "Cela traite le symptôme, pas la cause."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think about what proves the parasite is there.",
+        "fr": "Pense à ce qui prouve que le parasite est là."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q2"
+      },
+      "explanation": {
+       "en": "Testing first avoids treating fevers that are not malaria.",
+       "fr": "Tester d'abord évite de traiter des fièvres qui ne sont pas du paludisme."
+      }
+     },
+     {
+      "id": "x1",
+      "type": "exact_text",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "What minimum percentage of people must sleep under a net to protect a community? (number only)",
+       "fr": "Quel pourcentage minimal de personnes doit dormir sous moustiquaire pour protéger une communauté ? (nombre seul)"
+      },
+      "answer": "80",
+      "traps": [
+       {
+        "answer": "50",
+        "misconception": "m_low_coverage",
+        "hint": {
+         "en": "Half is not enough: mosquitoes still find hosts.",
+         "fr": "La moitié ne suffit pas : les moustiques trouvent encore des hôtes."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "It is most of the people, not half.",
+        "fr": "C'est la plupart des personnes, pas la moitié."
+       }
+      ],
+      "explanation": {
+       "en": "The lesson sets the threshold at 80% of people sleeping under a net.",
+       "fr": "La leçon fixe le seuil à 80 % des personnes dormant sous moustiquaire."
+      }
+     }
+    ],
+    "exercises": [
+     {
+      "id": "E1",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "List the three tools that protect children from malaria and say when each one acts.",
+       "fr": "Cite les trois outils qui protègent les enfants du paludisme et dis quand chacun agit."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "All three tools with the right moment",
+        "fr": "Les trois outils avec le bon moment"
+       }
+      ],
+      "working": {
+       "en": [
+        "Nets: every night, against bites",
+        "Testing: when a fever appears",
+        "SMC: each month of the rainy season"
+       ],
+       "fr": [
+        "Moustiquaires : chaque nuit, contre les piqûres",
+        "Test : quand une fièvre apparaît",
+        "CPS : chaque mois de la saison des pluies"
+       ]
+      }
+     },
+     {
+      "id": "E2",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "Write the steps you follow for a child with fever, from arrival to treatment.",
+       "fr": "Écris les étapes que tu suis pour un enfant fiévreux, de son arrivée au traitement."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "Test before treatment, both results handled",
+        "fr": "Test avant traitement, les deux résultats traités"
+       }
+      ],
+      "working": {
+       "en": [
+        "Take the history and check for danger signs",
+        "Do an RDT",
+        "Positive: give ACT; negative: look for another cause"
+       ],
+       "fr": [
+        "Interroger et chercher les signes de danger",
+        "Faire un TDR",
+        "Positif : donner une CTA ; négatif : chercher une autre cause"
+       ]
+      }
+     }
+    ],
+    "minigames": [
+     {
+      "id": "g1",
+      "engine": "catch",
+      "title": {
+       "en": "Malaria catch",
+       "fr": "Attrape-paludisme"
+      },
+      "instruction": {
+       "en": "Catch the true statements. Let the myths fall!",
+       "fr": "Attrape les affirmations vraies. Laisse tomber les idées reçues !"
+      },
+      "hint_after_wrong": {
+       "en": "Think back to the three tools.",
+       "fr": "Repense aux trois outils."
+      },
+      "rounds": [
+       {
+        "prompt": {
+         "en": "Catch what protects at night",
+         "fr": "Attrape ce qui protège la nuit"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Sleeping under a treated net",
+           "fr": "Dormir sous une moustiquaire imprégnée"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "High net coverage in the village",
+           "fr": "Une forte couverture en moustiquaires au village"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Anopheles only bite at midday",
+           "fr": "Les anophèles ne piquent qu'à midi"
+          },
+          "correct": false,
+          "trap": "m_day_biting"
+         },
+         {
+          "label": {
+           "en": "A few nets protect everyone",
+           "fr": "Quelques moustiquaires protègent tout le monde"
+          },
+          "correct": false,
+          "trap": "m_low_coverage"
+         }
+        ]
+       },
+       {
+        "prompt": {
+         "en": "Catch the right reflexes for a fever",
+         "fr": "Attrape les bons réflexes face à une fièvre"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Do an RDT first",
+           "fr": "Faire d'abord un TDR"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Give ACT only if the test is positive",
+           "fr": "Donner une CTA seulement si le test est positif"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Any fever in the rainy season is malaria",
+           "fr": "Toute fièvre en saison des pluies est du paludisme"
+          },
+          "correct": false,
+          "trap": "m_fever_is_proof"
+         },
+         {
+          "label": {
+           "en": "SMC cures a sick child",
+           "fr": "La CPS guérit un enfant malade"
+          },
+          "correct": false,
+          "trap": "m_smc_is_treatment"
+         }
+        ]
+       }
+      ],
+      "points": {
+       "per_correct": 1
+      },
+      "objective": "o1"
+     }
+    ],
+    "videos": [],
+    "tutor": {
+     "persona": "margo",
+     "intro": {
+      "en": "Hi {child}! I'm Margo, an AI tutor, not a real person. I give hints; you decide.",
+      "fr": "Bonjour {child} ! Je suis Margo, une IA, pas une vraie personne. Je donne des indices, c'est toi qui décides."
+     },
+     "scope": {
+      "this_week": [
+       "o1"
+      ],
+      "earlier_weeks": "Unit 1.1: how malaria is transmitted"
+     },
+     "style": [
+      "Reply in the language the learner used.",
+      "At most 3 short sentences, then one question back.",
+      "One hint at a time, starting from the learner's own words.",
+      "Speak to the learner as 'you'; in French use 'tu' and stay gender-neutral."
+     ],
+     "never": [
+      "Give the answer to a question or exercise before the app shows the explanation.",
+      "Decide whether an answer is right: the app does that.",
+      "Ask for or repeat personal information (surname, address, phone).",
+      "Talk about anything other than this lesson."
+     ],
+     "off_topic": {
+      "en": "Let's stay with malaria prevention. Ask your supervisor about that.",
+      "fr": "Restons sur la prévention du paludisme. Pose cette question à ton encadrant."
+     },
+     "worry": {
+      "en": "That sounds important. Please talk to someone you trust now.",
+      "fr": "Cela semble important. Parles-en tout de suite à une personne de confiance."
+     },
+     "max_turns_per_item": 6
+    },
+    "rewards": {
+     "unit": {
+      "en": "points",
+      "fr": "points"
+     },
+     "first_try": 2,
+     "second_try": 1,
+     "streak": {
+      "every": 3,
+      "bonus": 1
+     },
+     "stars": {
+      "3": 0.85,
+      "2": 0.6
+     }
+    },
+    "art_requests": [],
+    "engine_requests": [],
+    "checks": {
+     "validator": "story_course_validator v1",
+     "date": "2026-11-09",
+     "questions": 3,
+     "exercises": 2,
+     "paper_marks": 2,
+     "minigame_rounds": 2,
+     "max_points": 12,
+     "errors": 0,
+     "warnings": 0,
+     "predicted_typical": {
+      "plan": "2 of 3 questions right first time (2 each), the other 1 right on the second try (1 each); 3 of 4 mini-game targets caught; paper exercises self-checked (2 marks).",
+      "points": 10
+     }
+    }
+   },
+   "1.2": {
+    "format": "story-course/1",
+    "id": "lesson-0d6f1e5a11114c2b9a3e000000000012-en",
+    "sira_builder": 2,
+    "course": "Public health",
+    "unit": "1.2 · Preventing malaria in children",
+    "week": 1,
+    "title": {
+     "en": "Preventing malaria in children",
+     "fr": "Prévenir le paludisme chez l'enfant"
+    },
+    "languages": {
+     "target": "en",
+     "home": "fr"
+    },
+    "learner": {
+     "first_name": "{child}"
+    },
+    "sources": [
+     {
+      "kind": "lesson",
+      "ref": "Lesson 1.2 — Preventing malaria in children",
+      "used_for": "story, concepts and key points"
+     },
+     {
+      "kind": "lesson",
+      "ref": "WHO Malaria Guidelines Ch.2, p.14",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "lesson",
+      "ref": "WHO Malaria Guidelines Ch.3, p.22",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "test",
+      "ref": "Unit 1.3 quiz",
+      "used_for": "questions, derived verbatim"
+     }
+    ],
+    "objectives": [
+     {
+      "id": "o1",
+      "en": "Apply the test-before-treat rule",
+      "fr": "Appliquer la règle « tester avant de traiter »"
+     }
+    ],
+    "glossary": [],
+    "calibration": [],
+    "misconceptions": [
+     {
+      "id": "m_day_biting",
+      "en": "Thinks Anopheles bite mostly during the day.",
+      "fr": "Pense que les anophèles piquent surtout le jour.",
+      "from_test": false
+     },
+     {
+      "id": "m_fever_is_proof",
+      "en": "Thinks a fever is enough to prove malaria.",
+      "fr": "Pense qu'une fièvre suffit à prouver le paludisme.",
+      "from_test": false
+     },
+     {
+      "id": "m_wait_and_see",
+      "en": "Thinks waiting is safe with a suspected case.",
+      "fr": "Pense qu'attendre est sans danger face à un cas suspect.",
+      "from_test": false
+     },
+     {
+      "id": "m_symptom_first",
+      "en": "Treats the symptom instead of confirming the cause.",
+      "fr": "Traite le symptôme au lieu de confirmer la cause.",
+      "from_test": false
+     },
+     {
+      "id": "m_season_overrides_test",
+      "en": "Thinks the rainy season overrides a negative test.",
+      "fr": "Pense que la saison des pluies l'emporte sur un test négatif.",
+      "from_test": false
+     },
+     {
+      "id": "m_retest_later",
+      "en": "Thinks a negative test only needs repeating later.",
+      "fr": "Pense qu'un test négatif doit juste être refait plus tard.",
+      "from_test": false
+     },
+     {
+      "id": "m_smc_is_treatment",
+      "en": "Confuses prevention with treatment.",
+      "fr": "Confond prévention et traitement.",
+      "from_test": false
+     },
+     {
+      "id": "m_school_age",
+      "en": "Confuses SMC with school-age campaigns.",
+      "fr": "Confond la CPS avec les campagnes en milieu scolaire.",
+      "from_test": false
+     },
+     {
+      "id": "m_newborns_only",
+      "en": "Thinks only newborns are at risk.",
+      "fr": "Pense que seuls les nouveau-nés sont à risque.",
+      "from_test": false
+     },
+     {
+      "id": "m_low_coverage",
+      "en": "Thinks a few nets protect the whole community.",
+      "fr": "Pense que quelques moustiquaires protègent toute la communauté.",
+      "from_test": false
+     }
+    ],
+    "cast": [
+     {
+      "id": "margo",
+      "name": "Margo",
+      "kind": "ai_tutor",
+      "art": "margo"
+     },
+     {
+      "id": "mentor",
+      "name": "Dr Kaboré",
+      "kind": "adult",
+      "art": "mr_kabore"
+     },
+     {
+      "id": "peer",
+      "name": "Awa",
+      "kind": "adult",
+      "art": "maman_olivia"
+     }
+    ],
+    "facts": [],
+    "chapters": [
+     {
+      "id": "ch1",
+      "title": {
+       "en": "Your first day on the team",
+       "fr": "Ton premier jour dans l'équipe"
+      },
+      "scenes": [
+       {
+        "id": "s1",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "This story is about you, {child}.",
+          "fr": "Cette histoire parle de toi, {child}.",
+          "frame": "opener"
+         },
+         {
+          "type": "narrate",
+          "en": "{child}, you join the district malaria team today.",
+          "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Welcome, {child}! Three tools protect children here. Let's learn them together.",
+          "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."
+         },
+         {
+          "type": "show",
+          "visual": "image",
+          "params": {
+           "source_image_id": "1b0d4c1e-7f3a-4a63-9a0e-2c51d1f0a001",
+           "figure_number": "2.1",
+           "alt": {
+            "en": "A clock showing mosquito bites concentrated between 10 pm and 4 am",
+            "fr": "Une horloge montrant les piqûres concentrées entre 22 h et 4 h"
+           }
+          },
+          "caption": {
+           "en": "When Anopheles mosquitoes bite",
+           "fr": "Quand les anophèles piquent"
+          }
+         },
+         {
+          "type": "concept",
+          "id": "c1",
+          "title": {
+           "en": "What you will learn",
+           "fr": "Ce que tu vas apprendre"
+          },
+          "en": [
+           "Apply the test-before-treat rule"
+          ],
+          "fr": [
+           "Appliquer la règle « tester avant de traiter »"
+          ],
+          "frame": "objectives"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s2",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c2",
+          "title": {
+           "en": "Nets work at night",
+           "fr": "Les moustiquaires agissent la nuit"
+          },
+          "en": [
+           "Treated nets kill or repel Anopheles mosquitoes.",
+           "These mosquitoes bite mostly at night.",
+           "At least 80% of people must sleep under a net to protect the community."
+          ],
+          "fr": [
+           "Les moustiquaires imprégnées tuent ou repoussent les anophèles.",
+           "Ces moustiques piquent surtout la nuit.",
+           "Au moins 80 % des personnes doivent dormir sous moustiquaire pour protéger la communauté."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q3"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s3",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c3",
+          "title": {
+           "en": "Test before you treat",
+           "fr": "Tester avant de traiter"
+          },
+          "en": [
+           "Confirm every suspected case with an RDT or microscopy.",
+           "Only then give ACT.",
+           "Untested fevers hide other diseases and waste medicines."
+          ],
+          "fr": [
+           "Confirme chaque cas suspect par un TDR ou une microscopie.",
+           "Ensuite seulement, donne une CTA.",
+           "Les fièvres non testées cachent d'autres maladies et gaspillent les médicaments."
+          ]
+         },
+         {
+          "type": "concept",
+          "id": "situation-q4",
+          "title": {
+           "en": "The situation",
+           "fr": "La situation"
+          },
+          "en": [
+           "A community health worker in Kaya sees a three-year-old with a fever of 39 °C during the rainy season. The rapid diagnostic test is negative. According to the lesson, what should she do next?"
+          ],
+          "fr": [
+           "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?"
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q4"
+         }
+        ],
+        "objective": "o1"
+       }
+      ]
+     },
+     {
+      "id": "ch2",
+      "title": {
+       "en": "Out in Kaya",
+       "fr": "Sur le terrain à Kaya"
+      },
+      "scenes": [
+       {
+        "id": "s4",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c4",
+          "title": {
+           "en": "Seasonal chemoprevention",
+           "fr": "La chimioprévention saisonnière"
+          },
+          "en": [
+           "SMC gives children aged 3-59 months a monthly dose.",
+           "It runs through the rainy season, when transmission peaks.",
+           "All four monthly cycles are needed."
+          ],
+          "fr": [
+           "La CPS donne une dose mensuelle aux enfants de 3 à 59 mois.",
+           "Elle couvre la saison des pluies, quand la transmission est maximale.",
+           "Les quatre cycles mensuels sont nécessaires."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q5"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s5",
+        "place": "market",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "You travel with Awa to the villages around Kaya.",
+          "fr": "Tu pars avec Awa dans les villages autour de Kaya."
+         },
+         {
+          "type": "concept",
+          "id": "c5",
+          "title": {
+           "en": "Kaya, Burkina Faso, 2022",
+           "fr": "Kaya, Burkina Faso, 2022"
+          },
+          "en": [
+           "Health workers combined SMC campaigns with net distribution.",
+           "Monthly cycles reached 92% of eligible children.",
+           "Confirmed cases in under-fives fell by almost half."
+          ],
+          "fr": [
+           "Les agents de santé ont combiné campagnes de CPS et distribution de moustiquaires.",
+           "Les cycles mensuels ont atteint 92 % des enfants éligibles.",
+           "Les cas confirmés chez les moins de cinq ans ont presque diminué de moitié."
+          ]
+         },
+         {
+          "type": "say",
+          "who": "peer",
+          "en": "Every month we visit each family with the SMC doses.",
+          "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "And the nets? Coverage is what protects the whole village.",
+          "fr": "Et les moustiquaires ? C'est la couverture qui protège tout le village."
+         },
+         {
+          "type": "game",
+          "ref": "g1"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "ch3",
+      "title": {
+       "en": "Your turn",
+       "fr": "À toi de jouer"
+      },
+      "scenes": [
+       {
+        "id": "s6",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c6",
+          "title": {
+           "en": "Key points",
+           "fr": "Points clés"
+          },
+          "en": [
+           "Anopheles mosquitoes bite mostly at night, so nets must be used every night.",
+           "Confirm every suspected case with an RDT before giving ACT.",
+           "SMC protects children aged 3-59 months during the rainy season.",
+           "Nets protect a whole community only when coverage is high."
+          ],
+          "fr": [
+           "Les anophèles piquent surtout la nuit : la moustiquaire doit servir chaque nuit.",
+           "Confirme chaque cas suspect par un TDR avant de donner une CTA.",
+           "La CPS protège les enfants de 3 à 59 mois pendant la saison des pluies.",
+           "Les moustiquaires ne protègent toute la communauté que si la couverture est élevée."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s7",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Now take a sheet of paper, {child}. Work it out yourself.",
+          "fr": "Prends maintenant une feuille, {child}. À toi de le faire."
+         },
+         {
+          "type": "photo",
+          "ref": "E1"
+         },
+         {
+          "type": "photo",
+          "ref": "E2"
+         },
+         {
+          "type": "narrate",
+          "en": "Tonight the children of Kaya sleep a little safer, thanks to you.",
+          "fr": "Ce soir, les enfants de Kaya dorment un peu plus en sécurité grâce à toi."
+         },
+         {
+          "type": "narrate",
+          "en": "Well done, {child}: you have finished this story.",
+          "fr": "Bravo, {child} : tu as terminé cette histoire.",
+          "frame": "finished"
+         },
+         {
+          "type": "say",
+          "who": "margo",
+          "en": "Questions about this lesson? Ask me any time, {child}.",
+          "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
+          "frame": "ask_tutor"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "questions": [
+     {
+      "id": "q3",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "What must be done for every suspected case before ACT is given?",
+       "fr": "Que faut-il faire pour chaque cas suspect avant de donner une CTA ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "en": "Confirm it with an RDT or microscopy",
+        "fr": "Le confirmer par un TDR ou une microscopie"
+       },
+       {
+        "id": "b",
+        "en": "Measure the temperature twice",
+        "fr": "Prendre la température deux fois",
+        "misconception": "m_fever_is_proof"
+       },
+       {
+        "id": "c",
+        "en": "Wait three days to see if the fever goes",
+        "fr": "Attendre trois jours pour voir si la fièvre passe",
+        "misconception": "m_wait_and_see"
+       },
+       {
+        "id": "d",
+        "en": "Give paracetamol first",
+        "fr": "Donner d'abord du paracétamol",
+        "misconception": "m_symptom_first"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_fever_is_proof",
+        "hint": {
+         "en": "A fever has many causes. What proves it is malaria?",
+         "fr": "Une fièvre a beaucoup de causes. Qu'est-ce qui prouve le paludisme ?"
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_wait_and_see",
+        "hint": {
+         "en": "Waiting can be dangerous for a small child.",
+         "fr": "Attendre peut être dangereux pour un petit enfant."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_symptom_first",
+        "hint": {
+         "en": "This treats the symptom, not the cause.",
+         "fr": "Cela traite le symptôme, pas la cause."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think about what proves the parasite is there.",
+        "fr": "Pense à ce qui prouve que le parasite est là."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q2"
+      },
+      "explanation": {
+       "en": "Testing first avoids treating fevers that are not malaria.",
+       "fr": "Tester d'abord évite de traiter des fièvres qui ne sont pas du paludisme."
+      }
+     },
+     {
+      "id": "q4",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Read the situation above, then choose the best answer.",
+       "fr": "Lis la situation ci-dessus, puis choisis la meilleure réponse."
+      },
+      "answer": "b",
+      "choices": [
+       {
+        "id": "a",
+        "en": "Give ACT anyway because it is the rainy season",
+        "fr": "Donner quand même une CTA, car c'est la saison des pluies",
+        "misconception": "m_season_overrides_test"
+       },
+       {
+        "id": "b",
+        "en": "Look for another cause of the fever and refer if needed",
+        "fr": "Chercher une autre cause de la fièvre et référer si besoin"
+       },
+       {
+        "id": "c",
+        "en": "Repeat the same test next month",
+        "fr": "Refaire le même test le mois prochain",
+        "misconception": "m_retest_later"
+       },
+       {
+        "id": "d",
+        "en": "Start seasonal chemoprevention straight away",
+        "fr": "Commencer tout de suite la chimioprévention saisonnière",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "a",
+        "misconception": "m_season_overrides_test",
+        "hint": {
+         "en": "The season does not change what the test showed.",
+         "fr": "La saison ne change pas ce que le test a montré."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_retest_later",
+        "hint": {
+         "en": "The child is sick today. Can the fever wait a month?",
+         "fr": "L'enfant est malade aujourd'hui. La fièvre peut-elle attendre un mois ?"
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "Chemoprevention prevents; it does not treat a fever.",
+         "fr": "La chimioprévention prévient ; elle ne soigne pas une fièvre."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "What does a negative test tell you?",
+        "fr": "Que t'apprend un test négatif ?"
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q3"
+      },
+      "stem": {
+       "en": "A community health worker in Kaya sees a three-year-old with a fever of 39 °C during the rainy season. The rapid diagnostic test is negative. According to the lesson, what should she do next?",
+       "fr": "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?"
+      },
+      "explanation": {
+       "en": "A negative RDT means the fever has another cause that must be found.",
+       "fr": "Un TDR négatif signifie que la fièvre a une autre cause qu'il faut trouver."
+      }
+     },
+     {
+      "id": "q5",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Which children receive seasonal malaria chemoprevention?",
+       "fr": "Quels enfants reçoivent la chimioprévention du paludisme saisonnier ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "en": "Children aged 3-59 months",
+        "fr": "Les enfants de 3 à 59 mois"
+       },
+       {
+        "id": "b",
+        "en": "Children aged 5-15 years",
+        "fr": "Les enfants de 5 à 15 ans",
+        "misconception": "m_school_age"
+       },
+       {
+        "id": "c",
+        "en": "Newborn babies only",
+        "fr": "Seulement les nouveau-nés",
+        "misconception": "m_newborns_only"
+       },
+       {
+        "id": "d",
+        "en": "Every child who has a fever",
+        "fr": "Tous les enfants qui ont de la fièvre",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_school_age",
+        "hint": {
+         "en": "School-age children are not the main target.",
+         "fr": "Les enfants d'âge scolaire ne sont pas la cible principale."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_newborns_only",
+        "hint": {
+         "en": "The target group is wider than newborns.",
+         "fr": "Le groupe cible est plus large que les nouveau-nés."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "SMC prevents; a fever needs a test.",
+         "fr": "La CPS prévient ; une fièvre demande un test."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think of the youngest children who are not babies.",
+        "fr": "Pense aux plus jeunes enfants qui ne sont plus des nourrissons."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q4"
+      },
+      "explanation": {
+       "en": "SMC targets children aged 3-59 months, who are the most at risk.",
+       "fr": "La CPS cible les enfants de 3 à 59 mois, les plus à risque."
+      }
+     }
+    ],
+    "exercises": [
+     {
+      "id": "E1",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "List the three tools that protect children from malaria and say when each one acts.",
+       "fr": "Cite les trois outils qui protègent les enfants du paludisme et dis quand chacun agit."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "All three tools with the right moment",
+        "fr": "Les trois outils avec le bon moment"
+       }
+      ],
+      "working": {
+       "en": [
+        "Nets: every night, against bites",
+        "Testing: when a fever appears",
+        "SMC: each month of the rainy season"
+       ],
+       "fr": [
+        "Moustiquaires : chaque nuit, contre les piqûres",
+        "Test : quand une fièvre apparaît",
+        "CPS : chaque mois de la saison des pluies"
+       ]
+      }
+     },
+     {
+      "id": "E2",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "Write the steps you follow for a child with fever, from arrival to treatment.",
+       "fr": "Écris les étapes que tu suis pour un enfant fiévreux, de son arrivée au traitement."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "Test before treatment, both results handled",
+        "fr": "Test avant traitement, les deux résultats traités"
+       }
+      ],
+      "working": {
+       "en": [
+        "Take the history and check for danger signs",
+        "Do an RDT",
+        "Positive: give ACT; negative: look for another cause"
+       ],
+       "fr": [
+        "Interroger et chercher les signes de danger",
+        "Faire un TDR",
+        "Positif : donner une CTA ; négatif : chercher une autre cause"
+       ]
+      }
+     }
+    ],
+    "minigames": [
+     {
+      "id": "g1",
+      "engine": "catch",
+      "title": {
+       "en": "Malaria catch",
+       "fr": "Attrape-paludisme"
+      },
+      "instruction": {
+       "en": "Catch the true statements. Let the myths fall!",
+       "fr": "Attrape les affirmations vraies. Laisse tomber les idées reçues !"
+      },
+      "hint_after_wrong": {
+       "en": "Think back to the three tools.",
+       "fr": "Repense aux trois outils."
+      },
+      "rounds": [
+       {
+        "prompt": {
+         "en": "Catch what protects at night",
+         "fr": "Attrape ce qui protège la nuit"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Sleeping under a treated net",
+           "fr": "Dormir sous une moustiquaire imprégnée"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "High net coverage in the village",
+           "fr": "Une forte couverture en moustiquaires au village"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Anopheles only bite at midday",
+           "fr": "Les anophèles ne piquent qu'à midi"
+          },
+          "correct": false,
+          "trap": "m_day_biting"
+         },
+         {
+          "label": {
+           "en": "A few nets protect everyone",
+           "fr": "Quelques moustiquaires protègent tout le monde"
+          },
+          "correct": false,
+          "trap": "m_low_coverage"
+         }
+        ]
+       },
+       {
+        "prompt": {
+         "en": "Catch the right reflexes for a fever",
+         "fr": "Attrape les bons réflexes face à une fièvre"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Do an RDT first",
+           "fr": "Faire d'abord un TDR"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Give ACT only if the test is positive",
+           "fr": "Donner une CTA seulement si le test est positif"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Any fever in the rainy season is malaria",
+           "fr": "Toute fièvre en saison des pluies est du paludisme"
+          },
+          "correct": false,
+          "trap": "m_fever_is_proof"
+         },
+         {
+          "label": {
+           "en": "SMC cures a sick child",
+           "fr": "La CPS guérit un enfant malade"
+          },
+          "correct": false,
+          "trap": "m_smc_is_treatment"
+         }
+        ]
+       }
+      ],
+      "points": {
+       "per_correct": 1
+      },
+      "objective": "o1"
+     }
+    ],
+    "videos": [],
+    "tutor": {
+     "persona": "margo",
+     "intro": {
+      "en": "Hi {child}! I'm Margo, an AI tutor, not a real person. I give hints; you decide.",
+      "fr": "Bonjour {child} ! Je suis Margo, une IA, pas une vraie personne. Je donne des indices, c'est toi qui décides."
+     },
+     "scope": {
+      "this_week": [
+       "o1"
+      ],
+      "earlier_weeks": "Unit 1.1: how malaria is transmitted"
+     },
+     "style": [
+      "Reply in the language the learner used.",
+      "At most 3 short sentences, then one question back.",
+      "One hint at a time, starting from the learner's own words.",
+      "Speak to the learner as 'you'; in French use 'tu' and stay gender-neutral."
+     ],
+     "never": [
+      "Give the answer to a question or exercise before the app shows the explanation.",
+      "Decide whether an answer is right: the app does that.",
+      "Ask for or repeat personal information (surname, address, phone).",
+      "Talk about anything other than this lesson."
+     ],
+     "off_topic": {
+      "en": "Let's stay with malaria prevention. Ask your supervisor about that.",
+      "fr": "Restons sur la prévention du paludisme. Pose cette question à ton encadrant."
+     },
+     "worry": {
+      "en": "That sounds important. Please talk to someone you trust now.",
+      "fr": "Cela semble important. Parles-en tout de suite à une personne de confiance."
+     },
+     "max_turns_per_item": 6
+    },
+    "rewards": {
+     "unit": {
+      "en": "points",
+      "fr": "points"
+     },
+     "first_try": 2,
+     "second_try": 1,
+     "streak": {
+      "every": 3,
+      "bonus": 1
+     },
+     "stars": {
+      "3": 0.85,
+      "2": 0.6
+     }
+    },
+    "art_requests": [],
+    "engine_requests": [],
+    "checks": {
+     "validator": "story_course_validator v1",
+     "date": "2026-11-09",
+     "questions": 3,
+     "exercises": 2,
+     "paper_marks": 2,
+     "minigame_rounds": 2,
+     "max_points": 12,
+     "errors": 0,
+     "warnings": 0,
+     "predicted_typical": {
+      "plan": "2 of 3 questions right first time (2 each), the other 1 right on the second try (1 each); 3 of 4 mini-game targets caught; paper exercises self-checked (2 marks).",
+      "points": 10
+     }
+    }
+   },
+   "1.6": {
+    "format": "story-course/1",
+    "id": "lesson-0d6f1e5a11114c2b9a3e000000000016-en",
+    "sira_builder": 2,
+    "course": "Public health",
+    "unit": "1.6 · Working with the community",
+    "week": 1,
+    "title": {
+     "en": "Working with the community",
+     "fr": "Travailler avec la communauté"
+    },
+    "languages": {
+     "target": "en",
+     "home": "fr"
+    },
+    "learner": {
+     "first_name": "{child}"
+    },
+    "sources": [
+     {
+      "kind": "lesson",
+      "ref": "Lesson 1.6 — Working with the community",
+      "used_for": "story, concepts and key points"
+     },
+     {
+      "kind": "lesson",
+      "ref": "WHO Malaria Guidelines Ch.2, p.14",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "lesson",
+      "ref": "WHO Malaria Guidelines Ch.3, p.22",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "test",
+      "ref": "Unit 1.3 quiz",
+      "used_for": "questions, derived verbatim"
+     }
+    ],
+    "objectives": [
+     {
+      "id": "o1",
+      "en": "Explain how nets and chemoprevention prevent malaria",
+      "fr": "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+     }
+    ],
+    "glossary": [],
+    "calibration": [],
+    "misconceptions": [
+     {
+      "id": "m_day_biting",
+      "en": "Thinks Anopheles bite mostly during the day.",
+      "fr": "Pense que les anophèles piquent surtout le jour.",
+      "from_test": false
+     },
+     {
+      "id": "m_fever_is_proof",
+      "en": "Thinks a fever is enough to prove malaria.",
+      "fr": "Pense qu'une fièvre suffit à prouver le paludisme.",
+      "from_test": false
+     },
+     {
+      "id": "m_season_overrides_test",
+      "en": "Thinks the rainy season overrides a negative test.",
+      "fr": "Pense que la saison des pluies l'emporte sur un test négatif.",
+      "from_test": false
+     },
+     {
+      "id": "m_retest_later",
+      "en": "Thinks a negative test only needs repeating later.",
+      "fr": "Pense qu'un test négatif doit juste être refait plus tard.",
+      "from_test": false
+     },
+     {
+      "id": "m_smc_is_treatment",
+      "en": "Confuses prevention with treatment.",
+      "fr": "Confond prévention et traitement.",
+      "from_test": false
+     },
+     {
+      "id": "m_school_age",
+      "en": "Confuses SMC with school-age campaigns.",
+      "fr": "Confond la CPS avec les campagnes en milieu scolaire.",
+      "from_test": false
+     },
+     {
+      "id": "m_newborns_only",
+      "en": "Thinks only newborns are at risk.",
+      "fr": "Pense que seuls les nouveau-nés sont à risque.",
+      "from_test": false
+     },
+     {
+      "id": "m_low_coverage",
+      "en": "Thinks a few nets protect the whole community.",
+      "fr": "Pense que quelques moustiquaires protègent toute la communauté.",
+      "from_test": false
+     }
+    ],
+    "cast": [
+     {
+      "id": "margo",
+      "name": "Margo",
+      "kind": "ai_tutor",
+      "art": "margo"
+     },
+     {
+      "id": "mentor",
+      "name": "Dr Kaboré",
+      "kind": "adult",
+      "art": "mr_kabore"
+     },
+     {
+      "id": "peer",
+      "name": "Awa",
+      "kind": "adult",
+      "art": "maman_olivia"
+     }
+    ],
+    "facts": [],
+    "chapters": [
+     {
+      "id": "ch1",
+      "title": {
+       "en": "Your first day on the team",
+       "fr": "Ton premier jour dans l'équipe"
+      },
+      "scenes": [
+       {
+        "id": "s1",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "This story is about you, {child}.",
+          "fr": "Cette histoire parle de toi, {child}.",
+          "frame": "opener"
+         },
+         {
+          "type": "narrate",
+          "en": "{child}, you join the district malaria team today.",
+          "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Welcome, {child}! Three tools protect children here. Let's learn them together.",
+          "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."
+         },
+         {
+          "type": "show",
+          "visual": "image",
+          "params": {
+           "source_image_id": "1b0d4c1e-7f3a-4a63-9a0e-2c51d1f0a001",
+           "figure_number": "2.1",
+           "alt": {
+            "en": "A clock showing mosquito bites concentrated between 10 pm and 4 am",
+            "fr": "Une horloge montrant les piqûres concentrées entre 22 h et 4 h"
+           }
+          },
+          "caption": {
+           "en": "When Anopheles mosquitoes bite",
+           "fr": "Quand les anophèles piquent"
+          }
+         },
+         {
+          "type": "concept",
+          "id": "c1",
+          "title": {
+           "en": "What you will learn",
+           "fr": "Ce que tu vas apprendre"
+          },
+          "en": [
+           "Explain how nets and chemoprevention prevent malaria"
+          ],
+          "fr": [
+           "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+          ],
+          "frame": "objectives"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s2",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c2",
+          "title": {
+           "en": "Nets work at night",
+           "fr": "Les moustiquaires agissent la nuit"
+          },
+          "en": [
+           "Treated nets kill or repel Anopheles mosquitoes.",
+           "These mosquitoes bite mostly at night.",
+           "At least 80% of people must sleep under a net to protect the community."
+          ],
+          "fr": [
+           "Les moustiquaires imprégnées tuent ou repoussent les anophèles.",
+           "Ces moustiques piquent surtout la nuit.",
+           "Au moins 80 % des personnes doivent dormir sous moustiquaire pour protéger la communauté."
+          ]
+         },
+         {
+          "type": "concept",
+          "id": "situation-q4",
+          "title": {
+           "en": "The situation",
+           "fr": "La situation"
+          },
+          "en": [
+           "A community health worker in Kaya sees a three-year-old with a fever of 39 °C during the rainy season. The rapid diagnostic test is negative. According to the lesson, what should she do next?"
+          ],
+          "fr": [
+           "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?"
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q4"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s3",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c3",
+          "title": {
+           "en": "Test before you treat",
+           "fr": "Tester avant de traiter"
+          },
+          "en": [
+           "Confirm every suspected case with an RDT or microscopy.",
+           "Only then give ACT.",
+           "Untested fevers hide other diseases and waste medicines."
+          ],
+          "fr": [
+           "Confirme chaque cas suspect par un TDR ou une microscopie.",
+           "Ensuite seulement, donne une CTA.",
+           "Les fièvres non testées cachent d'autres maladies et gaspillent les médicaments."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q5"
+         }
+        ],
+        "objective": "o1"
+       }
+      ]
+     },
+     {
+      "id": "ch2",
+      "title": {
+       "en": "Out in Kaya",
+       "fr": "Sur le terrain à Kaya"
+      },
+      "scenes": [
+       {
+        "id": "s4",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c4",
+          "title": {
+           "en": "Seasonal chemoprevention",
+           "fr": "La chimioprévention saisonnière"
+          },
+          "en": [
+           "SMC gives children aged 3-59 months a monthly dose.",
+           "It runs through the rainy season, when transmission peaks.",
+           "All four monthly cycles are needed."
+          ],
+          "fr": [
+           "La CPS donne une dose mensuelle aux enfants de 3 à 59 mois.",
+           "Elle couvre la saison des pluies, quand la transmission est maximale.",
+           "Les quatre cycles mensuels sont nécessaires."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s5",
+        "place": "market",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "You travel with Awa to the villages around Kaya.",
+          "fr": "Tu pars avec Awa dans les villages autour de Kaya."
+         },
+         {
+          "type": "concept",
+          "id": "c5",
+          "title": {
+           "en": "Kaya, Burkina Faso, 2022",
+           "fr": "Kaya, Burkina Faso, 2022"
+          },
+          "en": [
+           "Health workers combined SMC campaigns with net distribution.",
+           "Monthly cycles reached 92% of eligible children.",
+           "Confirmed cases in under-fives fell by almost half."
+          ],
+          "fr": [
+           "Les agents de santé ont combiné campagnes de CPS et distribution de moustiquaires.",
+           "Les cycles mensuels ont atteint 92 % des enfants éligibles.",
+           "Les cas confirmés chez les moins de cinq ans ont presque diminué de moitié."
+          ]
+         },
+         {
+          "type": "say",
+          "who": "peer",
+          "en": "Every month we visit each family with the SMC doses.",
+          "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "And the nets? Coverage is what protects the whole village.",
+          "fr": "Et les moustiquaires ? C'est la couverture qui protège tout le village."
+         },
+         {
+          "type": "game",
+          "ref": "g1"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "ch3",
+      "title": {
+       "en": "Your turn",
+       "fr": "À toi de jouer"
+      },
+      "scenes": [
+       {
+        "id": "s6",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c6",
+          "title": {
+           "en": "Key points",
+           "fr": "Points clés"
+          },
+          "en": [
+           "Anopheles mosquitoes bite mostly at night, so nets must be used every night.",
+           "Confirm every suspected case with an RDT before giving ACT.",
+           "SMC protects children aged 3-59 months during the rainy season.",
+           "Nets protect a whole community only when coverage is high."
+          ],
+          "fr": [
+           "Les anophèles piquent surtout la nuit : la moustiquaire doit servir chaque nuit.",
+           "Confirme chaque cas suspect par un TDR avant de donner une CTA.",
+           "La CPS protège les enfants de 3 à 59 mois pendant la saison des pluies.",
+           "Les moustiquaires ne protègent toute la communauté que si la couverture est élevée."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s7",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Now take a sheet of paper, {child}. Work it out yourself.",
+          "fr": "Prends maintenant une feuille, {child}. À toi de le faire."
+         },
+         {
+          "type": "photo",
+          "ref": "E1"
+         },
+         {
+          "type": "photo",
+          "ref": "E2"
+         },
+         {
+          "type": "narrate",
+          "en": "Tonight the children of Kaya sleep a little safer, thanks to you.",
+          "fr": "Ce soir, les enfants de Kaya dorment un peu plus en sécurité grâce à toi."
+         },
+         {
+          "type": "narrate",
+          "en": "Well done, {child}: you have finished this story.",
+          "fr": "Bravo, {child} : tu as terminé cette histoire.",
+          "frame": "finished"
+         },
+         {
+          "type": "say",
+          "who": "margo",
+          "en": "Questions about this lesson? Ask me any time, {child}.",
+          "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
+          "frame": "ask_tutor"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "questions": [
+     {
+      "id": "q4",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Read the situation above, then choose the best answer.",
+       "fr": "Lis la situation ci-dessus, puis choisis la meilleure réponse."
+      },
+      "answer": "b",
+      "choices": [
+       {
+        "id": "a",
+        "en": "Give ACT anyway because it is the rainy season",
+        "fr": "Donner quand même une CTA, car c'est la saison des pluies",
+        "misconception": "m_season_overrides_test"
+       },
+       {
+        "id": "b",
+        "en": "Look for another cause of the fever and refer if needed",
+        "fr": "Chercher une autre cause de la fièvre et référer si besoin"
+       },
+       {
+        "id": "c",
+        "en": "Repeat the same test next month",
+        "fr": "Refaire le même test le mois prochain",
+        "misconception": "m_retest_later"
+       },
+       {
+        "id": "d",
+        "en": "Start seasonal chemoprevention straight away",
+        "fr": "Commencer tout de suite la chimioprévention saisonnière",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "a",
+        "misconception": "m_season_overrides_test",
+        "hint": {
+         "en": "The season does not change what the test showed.",
+         "fr": "La saison ne change pas ce que le test a montré."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_retest_later",
+        "hint": {
+         "en": "The child is sick today. Can the fever wait a month?",
+         "fr": "L'enfant est malade aujourd'hui. La fièvre peut-elle attendre un mois ?"
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "Chemoprevention prevents; it does not treat a fever.",
+         "fr": "La chimioprévention prévient ; elle ne soigne pas une fièvre."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "What does a negative test tell you?",
+        "fr": "Que t'apprend un test négatif ?"
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q3"
+      },
+      "stem": {
+       "en": "A community health worker in Kaya sees a three-year-old with a fever of 39 °C during the rainy season. The rapid diagnostic test is negative. According to the lesson, what should she do next?",
+       "fr": "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?"
+      },
+      "explanation": {
+       "en": "A negative RDT means the fever has another cause that must be found.",
+       "fr": "Un TDR négatif signifie que la fièvre a une autre cause qu'il faut trouver."
+      }
+     },
+     {
+      "id": "q5",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Which children receive seasonal malaria chemoprevention?",
+       "fr": "Quels enfants reçoivent la chimioprévention du paludisme saisonnier ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "en": "Children aged 3-59 months",
+        "fr": "Les enfants de 3 à 59 mois"
+       },
+       {
+        "id": "b",
+        "en": "Children aged 5-15 years",
+        "fr": "Les enfants de 5 à 15 ans",
+        "misconception": "m_school_age"
+       },
+       {
+        "id": "c",
+        "en": "Newborn babies only",
+        "fr": "Seulement les nouveau-nés",
+        "misconception": "m_newborns_only"
+       },
+       {
+        "id": "d",
+        "en": "Every child who has a fever",
+        "fr": "Tous les enfants qui ont de la fièvre",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_school_age",
+        "hint": {
+         "en": "School-age children are not the main target.",
+         "fr": "Les enfants d'âge scolaire ne sont pas la cible principale."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_newborns_only",
+        "hint": {
+         "en": "The target group is wider than newborns.",
+         "fr": "Le groupe cible est plus large que les nouveau-nés."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "SMC prevents; a fever needs a test.",
+         "fr": "La CPS prévient ; une fièvre demande un test."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think of the youngest children who are not babies.",
+        "fr": "Pense aux plus jeunes enfants qui ne sont plus des nourrissons."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q4"
+      },
+      "explanation": {
+       "en": "SMC targets children aged 3-59 months, who are the most at risk.",
+       "fr": "La CPS cible les enfants de 3 à 59 mois, les plus à risque."
+      }
+     }
+    ],
+    "exercises": [
+     {
+      "id": "E1",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "List the three tools that protect children from malaria and say when each one acts.",
+       "fr": "Cite les trois outils qui protègent les enfants du paludisme et dis quand chacun agit."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "All three tools with the right moment",
+        "fr": "Les trois outils avec le bon moment"
+       }
+      ],
+      "working": {
+       "en": [
+        "Nets: every night, against bites",
+        "Testing: when a fever appears",
+        "SMC: each month of the rainy season"
+       ],
+       "fr": [
+        "Moustiquaires : chaque nuit, contre les piqûres",
+        "Test : quand une fièvre apparaît",
+        "CPS : chaque mois de la saison des pluies"
+       ]
+      }
+     },
+     {
+      "id": "E2",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "Write the steps you follow for a child with fever, from arrival to treatment.",
+       "fr": "Écris les étapes que tu suis pour un enfant fiévreux, de son arrivée au traitement."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "Test before treatment, both results handled",
+        "fr": "Test avant traitement, les deux résultats traités"
+       }
+      ],
+      "working": {
+       "en": [
+        "Take the history and check for danger signs",
+        "Do an RDT",
+        "Positive: give ACT; negative: look for another cause"
+       ],
+       "fr": [
+        "Interroger et chercher les signes de danger",
+        "Faire un TDR",
+        "Positif : donner une CTA ; négatif : chercher une autre cause"
+       ]
+      }
+     }
+    ],
+    "minigames": [
+     {
+      "id": "g1",
+      "engine": "catch",
+      "title": {
+       "en": "Malaria catch",
+       "fr": "Attrape-paludisme"
+      },
+      "instruction": {
+       "en": "Catch the true statements. Let the myths fall!",
+       "fr": "Attrape les affirmations vraies. Laisse tomber les idées reçues !"
+      },
+      "hint_after_wrong": {
+       "en": "Think back to the three tools.",
+       "fr": "Repense aux trois outils."
+      },
+      "rounds": [
+       {
+        "prompt": {
+         "en": "Catch what protects at night",
+         "fr": "Attrape ce qui protège la nuit"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Sleeping under a treated net",
+           "fr": "Dormir sous une moustiquaire imprégnée"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "High net coverage in the village",
+           "fr": "Une forte couverture en moustiquaires au village"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Anopheles only bite at midday",
+           "fr": "Les anophèles ne piquent qu'à midi"
+          },
+          "correct": false,
+          "trap": "m_day_biting"
+         },
+         {
+          "label": {
+           "en": "A few nets protect everyone",
+           "fr": "Quelques moustiquaires protègent tout le monde"
+          },
+          "correct": false,
+          "trap": "m_low_coverage"
+         }
+        ]
+       },
+       {
+        "prompt": {
+         "en": "Catch the right reflexes for a fever",
+         "fr": "Attrape les bons réflexes face à une fièvre"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Do an RDT first",
+           "fr": "Faire d'abord un TDR"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Give ACT only if the test is positive",
+           "fr": "Donner une CTA seulement si le test est positif"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Any fever in the rainy season is malaria",
+           "fr": "Toute fièvre en saison des pluies est du paludisme"
+          },
+          "correct": false,
+          "trap": "m_fever_is_proof"
+         },
+         {
+          "label": {
+           "en": "SMC cures a sick child",
+           "fr": "La CPS guérit un enfant malade"
+          },
+          "correct": false,
+          "trap": "m_smc_is_treatment"
+         }
+        ]
+       }
+      ],
+      "points": {
+       "per_correct": 1
+      },
+      "objective": "o1"
+     }
+    ],
+    "videos": [],
+    "tutor": {
+     "persona": "margo",
+     "intro": {
+      "en": "Hi {child}! I'm Margo, an AI tutor, not a real person. I give hints; you decide.",
+      "fr": "Bonjour {child} ! Je suis Margo, une IA, pas une vraie personne. Je donne des indices, c'est toi qui décides."
+     },
+     "scope": {
+      "this_week": [
+       "o1"
+      ],
+      "earlier_weeks": "Unit 1.1: how malaria is transmitted"
+     },
+     "style": [
+      "Reply in the language the learner used.",
+      "At most 3 short sentences, then one question back.",
+      "One hint at a time, starting from the learner's own words.",
+      "Speak to the learner as 'you'; in French use 'tu' and stay gender-neutral."
+     ],
+     "never": [
+      "Give the answer to a question or exercise before the app shows the explanation.",
+      "Decide whether an answer is right: the app does that.",
+      "Ask for or repeat personal information (surname, address, phone).",
+      "Talk about anything other than this lesson."
+     ],
+     "off_topic": {
+      "en": "Let's stay with malaria prevention. Ask your supervisor about that.",
+      "fr": "Restons sur la prévention du paludisme. Pose cette question à ton encadrant."
+     },
+     "worry": {
+      "en": "That sounds important. Please talk to someone you trust now.",
+      "fr": "Cela semble important. Parles-en tout de suite à une personne de confiance."
+     },
+     "max_turns_per_item": 6
+    },
+    "rewards": {
+     "unit": {
+      "en": "points",
+      "fr": "points"
+     },
+     "first_try": 2,
+     "second_try": 1,
+     "streak": {
+      "every": 3,
+      "bonus": 1
+     },
+     "stars": {
+      "3": 0.85,
+      "2": 0.6
+     }
+    },
+    "art_requests": [],
+    "engine_requests": [],
+    "checks": {
+     "validator": "story_course_validator v1",
+     "date": "2026-11-09",
+     "questions": 2,
+     "exercises": 2,
+     "paper_marks": 2,
+     "minigame_rounds": 2,
+     "max_points": 10,
+     "errors": 0,
+     "warnings": 0,
+     "predicted_typical": {
+      "plan": "1 of 2 questions right first time (2 each), the other 1 right on the second try (1 each); 3 of 4 mini-game targets caught; paper exercises self-checked (2 marks).",
+      "points": 8
+     }
+    }
+   }
+  },
+  "fr": {
+   "1.1": {
+    "format": "story-course/1",
+    "id": "lesson-0d6f1e5a11114c2b9a3e000000000011-fr",
+    "sira_builder": 2,
+    "course": "Santé publique",
+    "unit": "1.1 · Comment le paludisme se transmet",
+    "week": 1,
+    "title": {
+     "en": "How malaria spreads",
+     "fr": "Comment le paludisme se transmet"
+    },
+    "languages": {
+     "target": "fr",
+     "home": "en"
+    },
+    "learner": {
+     "first_name": "{child}"
+    },
+    "sources": [
+     {
+      "kind": "lesson",
+      "ref": "Lesson 1.1 — Comment le paludisme se transmet",
+      "used_for": "story, concepts and key points"
+     },
+     {
+      "kind": "lesson",
+      "ref": "OMS Lignes directrices paludisme Ch.2, p.14",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "lesson",
+      "ref": "OMS Lignes directrices paludisme Ch.3, p.22",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "test",
+      "ref": "Unit 1.3 quiz",
+      "used_for": "questions, derived verbatim"
+     }
+    ],
+    "objectives": [
+     {
+      "id": "o1",
+      "en": "Explain how nets and chemoprevention prevent malaria",
+      "fr": "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+     }
+    ],
+    "glossary": [],
+    "calibration": [],
+    "misconceptions": [
+     {
+      "id": "m_day_biting",
+      "en": "Thinks Anopheles bite mostly during the day.",
+      "fr": "Pense que les anophèles piquent surtout le jour.",
+      "from_test": false
+     },
+     {
+      "id": "m_fever_is_proof",
+      "en": "Thinks a fever is enough to prove malaria.",
+      "fr": "Pense qu'une fièvre suffit à prouver le paludisme.",
+      "from_test": false
+     },
+     {
+      "id": "m_wait_and_see",
+      "en": "Thinks waiting is safe with a suspected case.",
+      "fr": "Pense qu'attendre est sans danger face à un cas suspect.",
+      "from_test": false
+     },
+     {
+      "id": "m_symptom_first",
+      "en": "Treats the symptom instead of confirming the cause.",
+      "fr": "Traite le symptôme au lieu de confirmer la cause.",
+      "from_test": false
+     }
+    ],
+    "cast": [
+     {
+      "id": "margo",
+      "name": "Margo",
+      "kind": "ai_tutor",
+      "art": "margo"
+     },
+     {
+      "id": "mentor",
+      "name": "Dr Kaboré",
+      "kind": "adult",
+      "art": "mr_kabore"
+     },
+     {
+      "id": "peer",
+      "name": "Awa",
+      "kind": "adult",
+      "art": "maman_olivia"
+     }
+    ],
+    "facts": [],
+    "chapters": [
+     {
+      "id": "ch1",
+      "title": {
+       "en": "Your mission",
+       "fr": "Ta mission"
+      },
+      "scenes": [
+       {
+        "id": "s1",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "This story is about you, {child}.",
+          "fr": "Cette histoire parle de toi, {child}.",
+          "frame": "opener"
+         },
+         {
+          "type": "narrate",
+          "en": "{child}, you join the district malaria team today.",
+          "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Welcome, {child}! Three tools protect children here. Let's learn them together.",
+          "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."
+         },
+         {
+          "type": "concept",
+          "id": "c1",
+          "title": {
+           "en": "What you will learn",
+           "fr": "Ce que tu vas apprendre"
+          },
+          "en": [
+           "Explain how nets and chemoprevention prevent malaria"
+          ],
+          "fr": [
+           "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+          ],
+          "frame": "objectives"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s2",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c2",
+          "title": {
+           "en": "Nets work at night",
+           "fr": "Les moustiquaires agissent la nuit"
+          },
+          "en": [
+           "Treated nets kill or repel Anopheles mosquitoes.",
+           "These mosquitoes bite mostly at night."
+          ],
+          "fr": [
+           "Les moustiquaires imprégnées tuent ou repoussent les anophèles.",
+           "Ces moustiques piquent surtout la nuit."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q2"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s3",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c3",
+          "title": {
+           "en": "Test before you treat",
+           "fr": "Tester avant de traiter"
+          },
+          "en": [
+           "Confirm every suspected case with an RDT or microscopy.",
+           "Only then give ACT."
+          ],
+          "fr": [
+           "Confirme chaque cas suspect par un TDR ou une microscopie.",
+           "Ensuite seulement, donne une CTA."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q3"
+         }
+        ],
+        "objective": "o1"
+       }
+      ]
+     },
+     {
+      "id": "ch2",
+      "title": {
+       "en": "In the field",
+       "fr": "Sur le terrain"
+      },
+      "scenes": [
+       {
+        "id": "s4",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c4",
+          "title": {
+           "en": "Seasonal chemoprevention",
+           "fr": "La chimioprévention saisonnière"
+          },
+          "en": [
+           "SMC gives children aged 3-59 months a monthly dose.",
+           "All four monthly cycles are needed."
+          ],
+          "fr": [
+           "La CPS donne une dose mensuelle aux enfants de 3 à 59 mois.",
+           "Les quatre cycles mensuels sont nécessaires."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s5",
+        "place": "market",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "You travel with Awa to the villages around Kaya.",
+          "fr": "Tu pars avec Awa dans les villages autour de Kaya."
+         },
+         {
+          "type": "concept",
+          "id": "c5",
+          "title": {
+           "en": "Kaya, Burkina Faso, 2022",
+           "fr": "Kaya, Burkina Faso, 2022"
+          },
+          "en": [
+           "Health workers combined SMC campaigns with net distribution.",
+           "Confirmed cases in under-fives fell by almost half."
+          ],
+          "fr": [
+           "Les agents de santé ont combiné campagnes de CPS et distribution de moustiquaires.",
+           "Les cas confirmés chez les moins de cinq ans ont presque diminué de moitié."
+          ]
+         },
+         {
+          "type": "say",
+          "who": "peer",
+          "en": "Every month we visit each family with the SMC doses.",
+          "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."
+         },
+         {
+          "type": "game",
+          "ref": "g1"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "ch3",
+      "title": {
+       "en": "Your turn",
+       "fr": "À toi de jouer"
+      },
+      "scenes": [
+       {
+        "id": "s6",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c6",
+          "title": {
+           "en": "Key points",
+           "fr": "Points clés"
+          },
+          "en": [
+           "Anopheles mosquitoes bite mostly at night, so nets must be used every night.",
+           "Confirm every suspected case with an RDT before giving ACT.",
+           "SMC protects children aged 3-59 months during the rainy season.",
+           "Nets protect a whole community only when coverage is high."
+          ],
+          "fr": [
+           "Les anophèles piquent surtout la nuit : la moustiquaire doit servir chaque nuit.",
+           "Confirmer chaque cas suspect par un TDR avant de donner une CTA.",
+           "La CPS protège les enfants de 3 à 59 mois pendant la saison des pluies.",
+           "Les moustiquaires ne protègent toute la communauté que si la couverture est élevée."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s7",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Now take a sheet of paper, {child}. Work it out yourself.",
+          "fr": "Prends maintenant une feuille, {child}. À toi de le faire."
+         },
+         {
+          "type": "photo",
+          "ref": "E1"
+         },
+         {
+          "type": "photo",
+          "ref": "E2"
+         },
+         {
+          "type": "narrate",
+          "en": "Tonight the children of Kaya sleep a little safer, thanks to you.",
+          "fr": "Ce soir, les enfants de Kaya dorment un peu plus en sécurité grâce à toi."
+         },
+         {
+          "type": "narrate",
+          "en": "Well done, {child}: you have finished this story.",
+          "fr": "Bravo, {child} : tu as terminé cette histoire.",
+          "frame": "finished"
+         },
+         {
+          "type": "say",
+          "who": "margo",
+          "en": "Questions about this lesson? Ask me any time, {child}.",
+          "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
+          "frame": "ask_tutor"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "questions": [
+     {
+      "id": "q2",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "When do Anopheles mosquitoes mostly bite?",
+       "fr": "À quel moment les anophèles piquent-ils surtout ?"
+      },
+      "answer": "c",
+      "choices": [
+       {
+        "id": "a",
+        "fr": "Le matin",
+        "en": "In the morning",
+        "misconception": "m_day_biting"
+       },
+       {
+        "id": "b",
+        "fr": "À midi",
+        "en": "At midday",
+        "misconception": "m_day_biting"
+       },
+       {
+        "id": "c",
+        "fr": "La nuit",
+        "en": "At night"
+       },
+       {
+        "id": "d",
+        "fr": "L'après-midi",
+        "en": "In the afternoon",
+        "misconception": "m_day_biting"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "a",
+        "misconception": "m_day_biting",
+        "hint": {
+         "en": "Most bites happen while people sleep.",
+         "fr": "La plupart des piqûres ont lieu pendant le sommeil."
+        }
+       },
+       {
+        "answer": "b",
+        "misconception": "m_day_biting",
+        "hint": {
+         "en": "Midday is the quietest time for these mosquitoes.",
+         "fr": "Midi est le moment le plus calme pour ces moustiques."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_day_biting",
+        "hint": {
+         "en": "Why would a net be used for sleeping?",
+         "fr": "Pourquoi utilise-t-on la moustiquaire pour dormir ?"
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think about when people are asleep.",
+        "fr": "Pense au moment où les gens dorment."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q1"
+      },
+      "explanation": {
+       "fr": "Les anophèles piquent la nuit : c'est pourquoi la moustiquaire doit servir chaque nuit.",
+       "en": "Anopheles mosquitoes are night biters, which is why nets must be used every night."
+      }
+     },
+     {
+      "id": "q3",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "What must be done for every suspected case before ACT is given?",
+       "fr": "Que faut-il faire pour chaque cas suspect avant de donner une CTA ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "fr": "Le confirmer par un TDR ou une microscopie",
+        "en": "Confirm it with an RDT or microscopy"
+       },
+       {
+        "id": "b",
+        "fr": "Prendre la température deux fois",
+        "en": "Measure the temperature twice",
+        "misconception": "m_fever_is_proof"
+       },
+       {
+        "id": "c",
+        "fr": "Attendre trois jours pour voir si la fièvre passe",
+        "en": "Wait three days to see if the fever goes",
+        "misconception": "m_wait_and_see"
+       },
+       {
+        "id": "d",
+        "fr": "Donner d'abord du paracétamol",
+        "en": "Give paracetamol first",
+        "misconception": "m_symptom_first"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_fever_is_proof",
+        "hint": {
+         "en": "A fever has many causes. What proves it is malaria?",
+         "fr": "Une fièvre a beaucoup de causes. Qu'est-ce qui prouve le paludisme ?"
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_wait_and_see",
+        "hint": {
+         "en": "Waiting can be dangerous for a small child.",
+         "fr": "Attendre peut être dangereux pour un petit enfant."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_symptom_first",
+        "hint": {
+         "en": "This treats the symptom, not the cause.",
+         "fr": "Cela traite le symptôme, pas la cause."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think about what proves the parasite is there.",
+        "fr": "Pense à ce qui prouve que le parasite est là."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q2"
+      },
+      "explanation": {
+       "fr": "Tester d'abord évite de traiter des fièvres qui ne sont pas du paludisme.",
+       "en": "Testing first avoids treating fevers that are not malaria."
+      }
+     }
+    ],
+    "exercises": [
+     {
+      "id": "E1",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "List the three tools that protect children from malaria and say when each one acts.",
+       "fr": "Cite les trois outils qui protègent les enfants du paludisme et dis quand chacun agit."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "All three tools with the right moment",
+        "fr": "Les trois outils avec le bon moment"
+       }
+      ],
+      "working": {
+       "en": [
+        "Nets: every night, against bites",
+        "Testing: when a fever appears",
+        "SMC: each month of the rainy season"
+       ],
+       "fr": [
+        "Moustiquaires : chaque nuit, contre les piqûres",
+        "Test : quand une fièvre apparaît",
+        "CPS : chaque mois de la saison des pluies"
+       ]
+      }
+     },
+     {
+      "id": "E2",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "Write the steps you follow for a child with fever, from arrival to treatment.",
+       "fr": "Écris les étapes que tu suis pour un enfant fiévreux, de son arrivée au traitement."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "Test before treatment, both results handled",
+        "fr": "Test avant traitement, les deux résultats traités"
+       }
+      ],
+      "working": {
+       "en": [
+        "Check for danger signs",
+        "Do an RDT",
+        "Positive: give ACT; negative: look for another cause"
+       ],
+       "fr": [
+        "Chercher les signes de danger",
+        "Faire un TDR",
+        "Positif : donner une CTA ; négatif : chercher une autre cause"
+       ]
+      }
+     }
+    ],
+    "minigames": [
+     {
+      "id": "g1",
+      "engine": "catch",
+      "title": {
+       "en": "Malaria catch",
+       "fr": "Attrape-paludisme"
+      },
+      "instruction": {
+       "en": "Catch the true statements. Let the myths fall!",
+       "fr": "Attrape les affirmations vraies. Laisse tomber les idées reçues !"
+      },
+      "hint_after_wrong": {
+       "en": "Think back to the three tools.",
+       "fr": "Repense aux trois outils."
+      },
+      "rounds": [
+       {
+        "prompt": {
+         "en": "Catch the right reflexes for a fever",
+         "fr": "Attrape les bons réflexes face à une fièvre"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Do an RDT first",
+           "fr": "Faire d'abord un TDR"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Give ACT only if the test is positive",
+           "fr": "Donner une CTA seulement si le test est positif"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Any fever in the rainy season is malaria",
+           "fr": "Toute fièvre en saison des pluies est du paludisme"
+          },
+          "correct": false,
+          "trap": "m_fever_is_proof"
+         }
+        ]
+       }
+      ],
+      "points": {
+       "per_correct": 1
+      },
+      "objective": "o1"
+     }
+    ],
+    "videos": [],
+    "tutor": {
+     "persona": "margo",
+     "intro": {
+      "en": "Hi {child}! I'm Margo. I give hints; you decide. I am an AI, not a real person.",
+      "fr": "Bonjour {child} ! Je suis Margo. Je donne des indices, c'est toi qui décides. Je suis une IA, pas une vraie personne."
+     },
+     "scope": {
+      "this_week": [
+       "o1"
+      ],
+      "earlier_weeks": "Module 1: Lutte contre le paludisme"
+     },
+     "style": [
+      "Reply in the language the learner used.",
+      "At most 3 short sentences, then one question back.",
+      "One hint at a time, starting from the learner's own words.",
+      "Speak to the learner as 'you'; in French use 'tu' and stay gender-neutral."
+     ],
+     "never": [
+      "Give the answer to a question or exercise before the app shows the explanation.",
+      "Decide whether an answer is right: the app does that.",
+      "Ask for or repeat personal information (surname, address, phone).",
+      "Talk about anything other than this lesson."
+     ],
+     "off_topic": {
+      "en": "Let's stay with malaria prevention.",
+      "fr": "Restons sur la prévention du paludisme."
+     },
+     "worry": {
+      "en": "That sounds important. Please talk to someone you trust now.",
+      "fr": "Cela semble important. Parles-en tout de suite à une personne de confiance."
+     },
+     "max_turns_per_item": 6
+    },
+    "rewards": {
+     "unit": {
+      "en": "points",
+      "fr": "points"
+     },
+     "first_try": 2,
+     "second_try": 1,
+     "streak": {
+      "every": 3,
+      "bonus": 1
+     },
+     "stars": {
+      "3": 0.85,
+      "2": 0.6
+     }
+    },
+    "art_requests": [],
+    "engine_requests": [],
+    "checks": {
+     "validator": "story_course_validator v1",
+     "date": "2026-11-09",
+     "questions": 2,
+     "exercises": 2,
+     "paper_marks": 2,
+     "minigame_rounds": 1,
+     "max_points": 8,
+     "errors": 0,
+     "warnings": 0,
+     "predicted_typical": {
+      "plan": "1 of 2 questions right first time (2 each), the other 1 right on the second try (1 each); 1 of 2 mini-game targets caught; paper exercises self-checked (2 marks).",
+      "points": 6
+     }
+    }
+   },
+   "1.2": {
+    "format": "story-course/1",
+    "id": "lesson-0d6f1e5a11114c2b9a3e000000000012-fr",
+    "sira_builder": 2,
+    "course": "Santé publique",
+    "unit": "1.2 · Prévenir le paludisme chez l'enfant",
+    "week": 1,
+    "title": {
+     "en": "Preventing malaria in children",
+     "fr": "Prévenir le paludisme chez l'enfant"
+    },
+    "languages": {
+     "target": "fr",
+     "home": "en"
+    },
+    "learner": {
+     "first_name": "{child}"
+    },
+    "sources": [
+     {
+      "kind": "lesson",
+      "ref": "Lesson 1.2 — Prévenir le paludisme chez l'enfant",
+      "used_for": "story, concepts and key points"
+     },
+     {
+      "kind": "lesson",
+      "ref": "OMS Lignes directrices paludisme Ch.2, p.14",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "lesson",
+      "ref": "OMS Lignes directrices paludisme Ch.3, p.22",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "test",
+      "ref": "Unit 1.3 quiz",
+      "used_for": "questions, derived verbatim"
+     }
+    ],
+    "objectives": [
+     {
+      "id": "o1",
+      "en": "Apply the test-before-treat rule",
+      "fr": "Appliquer la règle « tester avant de traiter »"
+     }
+    ],
+    "glossary": [],
+    "calibration": [],
+    "misconceptions": [
+     {
+      "id": "m_fever_is_proof",
+      "en": "Thinks a fever is enough to prove malaria.",
+      "fr": "Pense qu'une fièvre suffit à prouver le paludisme.",
+      "from_test": false
+     },
+     {
+      "id": "m_wait_and_see",
+      "en": "Thinks waiting is safe with a suspected case.",
+      "fr": "Pense qu'attendre est sans danger face à un cas suspect.",
+      "from_test": false
+     },
+     {
+      "id": "m_symptom_first",
+      "en": "Treats the symptom instead of confirming the cause.",
+      "fr": "Traite le symptôme au lieu de confirmer la cause.",
+      "from_test": false
+     },
+     {
+      "id": "m_season_overrides_test",
+      "en": "Thinks the rainy season overrides a negative test.",
+      "fr": "Pense que la saison des pluies l'emporte sur un test négatif.",
+      "from_test": false
+     },
+     {
+      "id": "m_retest_later",
+      "en": "Thinks a negative test only needs repeating later.",
+      "fr": "Pense qu'un test négatif doit juste être refait plus tard.",
+      "from_test": false
+     },
+     {
+      "id": "m_smc_is_treatment",
+      "en": "Confuses prevention with treatment.",
+      "fr": "Confond prévention et traitement.",
+      "from_test": false
+     },
+     {
+      "id": "m_school_age",
+      "en": "Confuses SMC with school-age campaigns.",
+      "fr": "Confond la CPS avec les campagnes en milieu scolaire.",
+      "from_test": false
+     },
+     {
+      "id": "m_newborns_only",
+      "en": "Thinks only newborns are at risk.",
+      "fr": "Pense que seuls les nouveau-nés sont à risque.",
+      "from_test": false
+     }
+    ],
+    "cast": [
+     {
+      "id": "margo",
+      "name": "Margo",
+      "kind": "ai_tutor",
+      "art": "margo"
+     },
+     {
+      "id": "mentor",
+      "name": "Dr Kaboré",
+      "kind": "adult",
+      "art": "mr_kabore"
+     },
+     {
+      "id": "peer",
+      "name": "Awa",
+      "kind": "adult",
+      "art": "maman_olivia"
+     }
+    ],
+    "facts": [],
+    "chapters": [
+     {
+      "id": "ch1",
+      "title": {
+       "en": "Your mission",
+       "fr": "Ta mission"
+      },
+      "scenes": [
+       {
+        "id": "s1",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "This story is about you, {child}.",
+          "fr": "Cette histoire parle de toi, {child}.",
+          "frame": "opener"
+         },
+         {
+          "type": "narrate",
+          "en": "{child}, you join the district malaria team today.",
+          "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Welcome, {child}! Three tools protect children here. Let's learn them together.",
+          "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."
+         },
+         {
+          "type": "concept",
+          "id": "c1",
+          "title": {
+           "en": "What you will learn",
+           "fr": "Ce que tu vas apprendre"
+          },
+          "en": [
+           "Apply the test-before-treat rule"
+          ],
+          "fr": [
+           "Appliquer la règle « tester avant de traiter »"
+          ],
+          "frame": "objectives"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s2",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c2",
+          "title": {
+           "en": "Nets work at night",
+           "fr": "Les moustiquaires agissent la nuit"
+          },
+          "en": [
+           "Treated nets kill or repel Anopheles mosquitoes.",
+           "These mosquitoes bite mostly at night."
+          ],
+          "fr": [
+           "Les moustiquaires imprégnées tuent ou repoussent les anophèles.",
+           "Ces moustiques piquent surtout la nuit."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q3"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s3",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c3",
+          "title": {
+           "en": "Test before you treat",
+           "fr": "Tester avant de traiter"
+          },
+          "en": [
+           "Confirm every suspected case with an RDT or microscopy.",
+           "Only then give ACT."
+          ],
+          "fr": [
+           "Confirme chaque cas suspect par un TDR ou une microscopie.",
+           "Ensuite seulement, donne une CTA."
+          ]
+         },
+         {
+          "type": "concept",
+          "id": "situation-q4",
+          "title": {
+           "en": "The situation",
+           "fr": "La situation"
+          },
+          "en": [
+           "A community health worker in Kaya sees a three-year-old with a fever of 39 °C in the rainy season. The rapid diagnostic test is negative. What should they do next?"
+          ],
+          "fr": [
+           "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?"
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q4"
+         }
+        ],
+        "objective": "o1"
+       }
+      ]
+     },
+     {
+      "id": "ch2",
+      "title": {
+       "en": "In the field",
+       "fr": "Sur le terrain"
+      },
+      "scenes": [
+       {
+        "id": "s4",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c4",
+          "title": {
+           "en": "Seasonal chemoprevention",
+           "fr": "La chimioprévention saisonnière"
+          },
+          "en": [
+           "SMC gives children aged 3-59 months a monthly dose.",
+           "All four monthly cycles are needed."
+          ],
+          "fr": [
+           "La CPS donne une dose mensuelle aux enfants de 3 à 59 mois.",
+           "Les quatre cycles mensuels sont nécessaires."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q5"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s5",
+        "place": "market",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "You travel with Awa to the villages around Kaya.",
+          "fr": "Tu pars avec Awa dans les villages autour de Kaya."
+         },
+         {
+          "type": "concept",
+          "id": "c5",
+          "title": {
+           "en": "Kaya, Burkina Faso, 2022",
+           "fr": "Kaya, Burkina Faso, 2022"
+          },
+          "en": [
+           "Health workers combined SMC campaigns with net distribution.",
+           "Confirmed cases in under-fives fell by almost half."
+          ],
+          "fr": [
+           "Les agents de santé ont combiné campagnes de CPS et distribution de moustiquaires.",
+           "Les cas confirmés chez les moins de cinq ans ont presque diminué de moitié."
+          ]
+         },
+         {
+          "type": "say",
+          "who": "peer",
+          "en": "Every month we visit each family with the SMC doses.",
+          "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."
+         },
+         {
+          "type": "game",
+          "ref": "g1"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "ch3",
+      "title": {
+       "en": "Your turn",
+       "fr": "À toi de jouer"
+      },
+      "scenes": [
+       {
+        "id": "s6",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c6",
+          "title": {
+           "en": "Key points",
+           "fr": "Points clés"
+          },
+          "en": [
+           "Anopheles mosquitoes bite mostly at night, so nets must be used every night.",
+           "Confirm every suspected case with an RDT before giving ACT.",
+           "SMC protects children aged 3-59 months during the rainy season.",
+           "Nets protect a whole community only when coverage is high."
+          ],
+          "fr": [
+           "Les anophèles piquent surtout la nuit : la moustiquaire doit servir chaque nuit.",
+           "Confirmer chaque cas suspect par un TDR avant de donner une CTA.",
+           "La CPS protège les enfants de 3 à 59 mois pendant la saison des pluies.",
+           "Les moustiquaires ne protègent toute la communauté que si la couverture est élevée."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s7",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Now take a sheet of paper, {child}. Work it out yourself.",
+          "fr": "Prends maintenant une feuille, {child}. À toi de le faire."
+         },
+         {
+          "type": "photo",
+          "ref": "E1"
+         },
+         {
+          "type": "photo",
+          "ref": "E2"
+         },
+         {
+          "type": "narrate",
+          "en": "Tonight the children of Kaya sleep a little safer, thanks to you.",
+          "fr": "Ce soir, les enfants de Kaya dorment un peu plus en sécurité grâce à toi."
+         },
+         {
+          "type": "narrate",
+          "en": "Well done, {child}: you have finished this story.",
+          "fr": "Bravo, {child} : tu as terminé cette histoire.",
+          "frame": "finished"
+         },
+         {
+          "type": "say",
+          "who": "margo",
+          "en": "Questions about this lesson? Ask me any time, {child}.",
+          "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
+          "frame": "ask_tutor"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "questions": [
+     {
+      "id": "q3",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "What must be done for every suspected case before ACT is given?",
+       "fr": "Que faut-il faire pour chaque cas suspect avant de donner une CTA ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "fr": "Le confirmer par un TDR ou une microscopie",
+        "en": "Confirm it with an RDT or microscopy"
+       },
+       {
+        "id": "b",
+        "fr": "Prendre la température deux fois",
+        "en": "Measure the temperature twice",
+        "misconception": "m_fever_is_proof"
+       },
+       {
+        "id": "c",
+        "fr": "Attendre trois jours pour voir si la fièvre passe",
+        "en": "Wait three days to see if the fever goes",
+        "misconception": "m_wait_and_see"
+       },
+       {
+        "id": "d",
+        "fr": "Donner d'abord du paracétamol",
+        "en": "Give paracetamol first",
+        "misconception": "m_symptom_first"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_fever_is_proof",
+        "hint": {
+         "en": "A fever has many causes. What proves it is malaria?",
+         "fr": "Une fièvre a beaucoup de causes. Qu'est-ce qui prouve le paludisme ?"
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_wait_and_see",
+        "hint": {
+         "en": "Waiting can be dangerous for a small child.",
+         "fr": "Attendre peut être dangereux pour un petit enfant."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_symptom_first",
+        "hint": {
+         "en": "This treats the symptom, not the cause.",
+         "fr": "Cela traite le symptôme, pas la cause."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think about what proves the parasite is there.",
+        "fr": "Pense à ce qui prouve que le parasite est là."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q2"
+      },
+      "explanation": {
+       "fr": "Tester d'abord évite de traiter des fièvres qui ne sont pas du paludisme.",
+       "en": "Testing first avoids treating fevers that are not malaria."
+      }
+     },
+     {
+      "id": "q4",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Read the situation above, then choose the best answer.",
+       "fr": "Lis la situation ci-dessus, puis choisis la meilleure réponse."
+      },
+      "answer": "b",
+      "choices": [
+       {
+        "id": "a",
+        "fr": "Donner quand même une CTA, car c'est la saison des pluies",
+        "en": "Give ACT anyway because it is the rainy season",
+        "misconception": "m_season_overrides_test"
+       },
+       {
+        "id": "b",
+        "fr": "Chercher une autre cause de la fièvre et référer si besoin",
+        "en": "Look for another cause of the fever and refer if needed"
+       },
+       {
+        "id": "c",
+        "fr": "Refaire le même test le mois prochain",
+        "en": "Repeat the same test next month",
+        "misconception": "m_retest_later"
+       },
+       {
+        "id": "d",
+        "fr": "Commencer tout de suite la chimioprévention saisonnière",
+        "en": "Start seasonal chemoprevention straight away",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "a",
+        "misconception": "m_season_overrides_test",
+        "hint": {
+         "en": "The season does not change what the test showed.",
+         "fr": "La saison ne change pas ce que le test a montré."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_retest_later",
+        "hint": {
+         "en": "The child is sick today. Can the fever wait a month?",
+         "fr": "L'enfant est malade aujourd'hui. La fièvre peut-elle attendre un mois ?"
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "Chemoprevention prevents; it does not treat a fever.",
+         "fr": "La chimioprévention prévient ; elle ne soigne pas une fièvre."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "What does a negative test tell you?",
+        "fr": "Que t'apprend un test négatif ?"
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q3"
+      },
+      "stem": {
+       "fr": "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?",
+       "en": "A community health worker in Kaya sees a three-year-old with a fever of 39 °C in the rainy season. The rapid diagnostic test is negative. What should they do next?"
+      },
+      "explanation": {
+       "fr": "Un TDR négatif signifie que la fièvre a une autre cause qu'il faut trouver.",
+       "en": "A negative RDT means the fever has another cause that must be found."
+      }
+     },
+     {
+      "id": "q5",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Which children receive seasonal malaria chemoprevention?",
+       "fr": "Quels enfants reçoivent la chimioprévention du paludisme saisonnier ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "fr": "Les enfants de 3 à 59 mois",
+        "en": "Children aged 3-59 months"
+       },
+       {
+        "id": "b",
+        "fr": "Les enfants de 5 à 15 ans",
+        "en": "Children aged 5-15 years",
+        "misconception": "m_school_age"
+       },
+       {
+        "id": "c",
+        "fr": "Seulement les nouveau-nés",
+        "en": "Newborn babies only",
+        "misconception": "m_newborns_only"
+       },
+       {
+        "id": "d",
+        "fr": "Tous les enfants qui ont de la fièvre",
+        "en": "Every child who has a fever",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_school_age",
+        "hint": {
+         "en": "School-age children are not the main target.",
+         "fr": "Les enfants d'âge scolaire ne sont pas la cible principale."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_newborns_only",
+        "hint": {
+         "en": "The target group is wider than newborns.",
+         "fr": "Le groupe cible est plus large que les nouveau-nés."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "SMC prevents; a fever needs a test.",
+         "fr": "La CPS prévient ; une fièvre demande un test."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think of the youngest children who are not babies.",
+        "fr": "Pense aux plus jeunes enfants qui ne sont plus des nourrissons."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q4"
+      },
+      "explanation": {
+       "fr": "La CPS cible les enfants de 3 à 59 mois, les plus à risque.",
+       "en": "SMC targets children aged 3-59 months, who are the most at risk."
+      }
+     }
+    ],
+    "exercises": [
+     {
+      "id": "E1",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "List the three tools that protect children from malaria and say when each one acts.",
+       "fr": "Cite les trois outils qui protègent les enfants du paludisme et dis quand chacun agit."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "All three tools with the right moment",
+        "fr": "Les trois outils avec le bon moment"
+       }
+      ],
+      "working": {
+       "en": [
+        "Nets: every night, against bites",
+        "Testing: when a fever appears",
+        "SMC: each month of the rainy season"
+       ],
+       "fr": [
+        "Moustiquaires : chaque nuit, contre les piqûres",
+        "Test : quand une fièvre apparaît",
+        "CPS : chaque mois de la saison des pluies"
+       ]
+      }
+     },
+     {
+      "id": "E2",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "Write the steps you follow for a child with fever, from arrival to treatment.",
+       "fr": "Écris les étapes que tu suis pour un enfant fiévreux, de son arrivée au traitement."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "Test before treatment, both results handled",
+        "fr": "Test avant traitement, les deux résultats traités"
+       }
+      ],
+      "working": {
+       "en": [
+        "Check for danger signs",
+        "Do an RDT",
+        "Positive: give ACT; negative: look for another cause"
+       ],
+       "fr": [
+        "Chercher les signes de danger",
+        "Faire un TDR",
+        "Positif : donner une CTA ; négatif : chercher une autre cause"
+       ]
+      }
+     }
+    ],
+    "minigames": [
+     {
+      "id": "g1",
+      "engine": "catch",
+      "title": {
+       "en": "Malaria catch",
+       "fr": "Attrape-paludisme"
+      },
+      "instruction": {
+       "en": "Catch the true statements. Let the myths fall!",
+       "fr": "Attrape les affirmations vraies. Laisse tomber les idées reçues !"
+      },
+      "hint_after_wrong": {
+       "en": "Think back to the three tools.",
+       "fr": "Repense aux trois outils."
+      },
+      "rounds": [
+       {
+        "prompt": {
+         "en": "Catch the right reflexes for a fever",
+         "fr": "Attrape les bons réflexes face à une fièvre"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Do an RDT first",
+           "fr": "Faire d'abord un TDR"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Give ACT only if the test is positive",
+           "fr": "Donner une CTA seulement si le test est positif"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Any fever in the rainy season is malaria",
+           "fr": "Toute fièvre en saison des pluies est du paludisme"
+          },
+          "correct": false,
+          "trap": "m_fever_is_proof"
+         }
+        ]
+       }
+      ],
+      "points": {
+       "per_correct": 1
+      },
+      "objective": "o1"
+     }
+    ],
+    "videos": [],
+    "tutor": {
+     "persona": "margo",
+     "intro": {
+      "en": "Hi {child}! I'm Margo. I give hints; you decide. I am an AI, not a real person.",
+      "fr": "Bonjour {child} ! Je suis Margo. Je donne des indices, c'est toi qui décides. Je suis une IA, pas une vraie personne."
+     },
+     "scope": {
+      "this_week": [
+       "o1"
+      ],
+      "earlier_weeks": "Module 1: Lutte contre le paludisme"
+     },
+     "style": [
+      "Reply in the language the learner used.",
+      "At most 3 short sentences, then one question back.",
+      "One hint at a time, starting from the learner's own words.",
+      "Speak to the learner as 'you'; in French use 'tu' and stay gender-neutral."
+     ],
+     "never": [
+      "Give the answer to a question or exercise before the app shows the explanation.",
+      "Decide whether an answer is right: the app does that.",
+      "Ask for or repeat personal information (surname, address, phone).",
+      "Talk about anything other than this lesson."
+     ],
+     "off_topic": {
+      "en": "Let's stay with malaria prevention.",
+      "fr": "Restons sur la prévention du paludisme."
+     },
+     "worry": {
+      "en": "That sounds important. Please talk to someone you trust now.",
+      "fr": "Cela semble important. Parles-en tout de suite à une personne de confiance."
+     },
+     "max_turns_per_item": 6
+    },
+    "rewards": {
+     "unit": {
+      "en": "points",
+      "fr": "points"
+     },
+     "first_try": 2,
+     "second_try": 1,
+     "streak": {
+      "every": 3,
+      "bonus": 1
+     },
+     "stars": {
+      "3": 0.85,
+      "2": 0.6
+     }
+    },
+    "art_requests": [],
+    "engine_requests": [],
+    "checks": {
+     "validator": "story_course_validator v1",
+     "date": "2026-11-09",
+     "questions": 3,
+     "exercises": 2,
+     "paper_marks": 2,
+     "minigame_rounds": 1,
+     "max_points": 10,
+     "errors": 0,
+     "warnings": 0,
+     "predicted_typical": {
+      "plan": "2 of 3 questions right first time (2 each), the other 1 right on the second try (1 each); 1 of 2 mini-game targets caught; paper exercises self-checked (2 marks).",
+      "points": 8
+     }
+    }
+   },
+   "1.6": {
+    "format": "story-course/1",
+    "id": "lesson-0d6f1e5a11114c2b9a3e000000000016-fr",
+    "sira_builder": 2,
+    "course": "Santé publique",
+    "unit": "1.6 · Travailler avec la communauté",
+    "week": 1,
+    "title": {
+     "en": "Working with the community",
+     "fr": "Travailler avec la communauté"
+    },
+    "languages": {
+     "target": "fr",
+     "home": "en"
+    },
+    "learner": {
+     "first_name": "{child}"
+    },
+    "sources": [
+     {
+      "kind": "lesson",
+      "ref": "Lesson 1.6 — Travailler avec la communauté",
+      "used_for": "story, concepts and key points"
+     },
+     {
+      "kind": "lesson",
+      "ref": "OMS Lignes directrices paludisme Ch.2, p.14",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "lesson",
+      "ref": "OMS Lignes directrices paludisme Ch.3, p.22",
+      "used_for": "concepts"
+     },
+     {
+      "kind": "test",
+      "ref": "Unit 1.3 quiz",
+      "used_for": "questions, derived verbatim"
+     }
+    ],
+    "objectives": [
+     {
+      "id": "o1",
+      "en": "Explain how nets and chemoprevention prevent malaria",
+      "fr": "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+     }
+    ],
+    "glossary": [],
+    "calibration": [],
+    "misconceptions": [
+     {
+      "id": "m_fever_is_proof",
+      "en": "Thinks a fever is enough to prove malaria.",
+      "fr": "Pense qu'une fièvre suffit à prouver le paludisme.",
+      "from_test": false
+     },
+     {
+      "id": "m_season_overrides_test",
+      "en": "Thinks the rainy season overrides a negative test.",
+      "fr": "Pense que la saison des pluies l'emporte sur un test négatif.",
+      "from_test": false
+     },
+     {
+      "id": "m_retest_later",
+      "en": "Thinks a negative test only needs repeating later.",
+      "fr": "Pense qu'un test négatif doit juste être refait plus tard.",
+      "from_test": false
+     },
+     {
+      "id": "m_smc_is_treatment",
+      "en": "Confuses prevention with treatment.",
+      "fr": "Confond prévention et traitement.",
+      "from_test": false
+     },
+     {
+      "id": "m_school_age",
+      "en": "Confuses SMC with school-age campaigns.",
+      "fr": "Confond la CPS avec les campagnes en milieu scolaire.",
+      "from_test": false
+     },
+     {
+      "id": "m_newborns_only",
+      "en": "Thinks only newborns are at risk.",
+      "fr": "Pense que seuls les nouveau-nés sont à risque.",
+      "from_test": false
+     }
+    ],
+    "cast": [
+     {
+      "id": "margo",
+      "name": "Margo",
+      "kind": "ai_tutor",
+      "art": "margo"
+     },
+     {
+      "id": "mentor",
+      "name": "Dr Kaboré",
+      "kind": "adult",
+      "art": "mr_kabore"
+     },
+     {
+      "id": "peer",
+      "name": "Awa",
+      "kind": "adult",
+      "art": "maman_olivia"
+     }
+    ],
+    "facts": [],
+    "chapters": [
+     {
+      "id": "ch1",
+      "title": {
+       "en": "Your mission",
+       "fr": "Ta mission"
+      },
+      "scenes": [
+       {
+        "id": "s1",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "This story is about you, {child}.",
+          "fr": "Cette histoire parle de toi, {child}.",
+          "frame": "opener"
+         },
+         {
+          "type": "narrate",
+          "en": "{child}, you join the district malaria team today.",
+          "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."
+         },
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Welcome, {child}! Three tools protect children here. Let's learn them together.",
+          "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."
+         },
+         {
+          "type": "concept",
+          "id": "c1",
+          "title": {
+           "en": "What you will learn",
+           "fr": "Ce que tu vas apprendre"
+          },
+          "en": [
+           "Explain how nets and chemoprevention prevent malaria"
+          ],
+          "fr": [
+           "Expliquer comment les moustiquaires et la chimioprévention préviennent le paludisme"
+          ],
+          "frame": "objectives"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s2",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c2",
+          "title": {
+           "en": "Nets work at night",
+           "fr": "Les moustiquaires agissent la nuit"
+          },
+          "en": [
+           "Treated nets kill or repel Anopheles mosquitoes.",
+           "These mosquitoes bite mostly at night."
+          ],
+          "fr": [
+           "Les moustiquaires imprégnées tuent ou repoussent les anophèles.",
+           "Ces moustiques piquent surtout la nuit."
+          ]
+         },
+         {
+          "type": "concept",
+          "id": "situation-q4",
+          "title": {
+           "en": "The situation",
+           "fr": "La situation"
+          },
+          "en": [
+           "A community health worker in Kaya sees a three-year-old with a fever of 39 °C in the rainy season. The rapid diagnostic test is negative. What should they do next?"
+          ],
+          "fr": [
+           "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?"
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q4"
+         }
+        ],
+        "objective": "o1"
+       },
+       {
+        "id": "s3",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c3",
+          "title": {
+           "en": "Test before you treat",
+           "fr": "Tester avant de traiter"
+          },
+          "en": [
+           "Confirm every suspected case with an RDT or microscopy.",
+           "Only then give ACT."
+          ],
+          "fr": [
+           "Confirme chaque cas suspect par un TDR ou une microscopie.",
+           "Ensuite seulement, donne une CTA."
+          ]
+         },
+         {
+          "type": "ask",
+          "ref": "q5"
+         }
+        ],
+        "objective": "o1"
+       }
+      ]
+     },
+     {
+      "id": "ch2",
+      "title": {
+       "en": "In the field",
+       "fr": "Sur le terrain"
+      },
+      "scenes": [
+       {
+        "id": "s4",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c4",
+          "title": {
+           "en": "Seasonal chemoprevention",
+           "fr": "La chimioprévention saisonnière"
+          },
+          "en": [
+           "SMC gives children aged 3-59 months a monthly dose.",
+           "All four monthly cycles are needed."
+          ],
+          "fr": [
+           "La CPS donne une dose mensuelle aux enfants de 3 à 59 mois.",
+           "Les quatre cycles mensuels sont nécessaires."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s5",
+        "place": "market",
+        "steps": [
+         {
+          "type": "narrate",
+          "en": "You travel with Awa to the villages around Kaya.",
+          "fr": "Tu pars avec Awa dans les villages autour de Kaya."
+         },
+         {
+          "type": "concept",
+          "id": "c5",
+          "title": {
+           "en": "Kaya, Burkina Faso, 2022",
+           "fr": "Kaya, Burkina Faso, 2022"
+          },
+          "en": [
+           "Health workers combined SMC campaigns with net distribution.",
+           "Confirmed cases in under-fives fell by almost half."
+          ],
+          "fr": [
+           "Les agents de santé ont combiné campagnes de CPS et distribution de moustiquaires.",
+           "Les cas confirmés chez les moins de cinq ans ont presque diminué de moitié."
+          ]
+         },
+         {
+          "type": "say",
+          "who": "peer",
+          "en": "Every month we visit each family with the SMC doses.",
+          "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."
+         },
+         {
+          "type": "game",
+          "ref": "g1"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "ch3",
+      "title": {
+       "en": "Your turn",
+       "fr": "À toi de jouer"
+      },
+      "scenes": [
+       {
+        "id": "s6",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "concept",
+          "id": "c6",
+          "title": {
+           "en": "Key points",
+           "fr": "Points clés"
+          },
+          "en": [
+           "Anopheles mosquitoes bite mostly at night, so nets must be used every night.",
+           "Confirm every suspected case with an RDT before giving ACT.",
+           "SMC protects children aged 3-59 months during the rainy season.",
+           "Nets protect a whole community only when coverage is high."
+          ],
+          "fr": [
+           "Les anophèles piquent surtout la nuit : la moustiquaire doit servir chaque nuit.",
+           "Confirmer chaque cas suspect par un TDR avant de donner une CTA.",
+           "La CPS protège les enfants de 3 à 59 mois pendant la saison des pluies.",
+           "Les moustiquaires ne protègent toute la communauté que si la couverture est élevée."
+          ]
+         }
+        ]
+       },
+       {
+        "id": "s7",
+        "place": "desk",
+        "steps": [
+         {
+          "type": "say",
+          "who": "mentor",
+          "en": "Now take a sheet of paper, {child}. Work it out yourself.",
+          "fr": "Prends maintenant une feuille, {child}. À toi de le faire."
+         },
+         {
+          "type": "photo",
+          "ref": "E1"
+         },
+         {
+          "type": "photo",
+          "ref": "E2"
+         },
+         {
+          "type": "narrate",
+          "en": "Tonight the children of Kaya sleep a little safer, thanks to you.",
+          "fr": "Ce soir, les enfants de Kaya dorment un peu plus en sécurité grâce à toi."
+         },
+         {
+          "type": "narrate",
+          "en": "Well done, {child}: you have finished this story.",
+          "fr": "Bravo, {child} : tu as terminé cette histoire.",
+          "frame": "finished"
+         },
+         {
+          "type": "say",
+          "who": "margo",
+          "en": "Questions about this lesson? Ask me any time, {child}.",
+          "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
+          "frame": "ask_tutor"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "questions": [
+     {
+      "id": "q4",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Read the situation above, then choose the best answer.",
+       "fr": "Lis la situation ci-dessus, puis choisis la meilleure réponse."
+      },
+      "answer": "b",
+      "choices": [
+       {
+        "id": "a",
+        "fr": "Donner quand même une CTA, car c'est la saison des pluies",
+        "en": "Give ACT anyway because it is the rainy season",
+        "misconception": "m_season_overrides_test"
+       },
+       {
+        "id": "b",
+        "fr": "Chercher une autre cause de la fièvre et référer si besoin",
+        "en": "Look for another cause of the fever and refer if needed"
+       },
+       {
+        "id": "c",
+        "fr": "Refaire le même test le mois prochain",
+        "en": "Repeat the same test next month",
+        "misconception": "m_retest_later"
+       },
+       {
+        "id": "d",
+        "fr": "Commencer tout de suite la chimioprévention saisonnière",
+        "en": "Start seasonal chemoprevention straight away",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "a",
+        "misconception": "m_season_overrides_test",
+        "hint": {
+         "en": "The season does not change what the test showed.",
+         "fr": "La saison ne change pas ce que le test a montré."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_retest_later",
+        "hint": {
+         "en": "The child is sick today. Can the fever wait a month?",
+         "fr": "L'enfant est malade aujourd'hui. La fièvre peut-elle attendre un mois ?"
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "Chemoprevention prevents; it does not treat a fever.",
+         "fr": "La chimioprévention prévient ; elle ne soigne pas une fièvre."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "What does a negative test tell you?",
+        "fr": "Que t'apprend un test négatif ?"
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q3"
+      },
+      "stem": {
+       "fr": "Un agent de santé communautaire de Kaya voit un enfant de trois ans avec 39 °C de fièvre pendant la saison des pluies. Le test de diagnostic rapide est négatif. Selon la leçon, que doit-il faire ensuite ?",
+       "en": "A community health worker in Kaya sees a three-year-old with a fever of 39 °C in the rainy season. The rapid diagnostic test is negative. What should they do next?"
+      },
+      "explanation": {
+       "fr": "Un TDR négatif signifie que la fièvre a une autre cause qu'il faut trouver.",
+       "en": "A negative RDT means the fever has another cause that must be found."
+      }
+     },
+     {
+      "id": "q5",
+      "type": "choice",
+      "objective": "o1",
+      "calculator": false,
+      "prompt": {
+       "en": "Which children receive seasonal malaria chemoprevention?",
+       "fr": "Quels enfants reçoivent la chimioprévention du paludisme saisonnier ?"
+      },
+      "answer": "a",
+      "choices": [
+       {
+        "id": "a",
+        "fr": "Les enfants de 3 à 59 mois",
+        "en": "Children aged 3-59 months"
+       },
+       {
+        "id": "b",
+        "fr": "Les enfants de 5 à 15 ans",
+        "en": "Children aged 5-15 years",
+        "misconception": "m_school_age"
+       },
+       {
+        "id": "c",
+        "fr": "Seulement les nouveau-nés",
+        "en": "Newborn babies only",
+        "misconception": "m_newborns_only"
+       },
+       {
+        "id": "d",
+        "fr": "Tous les enfants qui ont de la fièvre",
+        "en": "Every child who has a fever",
+        "misconception": "m_smc_is_treatment"
+       }
+      ],
+      "traps": [
+       {
+        "answer": "b",
+        "misconception": "m_school_age",
+        "hint": {
+         "en": "School-age children are not the main target.",
+         "fr": "Les enfants d'âge scolaire ne sont pas la cible principale."
+        }
+       },
+       {
+        "answer": "c",
+        "misconception": "m_newborns_only",
+        "hint": {
+         "en": "The target group is wider than newborns.",
+         "fr": "Le groupe cible est plus large que les nouveau-nés."
+        }
+       },
+       {
+        "answer": "d",
+        "misconception": "m_smc_is_treatment",
+        "hint": {
+         "en": "SMC prevents; a fever needs a test.",
+         "fr": "La CPS prévient ; une fièvre demande un test."
+        }
+       }
+      ],
+      "hints": [
+       {
+        "en": "Think of the youngest children who are not babies.",
+        "fr": "Pense aux plus jeunes enfants qui ne sont plus des nourrissons."
+       }
+      ],
+      "derived_from": {
+       "quiz_unit": "1.3",
+       "question_id": "q4"
+      },
+      "explanation": {
+       "fr": "La CPS cible les enfants de 3 à 59 mois, les plus à risque.",
+       "en": "SMC targets children aged 3-59 months, who are the most at risk."
+      }
+     }
+    ],
+    "exercises": [
+     {
+      "id": "E1",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "List the three tools that protect children from malaria and say when each one acts.",
+       "fr": "Cite les trois outils qui protègent les enfants du paludisme et dis quand chacun agit."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "All three tools with the right moment",
+        "fr": "Les trois outils avec le bon moment"
+       }
+      ],
+      "working": {
+       "en": [
+        "Nets: every night, against bites",
+        "Testing: when a fever appears",
+        "SMC: each month of the rainy season"
+       ],
+       "fr": [
+        "Moustiquaires : chaque nuit, contre les piqûres",
+        "Test : quand une fièvre apparaît",
+        "CPS : chaque mois de la saison des pluies"
+       ]
+      }
+     },
+     {
+      "id": "E2",
+      "part": "A",
+      "objective": "o1",
+      "marks": 1,
+      "calculator": false,
+      "prompt": {
+       "en": "Write the steps you follow for a child with fever, from arrival to treatment.",
+       "fr": "Écris les étapes que tu suis pour un enfant fiévreux, de son arrivée au traitement."
+      },
+      "mark_scheme": [
+       {
+        "code": "B1",
+        "en": "Test before treatment, both results handled",
+        "fr": "Test avant traitement, les deux résultats traités"
+       }
+      ],
+      "working": {
+       "en": [
+        "Check for danger signs",
+        "Do an RDT",
+        "Positive: give ACT; negative: look for another cause"
+       ],
+       "fr": [
+        "Chercher les signes de danger",
+        "Faire un TDR",
+        "Positif : donner une CTA ; négatif : chercher une autre cause"
+       ]
+      }
+     }
+    ],
+    "minigames": [
+     {
+      "id": "g1",
+      "engine": "catch",
+      "title": {
+       "en": "Malaria catch",
+       "fr": "Attrape-paludisme"
+      },
+      "instruction": {
+       "en": "Catch the true statements. Let the myths fall!",
+       "fr": "Attrape les affirmations vraies. Laisse tomber les idées reçues !"
+      },
+      "hint_after_wrong": {
+       "en": "Think back to the three tools.",
+       "fr": "Repense aux trois outils."
+      },
+      "rounds": [
+       {
+        "prompt": {
+         "en": "Catch the right reflexes for a fever",
+         "fr": "Attrape les bons réflexes face à une fièvre"
+        },
+        "items": [
+         {
+          "label": {
+           "en": "Do an RDT first",
+           "fr": "Faire d'abord un TDR"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Give ACT only if the test is positive",
+           "fr": "Donner une CTA seulement si le test est positif"
+          },
+          "correct": true
+         },
+         {
+          "label": {
+           "en": "Any fever in the rainy season is malaria",
+           "fr": "Toute fièvre en saison des pluies est du paludisme"
+          },
+          "correct": false,
+          "trap": "m_fever_is_proof"
+         }
+        ]
+       }
+      ],
+      "points": {
+       "per_correct": 1
+      },
+      "objective": "o1"
+     }
+    ],
+    "videos": [],
+    "tutor": {
+     "persona": "margo",
+     "intro": {
+      "en": "Hi {child}! I'm Margo. I give hints; you decide. I am an AI, not a real person.",
+      "fr": "Bonjour {child} ! Je suis Margo. Je donne des indices, c'est toi qui décides. Je suis une IA, pas une vraie personne."
+     },
+     "scope": {
+      "this_week": [
+       "o1"
+      ],
+      "earlier_weeks": "Module 1: Lutte contre le paludisme"
+     },
+     "style": [
+      "Reply in the language the learner used.",
+      "At most 3 short sentences, then one question back.",
+      "One hint at a time, starting from the learner's own words.",
+      "Speak to the learner as 'you'; in French use 'tu' and stay gender-neutral."
+     ],
+     "never": [
+      "Give the answer to a question or exercise before the app shows the explanation.",
+      "Decide whether an answer is right: the app does that.",
+      "Ask for or repeat personal information (surname, address, phone).",
+      "Talk about anything other than this lesson."
+     ],
+     "off_topic": {
+      "en": "Let's stay with malaria prevention.",
+      "fr": "Restons sur la prévention du paludisme."
+     },
+     "worry": {
+      "en": "That sounds important. Please talk to someone you trust now.",
+      "fr": "Cela semble important. Parles-en tout de suite à une personne de confiance."
+     },
+     "max_turns_per_item": 6
+    },
+    "rewards": {
+     "unit": {
+      "en": "points",
+      "fr": "points"
+     },
+     "first_try": 2,
+     "second_try": 1,
+     "streak": {
+      "every": 3,
+      "bonus": 1
+     },
+     "stars": {
+      "3": 0.85,
+      "2": 0.6
+     }
+    },
+    "art_requests": [],
+    "engine_requests": [],
+    "checks": {
+     "validator": "story_course_validator v1",
+     "date": "2026-11-09",
+     "questions": 2,
+     "exercises": 2,
+     "paper_marks": 2,
+     "minigame_rounds": 1,
+     "max_points": 8,
+     "errors": 0,
+     "warnings": 0,
+     "predicted_typical": {
+      "plan": "1 of 2 questions right first time (2 each), the other 1 right on the second try (1 each); 1 of 2 mini-game targets caught; paper exercises self-checked (2 marks).",
+      "points": 6
+     }
+    }
+   }
+  }
+ }
+}

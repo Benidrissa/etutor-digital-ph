@@ -24,6 +24,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { starsFor, text } from "@/lib/story-course/answer";
+import { chapterLocalId } from "@/lib/story-course/progress";
 import type {
   CastMember,
   Exercise,
@@ -64,7 +65,7 @@ const MOOD_EMOJI: Record<string, string> = {
   walk: "🚶",
 };
 
-/** Where the lesson's Story tab remembers the bilingual toggle (per browser). */
+/** Where the embedded player (the module story panel) keeps the bilingual toggle, per browser. */
 export const EMBEDDED_BILINGUAL_KEY = "sira.story.bilingual";
 
 /**
@@ -107,22 +108,38 @@ export interface StoryPlayerProps {
   /**
    * `page` (default) is the standalone week: a sticky header and a Continue
    * bar fixed to the bottom of the screen. `embedded` sits inside another
-   * page's card — the lesson's Story tab — so everything stays in the flow and
-   * nothing covers the lesson's own controls or the mobile bottom navigation.
+   * page's card — the module story panel — so everything stays in the flow and
+   * nothing covers the page's own controls or the mobile bottom navigation.
    */
   variant?: "page" | "embedded";
   /**
    * Fires once, when the learner reaches the last step and has settled it (a
-   * question at the very end must be answered first). The lesson's Story tab
-   * uses it to complete the lesson unit.
+   * question at the very end must be answered first). The module story panel
+   * uses it to finish a chapter, which can complete that chapter's lesson unit.
    */
   onComplete?: (outcome: { points: number; maxPoints: number }) => void;
   /**
-   * False while the player is out of sight: the lesson keeps every tab
-   * mounted, so a hidden Story tab is still on the page. A running mini-game
-   * pauses its clock and stops listening to the keyboard until it is back.
+   * False while the player is out of sight but still mounted (a host that
+   * keeps hidden panes on the page, as tabs do). A running mini-game pauses
+   * its clock and stops listening to the keyboard until it is back.
    */
   active?: boolean;
+  /**
+   * Play only this chapter (a module story is played one chapter at a time,
+   * so the page holds one chapter's steps, not the whole module's). The
+   * chapter's title becomes the player's heading.
+   */
+  chapterId?: string;
+  /**
+   * The points this player can award, instead of the document's
+   * `checks.max_points` (which, for a module story, covers every chapter).
+   */
+  maxPoints?: number;
+  /**
+   * No "Story complete" block with stars and score at the end: the parent
+   * shows its own. `onComplete` still fires once.
+   */
+  hideFinishSummary?: boolean;
 }
 
 export function StoryPlayer({
@@ -130,6 +147,9 @@ export function StoryPlayer({
   variant = "page",
   onComplete,
   active = true,
+  chapterId,
+  maxPoints: maxPointsOverride,
+  hideFinishSummary = false,
 }: StoryPlayerProps) {
   const t = useTranslations("Story");
   const target = course.languages?.target ?? "en";
@@ -157,9 +177,19 @@ export function StoryPlayer({
   // even if a child reports twice before React re-renders.
   const settledRef = useRef<Set<number>>(new Set());
 
+  // One chapter, or the whole week.
+  const chapters = useMemo(
+    () =>
+      chapterId === undefined
+        ? (course.chapters ?? [])
+        : (course.chapters ?? []).filter((chapter) => chapter.id === chapterId),
+    [course.chapters, chapterId],
+  );
+  const singleChapter = chapterId !== undefined ? chapters[0] : undefined;
+
   const flat = useMemo<FlatStep[]>(() => {
     const out: FlatStep[] = [];
-    for (const chapter of course.chapters ?? []) {
+    for (const chapter of chapters) {
       let first = true;
       for (const scene of chapter.scenes ?? []) {
         for (const step of scene.steps ?? []) {
@@ -176,7 +206,7 @@ export function StoryPlayer({
       }
     }
     return out;
-  }, [course.chapters]);
+  }, [chapters]);
 
   const questions = useMemo(
     () => new Map((course.questions ?? []).map((q) => [q.id, q])),
@@ -199,7 +229,10 @@ export function StoryPlayer({
     [course.cast],
   );
 
-  const maxPoints = Number(course.checks?.max_points ?? 0);
+  const maxPoints =
+    maxPointsOverride !== undefined
+      ? Math.max(0, Number(maxPointsOverride) || 0)
+      : Number(course.checks?.max_points ?? 0);
   const unitLabel = text(course.rewards?.unit, target, home) || t("pointsUnit");
 
   const advance = useCallback(() => {
@@ -249,7 +282,7 @@ export function StoryPlayer({
   }, [finished, points, maxPoints]);
 
   const stars = starsFor(maxPoints ? points / maxPoints : 0, course.rewards?.stars);
-  const controls = finished ? (
+  const finishSummary = hideFinishSummary ? null : (
     <div className="text-center" role="status">
       <p className="font-semibold text-gray-900">{t("finished")}</p>
       {stars > 0 ? (
@@ -263,6 +296,9 @@ export function StoryPlayer({
           : t("score", { points, unit: unitLabel })}
       </p>
     </div>
+  );
+  const controls = finished ? (
+    finishSummary
   ) : (
     <button
       type="button"
@@ -297,7 +333,7 @@ export function StoryPlayer({
             <TitleTag
               className={`font-bold text-gray-900 ${embedded ? "text-base" : "truncate text-lg"}`}
             >
-              {text(course.title, target, home)}
+              {text(singleChapter ? singleChapter.title : course.title, target, home)}
             </TitleTag>
           </div>
           <div className="shrink-0 text-right">
@@ -313,7 +349,7 @@ export function StoryPlayer({
           onClick={toggleBilingual}
           aria-pressed={bilingual}
           title={t("bilingualToggle")}
-          className="mt-2 min-h-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+          className="mt-2 min-h-11 min-w-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
         >
           <span className="sr-only">{t("bilingualToggle")}: </span>
           {bilingual
@@ -325,7 +361,8 @@ export function StoryPlayer({
       <ol className="space-y-1">
         {flat.slice(0, revealed + 1).map((item, index) => (
           <li key={`${item.sceneId}-${index}`}>
-            {item.startsChapter ? (
+            {/* One chapter: its title is already the heading above. */}
+            {item.startsChapter && !singleChapter ? (
               <ChapterTag className="mt-6 mb-2 border-l-4 border-amber-400 pl-3 text-base font-bold text-gray-900">
                 {text(item.chapterTitle, target, home)}
               </ChapterTag>
@@ -339,6 +376,7 @@ export function StoryPlayer({
               cast={cast}
               question={item.step.ref ? questions.get(item.step.ref) : undefined}
               exercise={item.step.ref ? exercises.get(item.step.ref) : undefined}
+              moduleStory={!!course.module_story}
               game={item.step.ref ? games.get(item.step.ref) : undefined}
               video={item.step.ref ? videos.get(item.step.ref) : undefined}
               rewards={course.rewards}
@@ -359,8 +397,12 @@ export function StoryPlayer({
       ) : (
         <>
           <div ref={endRef} />
-          {/* Continue / finish */}
-          <div className="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 p-3 backdrop-blur">
+          {/* Continue / finish. On phones it sits above the bottom navigation
+              (h-16, z-50), which would otherwise cover it. */}
+          <div
+            data-testid="story-controls-bar"
+            className="fixed inset-x-0 bottom-16 z-40 border-t border-gray-200 bg-white/95 p-3 backdrop-blur md:bottom-0"
+          >
             <div className="mx-auto max-w-2xl">{controls}</div>
           </div>
         </>
@@ -380,6 +422,8 @@ interface StepViewProps {
   cast: Map<string, CastMember>;
   question?: Question;
   exercise?: Exercise;
+  /** A module story: its ids are namespaced per chapter (C-2). */
+  moduleStory?: boolean;
   game?: Minigame;
   video?: Video;
   rewards?: StoryCourse["rewards"];
@@ -396,6 +440,7 @@ function StepView({
   cast,
   question,
   exercise,
+  moduleStory = false,
   game,
   video,
   rewards,
@@ -536,6 +581,7 @@ function StepView({
       return (
         <PaperExercise
           exercise={exercise}
+          label={moduleStory ? chapterLocalId(exercise.id) : exercise.id}
           target={target}
           home={home}
           bilingual={bilingual}
@@ -581,6 +627,7 @@ function StepView({
  */
 function PaperExercise({
   exercise,
+  label,
   target,
   home,
   bilingual,
@@ -588,6 +635,8 @@ function PaperExercise({
   onMarked,
 }: {
   exercise: Exercise;
+  /** The exercise's name for the learner (its id, without a module namespace). */
+  label: string;
   target: string;
   home: string;
   bilingual: boolean;
@@ -615,7 +664,7 @@ function PaperExercise({
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
         {[
           t("onPaper"),
-          exercise.id,
+          label,
           t("part", { part: exercise.part }),
           exercise.marks ? `[${exercise.marks}]` : null,
         ]

@@ -113,7 +113,6 @@
         {"id": "m_newborns_only", "en": "Thinks only newborns are at risk.", "fr": "Pense que seuls les nouveau-nés sont à risque."},
         {"id": "m_low_coverage", "en": "Thinks a few nets protect the whole community.", "fr": "Pense que quelques moustiquaires protègent toute la communauté."}
       ],
-      "characters": {"mentor": "Dr Awa Diallo", "peer": "Koffi"},
       "chapter_titles": [
         {"en": "Your first day on the team", "fr": "Ton premier jour dans l'équipe"},
         {"en": "Out in Kaya", "fr": "Sur le terrain à Kaya"},
@@ -122,7 +121,7 @@
       "story": {
         "opening": {"en": "{child}, you join the district malaria team today.", "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."},
         "mentor_intro": {"en": "Welcome, {child}! Three tools protect children here. Let's learn them together.", "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."},
-        "example_intro": {"en": "You travel with Koffi to the villages around Kaya.", "fr": "Tu pars avec Koffi dans les villages autour de Kaya."},
+        "example_intro": {"en": "You travel with Awa to the villages around Kaya.", "fr": "Tu pars avec Awa dans les villages autour de Kaya."},
         "example_dialogue": [
           {"who": "peer", "en": "Every month we visit each family with the SMC doses.", "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."},
           {"who": "mentor", "en": "And the nets? Coverage is what protects the whole village.", "fr": "Et les moustiquaires ? C'est la couverture qui protège tout le village."}
@@ -357,11 +356,10 @@
         {"id": "m_newborns_only", "en": "Thinks only newborns are at risk.", "fr": "Pense que seuls les nouveau-nés sont à risque."},
         {"id": "m_low_coverage", "en": "Thinks a few nets protect the whole community.", "fr": "Pense que quelques moustiquaires protègent toute la communauté."}
       ],
-      "characters": {"mentor": "Dr Awa Diallo", "peer": "Koffi"},
       "story": {
         "opening": {"en": "{child}, you join the district malaria team today.", "fr": "{child}, tu rejoins aujourd'hui l'équipe paludisme du district."},
         "mentor_intro": {"en": "Welcome, {child}! Three tools protect children here. Let's learn them together.", "fr": "Bienvenue, {child} ! Trois outils protègent les enfants ici. Apprenons-les ensemble."},
-        "example_intro": {"en": "You travel with Koffi to the villages around Kaya.", "fr": "Tu pars avec Koffi dans les villages autour de Kaya."},
+        "example_intro": {"en": "You travel with Awa to the villages around Kaya.", "fr": "Tu pars avec Awa dans les villages autour de Kaya."},
         "example_dialogue": [
           {"who": "peer", "en": "Every month we visit each family with the SMC doses.", "fr": "Chaque mois, on passe voir chaque famille avec les doses de CPS."}
         ],

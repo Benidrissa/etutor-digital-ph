@@ -32,6 +32,7 @@ from app.domain.services import story_from_lesson_service as service_module
 from app.domain.services import story_repair as repair
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
+    ModuleStoryBinding,
     NotALessonUnit,
     StoryBinding,
     StoryFromLessonService,
@@ -129,7 +130,9 @@ async def test_lesson_and_quiz_give_a_story_with_zero_errors_and_zero_warnings(r
     # Every stored MCQ became a question, asked once.
     doc = generation.doc
     derived = [q for q in doc["questions"] if q.get("derived_from")]
-    assert [q["derived_from"] for q in derived] == ["q1", "q2", "q3", "q4"]
+    assert [q["derived_from"]["question_id"] for q in derived] == ["q1", "q2", "q3", "q4"]
+    # The lesson unit's own quiz: the quiz unit is the lesson unit itself.
+    assert {q["derived_from"]["quiz_unit"] for q in derived} == {"1.2"}
 
 
 @pytest.mark.parametrize("language", ["en", "fr"])
@@ -539,21 +542,37 @@ LESSON_CONTENT = {"introduction": "Nets work at night.", "key_points": ["Sleep u
 QUIZ_CONTENT = {"questions": [{"id": "q1", "question": "When?", "options": ["a", "b"]}]}
 
 
-def _source_row(row_id: int, revision: int, content: dict, unit_id: uuid.UUID = UNIT_ID):
-    """One row of the freshness query: id, revision, content, owning unit."""
+def _source_row(
+    row_id: int,
+    revision: int,
+    content: dict,
+    unit_id: uuid.UUID = UNIT_ID,
+    content_type: str = "lesson",
+    language: str = "en",
+):
+    """One row of the sources query: id, revision, content, owning unit, type, language."""
     return SimpleNamespace(
         id=uuid.UUID(int=row_id),
         content_revision=revision,
         content=copy.deepcopy(content),
         module_unit_id=unit_id,
+        content_type=content_type,
+        language=language,
     )
+
+
+def _quiz_row(row_id: int, revision: int, content: dict, unit_id: uuid.UUID = QUIZ_UNIT_ID):
+    """A quiz row: by default the covering quiz unit's."""
+    return _source_row(row_id, revision, content, unit_id=unit_id, content_type="quiz")
 
 
 def _bound_record(**overrides: Any) -> StoryCourseRecord:
     values = {
         "slug": f"lesson-{UNIT_ID.hex}-en",
+        "module_id": MODULE_ID,
         "module_unit_id": UNIT_ID,
         "language": "en",
+        "content": {"sira_builder": repair.CHAPTER_BUILDER_VERSION},
         "source_lesson_content_id": uuid.UUID(int=1),
         "source_lesson_revision": 2,
         "source_lesson_digest": content_digest(LESSON_CONTENT),
@@ -565,9 +584,12 @@ def _bound_record(**overrides: Any) -> StoryCourseRecord:
     return StoryCourseRecord(**values)
 
 
-def _no_quiz_record() -> StoryCourseRecord:
+def _no_quiz_record(**overrides: Any) -> StoryCourseRecord:
     return _bound_record(
-        source_quiz_content_id=None, source_quiz_revision=None, source_quiz_digest=None
+        source_quiz_content_id=None,
+        source_quiz_revision=None,
+        source_quiz_digest=None,
+        **overrides,
     )
 
 
@@ -575,7 +597,9 @@ def _module_units(*specs: tuple[uuid.UUID, str, int, str | None]):
     """Rows of the module-units query: (id, unit_number, order_index, unit_type)."""
     return FakeResult(
         rows=[
-            SimpleNamespace(id=uid, unit_number=number, order_index=index, unit_type=kind)
+            SimpleNamespace(
+                id=uid, module_id=MODULE_ID, unit_number=number, order_index=index, unit_type=kind
+            )
             for uid, number, index, kind in specs
         ]
     )
@@ -591,6 +615,18 @@ def _in_list(statement) -> list[Any]:
     """The values of the ``IN`` clause of a compiled statement."""
     params = statement.compile().params
     return next(v for v in params.values() if isinstance(v, list | tuple))
+
+
+def _params(statement, prefix: str) -> list[Any]:
+    """Every value bound to a parameter named ``{prefix}_N`` (IN lists flattened)."""
+    out: list[Any] = []
+    for key, value in statement.compile().params.items():
+        if key.rsplit("_", 1)[0] == prefix:
+            out.extend(value if isinstance(value, list | tuple) else [value])
+    return out
+
+
+FRESH_SOURCES = (_source_row(1, 2, LESSON_CONTENT), _quiz_row(2, 1, QUIZ_CONTENT))
 
 
 class TestContentDigest:
@@ -612,22 +648,37 @@ class TestFreshness:
         assert await story_sources_are_fresh(session, StoryCourseRecord(slug="w4"))
         assert session.statements == []
 
-    async def test_fresh_when_revisions_and_digests_match(self):
-        session = FakeSession(
-            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _source_row(2, 1, QUIZ_CONTENT)])
+    async def test_a_module_story_is_never_judged_as_a_chapter(self):
+        """A module row (module, no unit) goes through module_story_is_fresh only."""
+        session = FakeSession()
+        record = StoryCourseRecord(
+            slug=f"module-{MODULE_ID.hex}-en", module_id=MODULE_ID, language="en"
         )
+        assert not await story_sources_are_fresh(session, record)
+        assert session.statements == []
+
+    async def test_fresh_when_revisions_and_digests_match(self):
+        session = FakeSession(FakeResult(rows=list(FRESH_SOURCES)))
         assert await story_sources_are_fresh(session, _bound_record())
-        assert len(session.statements) == 1  # the unit's own quiz: nothing else to check
+        assert len(session.statements) == 1  # one query of the sources, nothing else
+
+    @pytest.mark.parametrize("builder", [None, 1, 3, "2"])
+    async def test_a_chapter_of_another_builder_is_stale_without_a_query(self, builder):
+        """Rows without sira_builder (shipped per-lesson stories) are rebuilt once."""
+        content = {} if builder is None else {"sira_builder": builder}
+        session = FakeSession(FakeResult(rows=list(FRESH_SOURCES)))
+        assert not await story_sources_are_fresh(session, _bound_record(content=content))
+        assert session.statements == []
 
     async def test_stale_when_the_lesson_was_regenerated(self):
         session = FakeSession(
-            FakeResult(rows=[_source_row(1, 3, LESSON_CONTENT), _source_row(2, 1, QUIZ_CONTENT)])
+            FakeResult(rows=[_source_row(1, 3, LESSON_CONTENT), _quiz_row(2, 1, QUIZ_CONTENT)])
         )
         assert not await story_sources_are_fresh(session, _bound_record())
 
     async def test_stale_when_the_quiz_was_regenerated(self):
         session = FakeSession(
-            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _source_row(2, 2, QUIZ_CONTENT)])
+            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _quiz_row(2, 2, QUIZ_CONTENT)])
         )
         assert not await story_sources_are_fresh(session, _bound_record())
 
@@ -635,7 +686,7 @@ class TestFreshness:
         """An admin's manual edit (admin_courses.edit_content) keeps the revision."""
         edited = {**LESSON_CONTENT, "introduction": "Corrected: nets work at night."}
         session = FakeSession(
-            FakeResult(rows=[_source_row(1, 2, edited), _source_row(2, 1, QUIZ_CONTENT)])
+            FakeResult(rows=[_source_row(1, 2, edited), _quiz_row(2, 1, QUIZ_CONTENT)])
         )
         assert not await story_sources_are_fresh(session, _bound_record())
 
@@ -644,82 +695,126 @@ class TestFreshness:
         edited = copy.deepcopy(QUIZ_CONTENT)
         edited["questions"][0]["correct_answer"] = 1
         session = FakeSession(
-            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _source_row(2, 1, edited)])
+            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _quiz_row(2, 1, edited)])
         )
         assert not await story_sources_are_fresh(session, _bound_record())
 
     async def test_stale_when_no_digest_was_recorded(self):
-        session = FakeSession(
-            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _source_row(2, 1, QUIZ_CONTENT)])
-        )
+        session = FakeSession(FakeResult(rows=list(FRESH_SOURCES)))
         assert not await story_sources_are_fresh(session, _bound_record(source_lesson_digest=None))
+        assert session.statements == []
 
     async def test_stale_when_the_quiz_was_deleted(self):
         record = _bound_record(source_quiz_content_id=None)  # FK SET NULL
         session = FakeSession(FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT)]))
         assert not await story_sources_are_fresh(session, record)
 
-    async def test_story_without_a_quiz_goes_stale_once_the_unit_has_one(self):
-        no_quiz = FakeSession(
-            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT)]),
-            _module_units((UNIT_ID, "1.2", 1, "lesson")),
-            FakeResult(rows=[]),
-        )
-        assert await story_sources_are_fresh(no_quiz, _no_quiz_record())
-        quiz_now = FakeSession(
-            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT)]),
-            _module_units((UNIT_ID, "1.2", 1, "lesson")),
-            FakeResult(rows=[(uuid.UUID(int=9),)]),
-        )
-        assert not await story_sources_are_fresh(quiz_now, _no_quiz_record())
+    async def test_a_chapter_built_from_the_lessons_own_quiz_is_stale(self):
+        """The lesson unit's own quiz is never a source any more: rebuild from the covering one."""
+        own = _quiz_row(2, 1, QUIZ_CONTENT, unit_id=UNIT_ID)
+        session = FakeSession(FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), own]))
+        assert not await story_sources_are_fresh(session, _bound_record())
 
-    async def test_story_without_a_quiz_goes_stale_once_its_covering_quiz_exists(self):
+    async def test_an_own_quiz_on_the_lesson_unit_never_makes_a_chapter_stale(self):
+        """The offline download creates one for every unit; it is not a source."""
         session = FakeSession(
+            _module_units((UNIT_ID, "1.2", 1, "lesson")),
             FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT)]),
+        )
+        assert await story_sources_are_fresh(session, _no_quiz_record())
+        sources = session.statements[1]
+        # No quiz unit covers the lesson: no quiz is looked for at all.
+        assert _params(sources, "module_unit_id") == []
+        assert _params(sources, "id") == [uuid.UUID(int=1)]
+
+    async def test_a_chapter_without_a_quiz_goes_stale_once_its_covering_quiz_exists(self):
+        session = FakeSession(
             _module_units(*LESSON_THEN_QUIZ),
-            FakeResult(rows=[(uuid.UUID(int=9),)]),
+            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _quiz_row(9, 1, QUIZ_CONTENT)]),
         )
         assert not await story_sources_are_fresh(session, _no_quiz_record())
-        # The quiz looked for is the lesson's own OR its covering quiz unit's.
-        assert set(_in_list(session.statements[2])) == {UNIT_ID, QUIZ_UNIT_ID}
+        # The quiz looked for is the covering quiz unit's only, never the lesson's own.
+        assert _params(session.statements[1], "module_unit_id") == [QUIZ_UNIT_ID]
 
-    async def test_story_from_a_covering_quiz_is_fresh_while_it_is_unchanged(self):
+    async def test_a_chapter_without_a_quiz_stays_fresh_while_its_covering_unit_has_none(self):
         session = FakeSession(
-            FakeResult(
-                rows=[
-                    _source_row(1, 2, LESSON_CONTENT),
-                    _source_row(2, 1, QUIZ_CONTENT, unit_id=QUIZ_UNIT_ID),
-                ]
-            ),
-            FakeResult(rows=[]),  # the lesson unit still has no quiz of its own
+            _module_units(*LESSON_THEN_QUIZ),
+            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT)]),
         )
-        assert await story_sources_are_fresh(session, _bound_record())
-        assert _in_list(session.statements[1]) == [UNIT_ID]
+        assert await story_sources_are_fresh(session, _no_quiz_record())
+        assert len(session.statements) == 2
 
-    async def test_story_from_a_covering_quiz_goes_stale_when_that_quiz_is_edited(self):
+    async def test_a_covering_quiz_in_another_language_does_not_count(self):
+        fr_quiz = _source_row(9, 1, QUIZ_CONTENT, QUIZ_UNIT_ID, "quiz", "fr")
+        session = FakeSession(
+            _module_units(*LESSON_THEN_QUIZ),
+            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), fr_quiz]),
+        )
+        assert await story_sources_are_fresh(session, _no_quiz_record())
+
+    async def test_a_chapter_from_a_covering_quiz_is_fresh_while_it_is_unchanged(self):
+        """One query: neither the roster nor the lesson unit's own quizzes are read."""
+        session = FakeSession(FakeResult(rows=list(FRESH_SOURCES)))
+        assert await story_sources_are_fresh(session, _bound_record())
+        assert len(session.statements) == 1
+        assert set(_params(session.statements[0], "id")) == {uuid.UUID(int=1), uuid.UUID(int=2)}
+
+    async def test_a_chapter_from_a_covering_quiz_goes_stale_when_that_quiz_is_edited(self):
         edited = copy.deepcopy(QUIZ_CONTENT)
         edited["questions"][0]["question"] = "When exactly?"
         session = FakeSession(
-            FakeResult(
-                rows=[
-                    _source_row(1, 2, LESSON_CONTENT),
-                    _source_row(2, 1, edited, unit_id=QUIZ_UNIT_ID),
-                ]
-            )
+            FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _quiz_row(2, 1, edited)])
         )
         assert not await story_sources_are_fresh(session, _bound_record())
 
-    async def test_story_from_a_covering_quiz_goes_stale_once_the_lesson_has_its_own(self):
+
+class TestBatchedFreshness:
+    """Many chapters, one query of their sources (a module story checks them all)."""
+
+    async def test_three_chapters_in_one_statement(self):
+        other_unit, third_unit = uuid.UUID(int=31), uuid.UUID(int=32)
+        records = [
+            _bound_record(),
+            _bound_record(
+                module_unit_id=other_unit,
+                source_lesson_content_id=uuid.UUID(int=3),
+                source_quiz_content_id=uuid.UUID(int=2),
+            ),
+            _no_quiz_record(module_unit_id=third_unit, source_lesson_content_id=uuid.UUID(int=4)),
+        ]
+        edited = {**LESSON_CONTENT, "introduction": "Changed."}
         session = FakeSession(
             FakeResult(
                 rows=[
                     _source_row(1, 2, LESSON_CONTENT),
-                    _source_row(2, 1, QUIZ_CONTENT, unit_id=QUIZ_UNIT_ID),
+                    _quiz_row(2, 1, QUIZ_CONTENT),
+                    _source_row(3, 2, edited, unit_id=other_unit),
+                    _source_row(4, 2, LESSON_CONTENT, unit_id=third_unit),
                 ]
-            ),
-            FakeResult(rows=[(uuid.UUID(int=9),)]),
+            )
         )
-        assert not await story_sources_are_fresh(session, _bound_record())
+        fresh = await service_module.chapters_are_fresh(
+            session,
+            records,
+            covering={UNIT_ID: QUIZ_UNIT_ID, other_unit: QUIZ_UNIT_ID, third_unit: None},
+        )
+        assert fresh == [True, False, True]
+        assert len(session.statements) == 1
+
+    async def test_builders_read_in_sql_replace_the_content(self):
+        """A caller that deferred ``content`` passes the builders it selected."""
+        record = _bound_record(content=None)
+        session = FakeSession(FakeResult(rows=list(FRESH_SOURCES)))
+        fresh = await service_module.chapters_are_fresh(
+            session, [record], builders=[repair.CHAPTER_BUILDER_VERSION]
+        )
+        assert fresh == [True]
+
+    async def test_no_chapter_worth_checking_costs_no_query(self):
+        session = FakeSession()
+        records = [_bound_record(content={}), _bound_record(source_lesson_revision=None)]
+        assert await service_module.chapters_are_fresh(session, records) == [False, False]
+        assert session.statements == []
 
 
 class TestCoveringQuizUnit:
@@ -778,6 +873,70 @@ class TestUpsert:
         assert record is existing
         assert record.status == "draft" and record.is_valid is False
         assert record.module_unit_id == UNIT_ID and record.source_lesson_revision == 4
+
+    async def test_a_module_binding_writes_its_manifest_and_no_lesson_sources(self, raw):
+        generation = await StoryFromLessonService(FakeClaude(raw["en"]["spine"])).generate_document(
+            make_ctx(raw, "en"), system_prompt="system"
+        )
+        assert generation.report.ok
+        doc = generation.doc
+        # A row that carried a unit and lesson sources: the module binding clears them.
+        existing = StoryCourseRecord(
+            slug=doc["id"],
+            status="draft",
+            module_unit_id=UNIT_ID,
+            source_lesson_content_id=uuid.UUID(int=1),
+            source_lesson_revision=2,
+            source_lesson_digest="a" * 64,
+            source_quiz_content_id=uuid.UUID(int=2),
+            source_quiz_revision=1,
+            source_quiz_digest="b" * 64,
+        )
+        manifest = {"assembler": 1, "units": [{"module_unit_id": str(UNIT_ID)}]}
+        binding = ModuleStoryBinding(MODULE_ID, "en", manifest, "c" * 64)
+        upsert = {
+            "course": StoryCourse.model_validate(doc),
+            "content": doc,
+            "course_id": None,
+            "binding": binding,
+        }
+        record = await upsert_story_course(
+            FakeSession(FakeResult(existing)), report=generation.report, publish=True, **upsert
+        )
+        assert record is existing and record.status == "published"
+        assert (record.module_id, record.module_unit_id, record.language) == (
+            MODULE_ID,
+            None,
+            "en",
+        )
+        assert record.source_rows == manifest and record.source_units_digest == "c" * 64
+        assert record.source_lesson_content_id is None and record.source_lesson_revision is None
+        assert record.source_lesson_digest is None and record.source_quiz_digest is None
+        assert record.source_quiz_content_id is None and record.source_quiz_revision is None
+
+        # Not publishable: demoted to draft, like a chapter.
+        bad = generation.report.model_copy(update={"ok": False})
+        record = await upsert_story_course(
+            FakeSession(FakeResult(existing)), report=bad, publish=False, **upsert
+        )
+        assert record.status == "draft" and record.is_valid is False
+
+    async def test_a_lesson_binding_clears_any_module_manifest(self, raw):
+        doc = repair.build_story_document(make_ctx(raw, "en"), {}).doc
+        existing = StoryCourseRecord(
+            slug=doc["id"], source_rows={"assembler": 1}, source_units_digest="c" * 64
+        )
+        record = await upsert_story_course(
+            FakeSession(FakeResult(existing)),
+            course=StoryCourse.model_validate(doc),
+            content=doc,
+            report=validate_document(doc),
+            course_id=None,
+            publish=False,
+            binding=StoryBinding(MODULE_ID, UNIT_ID, "en", uuid.UUID(int=1), 4),
+        )
+        assert record.source_rows is None and record.source_units_digest is None
+        assert record.module_unit_id == UNIT_ID
 
     async def test_authored_week_saved_without_publish_stays_published(self):
         fixture = json.loads(
@@ -850,7 +1009,8 @@ async def test_generate_and_store_a_unit_story(raw, valid):
         FakeResult(unit),  # the unit
         FakeResult(None),  # no cached story yet
         FakeResult(rows=[lesson]),  # cached lesson rows
-        FakeResult(rows=[quiz]),  # cached quiz rows
+        _module_units(*LESSON_THEN_QUIZ),  # the module's units: 1.3 covers 1.2
+        FakeResult(rows=[quiz]),  # the covering quiz unit's cached quiz rows
         FakeResult(None),  # upsert: no row with this slug
     )
     spine = raw["en"]["spine"] if valid else _spine_without_misconceptions(raw["en"]["spine"])
@@ -889,7 +1049,7 @@ async def test_a_fresh_cached_story_is_returned_without_calling_the_model(raw):
         FakeResult(module),
         FakeResult(unit),
         FakeResult(cached),
-        FakeResult(rows=[_source_row(1, 2, LESSON_CONTENT), _source_row(2, 1, QUIZ_CONTENT)]),
+        FakeResult(rows=list(FRESH_SOURCES)),
     )
     model = FakeClaude({})
     record = await StoryFromLessonService(model).get_or_generate_unit_story(
@@ -944,7 +1104,7 @@ async def test_a_non_lesson_unit_generates_nothing(raw, unit_type):
 
 
 # --------------------------------------------------------------------------
-# A covering quiz unit: the lesson unit has no quiz of its own (FC-2)
+# The covering quiz unit: the only quiz a chapter is built from (FC-2, C-1)
 # --------------------------------------------------------------------------
 
 #: MCQs of the module's quiz unit that test OTHER lessons than the fixture's.
@@ -1028,9 +1188,10 @@ async def test_story_derives_verbatim_from_a_sibling_quiz_unit(raw, language):
     stored = raw[language]["quiz"]["questions"]
     derived = [q for q in doc["questions"] if q.get("derived_from")]
     # The four relevant MCQs, in quiz order, under their candidate ids.
-    assert [q["derived_from"] for q in derived] == [m["id"] for m in stored]
+    assert [q["derived_from"]["question_id"] for q in derived] == [m["id"] for m in stored]
+    assert {q["derived_from"]["quiz_unit"] for q in derived} == {"1.3"}
     assert [q["id"] for q in derived] == ["q2", "q3", "q4", "q5"]
-    by_source = {q["derived_from"]: q for q in derived}
+    by_source = {q["derived_from"]["question_id"]: q for q in derived}
     for mcq in stored:
         question = by_source[mcq["id"]]
         assert [c[language] for c in question["choices"]] == mcq["options"]
@@ -1041,7 +1202,9 @@ async def test_story_derives_verbatim_from_a_sibling_quiz_unit(raw, language):
     text = json.dumps(doc, ensure_ascii=False)
     for other in OTHER_LESSON_MCQS[language]:
         assert other["question"] not in text
-        assert other["id"] not in {q.get("derived_from") for q in doc["questions"]}
+        assert other["id"] not in {
+            q["derived_from"]["question_id"] for q in doc["questions"] if q.get("derived_from")
+        }
     assert not {"q1", "q6", "q99", "zz"} & {q["id"] for q in doc["questions"]}
     assert {"kind": "test", "ref": "Unit 1.3 quiz", "used_for": "questions, derived verbatim"} in (
         doc["sources"]
@@ -1078,7 +1241,6 @@ def _sibling_session(raw, module, unit, *, cached_quiz: bool):
         FakeResult(unit),  # the unit
         FakeResult(None),  # no cached story yet
         FakeResult(rows=[lesson]),  # cached lesson rows
-        FakeResult(rows=[]),  # the lesson unit has no quiz of its own
         _module_units(*LESSON_THEN_QUIZ),  # the module's units
         FakeResult(rows=[quiz] if cached_quiz else []),  # the quiz unit's cached quiz
         FakeResult(None),  # upsert: no row with this slug
@@ -1100,11 +1262,34 @@ async def test_a_unit_story_is_built_from_its_covering_quiz_unit(raw):
     assert record.source_quiz_content_id == quiz.id and record.source_quiz_revision == 3
     assert record.source_quiz_digest == content_digest(quiz.content)
     derived = [q["derived_from"] for q in record.content["questions"] if q.get("derived_from")]
-    assert derived == [m["id"] for m in raw["en"]["quiz"]["questions"]]
+    assert [d["question_id"] for d in derived] == [m["id"] for m in raw["en"]["quiz"]["questions"]]
+    assert {d["quiz_unit"] for d in derived} == {"1.3"}
     assert "CANDIDATE QUIZ QUESTIONS from the quiz of unit 1.3" in model.messages[0]
     # The quiz of the covering unit was read from the cache, not generated.
-    assert QUIZ_UNIT_ID in session.statements[6].compile().params.values()
+    assert QUIZ_UNIT_ID in session.statements[5].compile().params.values()
     assert model.content_types == ["story"]
+
+
+async def test_the_lesson_units_own_quiz_is_never_read(raw):
+    """No covering quiz unit: no quiz at all, even though an own quiz may exist (C-1)."""
+    module, unit = _module_and_unit()
+    session = FakeSession(
+        FakeResult(module),
+        FakeResult(unit),
+        FakeResult(None),  # no cached story yet
+        FakeResult(rows=[_content_row(raw["en"]["lesson"], 2, 1)]),
+        _module_units((UNIT_ID, "1.2", 1, "lesson")),  # no quiz unit in the module
+        FakeResult(None),  # upsert: no row with this slug
+    )
+    model = FakeClaude(copy.deepcopy(raw["en"]["spine"]))
+    record = await StoryFromLessonService(model).get_or_generate_unit_story(
+        MODULE_ID, "1.2", "en", session
+    )
+    assert record.source_quiz_content_id is None and record.source_quiz_revision is None
+    assert not [q for q in record.content["questions"] if q.get("derived_from")]
+    quiz_reads = [st for st in session.statements if "quiz" in st.compile().params.values()]
+    assert quiz_reads == []  # the lesson unit's quizzes were never queried
+    assert session.results == []
 
 
 async def test_without_a_cached_covering_quiz_the_questions_are_model_authored(raw):
@@ -1174,6 +1359,7 @@ async def test_when_nothing_can_be_built_a_draft_is_stored_not_retried(raw):
         FakeResult(unit),
         FakeResult(None),
         FakeResult(rows=[lesson]),
+        _module_units(*LESSON_THEN_QUIZ),
         FakeResult(rows=[quiz]),
         FakeResult(None),
     )
@@ -1227,6 +1413,7 @@ async def test_a_time_limit_mid_generation_stores_nothing(raw):
         FakeResult(unit),
         FakeResult(None),
         FakeResult(rows=[_content_row(raw["en"]["lesson"], 2, 1)]),
+        _module_units(*LESSON_THEN_QUIZ),
         FakeResult(rows=[_content_row(raw["en"]["quiz"], 1, 2)]),
     )
     broken = _spine_without_misconceptions(raw["en"]["spine"])
@@ -1262,6 +1449,7 @@ async def test_a_translation_still_missing_after_the_budget_is_a_stored_warning(
         FakeResult(unit),
         FakeResult(None),
         FakeResult(rows=[_content_row(raw["en"]["lesson"], 2, 1)]),
+        _module_units(*LESSON_THEN_QUIZ),
         FakeResult(rows=[_content_row(raw["en"]["quiz"], 1, 2)]),
         FakeResult(None),
     )
@@ -1361,8 +1549,11 @@ _UNREADABLE = {"raw_response": True, "content": "Here is your story, in prose."}
 def _with_course_misconceptions(ctx: repair.LessonStoryContext) -> repair.LessonStoryContext:
     """Track A: every wrong option of every MCQ says why a learner would pick it.
 
-    With these, the story built from no answer at all has no error but its
-    copied translations — exactly what must never be published.
+    Prompt input only: they never fill a wrong option the model left without
+    a misconception (that text would reach learners). The tests below that
+    need a story built from (almost) no answer to be valid but for its copied
+    translations — exactly what must never be published — validate with
+    :func:`_ignoring_derived_distractor_gaps`.
     """
     for mcq in ctx.mcqs:
         mcq.option_misconceptions = [
@@ -1380,9 +1571,33 @@ def _spine_with_x1(raw: dict[str, Any], language: str) -> dict[str, Any]:
     return spine
 
 
-def _failing_question(question_id: str):
+def _ignoring_derived_distractor_gaps(real=None):
+    """``validate_document`` without its errors on the quiz's wrong options left unexplained.
+
+    Those are the derived questions' (``q1``..) ``distractor_without_misconception``
+    errors: what the course's option_misconceptions used to fill before they
+    became prompt input only. A model-authored question's (``x9``) stay.
+    """
+    real = real or validate_document
+
+    def validate(doc: dict[str, Any]):
+        report = real(doc)
+        errors = [
+            e
+            for e in report.errors
+            if not (
+                e.code == "distractor_without_misconception" and e.path.startswith("questions[q")
+            )
+        ]
+        checks = report.checks.model_copy(update={"errors": len(errors)})
+        return report.model_copy(update={"ok": not errors, "errors": errors, "checks": checks})
+
+    return validate
+
+
+def _failing_question(question_id: str, real=None):
     """``validate_document`` plus one hard error on ``question_id`` whenever it is asked."""
-    real = validate_document
+    real = real or validate_document
 
     def validate(doc: dict[str, Any]):
         report = real(doc)
@@ -1410,7 +1625,8 @@ async def test_an_unreadable_answer_never_beats_a_readable_attempt(raw, language
     ctx = _with_course_misconceptions(make_ctx(raw, language))
     spine = _spine_with_x1(raw, language)
     model = FakeClaude(spine, _UNREADABLE, spine)
-    with patch.object(service_module, "validate_document", side_effect=_failing_question("x1")):
+    validate = _failing_question("x1", _ignoring_derived_distractor_gaps())
+    with patch.object(service_module, "validate_document", side_effect=validate):
         generation = await StoryFromLessonService(model).generate_document(
             ctx, system_prompt="system"
         )
@@ -1440,7 +1656,11 @@ async def test_a_story_without_model_content_is_never_published(raw, language, a
         "wrapped spine": {"story_spine": raw[language]["spine"]},
     }[answer]
     model = FakeClaude(response)
-    generation = await StoryFromLessonService(model).generate_document(ctx, system_prompt="system")
+    validate = _ignoring_derived_distractor_gaps()
+    with patch.object(service_module, "validate_document", side_effect=validate):
+        generation = await StoryFromLessonService(model).generate_document(
+            ctx, system_prompt="system"
+        )
 
     assert generation.model_calls == 3
     assert not generation.report.ok
@@ -1473,6 +1693,7 @@ async def test_a_story_without_model_content_is_stored_as_a_draft(raw):
         FakeResult(unit),
         FakeResult(None),
         FakeResult(rows=[lesson]),
+        _module_units(*LESSON_THEN_QUIZ),
         FakeResult(rows=[quiz]),
         FakeResult(None),
     )
@@ -1482,7 +1703,10 @@ async def test_a_story_without_model_content_is_stored_as_a_draft(raw):
     )
     assert len(model.messages) == 3 and session.commits == 1
     assert record.status == "draft" and record.is_valid is False
-    assert [e["code"] for e in record.validation_report["errors"]] == ["no_model_content"]
+    # From the covering quiz nothing is picked without an answer, so the
+    # question floor fails too; the draft says why: no model content.
+    codes = [e["code"] for e in record.validation_report["errors"]]
+    assert codes == ["too_few_questions", "no_model_content"]
     assert record.source_quiz_digest == content_digest(quiz.content)
 
 
@@ -1603,7 +1827,11 @@ async def test_a_clean_salvage_beats_an_answer_valid_only_on_copies(
     thin_answer = _thin_answer(raw, language, thin)
     answers = (thin_answer, real) if thin_first else (real, thin_answer, real)
     model = FakeClaude(*answers)
-    generation = await StoryFromLessonService(model).generate_document(ctx, system_prompt="system")
+    validate = _ignoring_derived_distractor_gaps()
+    with patch.object(service_module, "validate_document", side_effect=validate):
+        generation = await StoryFromLessonService(model).generate_document(
+            ctx, system_prompt="system"
+        )
 
     assert generation.model_calls == 3
     assert generation.report.ok, [e.model_dump() for e in generation.report.errors]

@@ -14,16 +14,54 @@ logger = structlog.get_logger(__name__)
 POLL_SOFT_LIMIT = 300
 POLL_HARD_LIMIT = 320
 
-#: A story's worst case: the unit's lesson generated first (bounded by the
-#: lesson task's own POLL_SOFT_LIMIT, 300 s), then up to 3 story spine calls —
-#: the first one plus MAX_REPAIR_CALLS repairs — of up to ~150 s each, plus
-#: database work. Each spine call is ONE provider call: the story service turns
-#: off the client's own strict-JSON retry (``max_retries=0``), because an
-#: unreadable answer is already an attempt of the repair loop. 300 + 3 x 150 =
-#: 750 s, rounded up with slack; the hard limit follows the soft one by 60 s,
-#: as for the other long content tasks.
-STORY_SOFT_LIMIT = 900
-STORY_HARD_LIMIT = 960
+#: A module story's worst case. Its lesson chapters are made concurrently, at
+#: most ``ModuleStoryService``'s cap (6) at a time, so one run takes about as
+#: long as its slowest chapter: the unit's lesson generated first (the lesson
+#: task's POLL_SOFT_LIMIT, 300 s), the covering quiz generated first when it is
+#: missing (shared by the chapters it covers; the quiz task's 300 s), then up
+#: to 3 spine calls of ~150 s each (1 + MAX_REPAIR_CALLS; each ONE provider
+#: call). 300 + 300 + 450 = 1050 s, rounded up with slack; the hard limit
+#: follows by 60 s, as for the other long content tasks. A module with more
+#: lessons than the cap can still run out on its first open; every chapter
+#: finished is cached, so the next open makes only the rest and converges.
+#: HARD + 60 (the API's dedup TTL) stays well under the broker's 3600 s
+#: visibility timeout and the result backend's expiry.
+MODULE_STORY_SOFT_LIMIT = 1200
+MODULE_STORY_HARD_LIMIT = 1260
+
+#: The API's dedup key for a module story lives this long: claimed for it at
+#: dispatch (covering the queue wait), and armed again for it when the task
+#: starts (covering the run, which the queue wait must not eat into).
+MODULE_STORY_DISPATCH_TTL_S = MODULE_STORY_HARD_LIMIT + 60
+
+#: Connections for a module story: one session per concurrent chapter (6)
+#: plus the setup and merge sessions, which are never open during the fan-out.
+MODULE_STORY_POOL_SIZE = 8
+MODULE_STORY_MAX_OVERFLOW = 2
+
+#: How long the module story task waits, before disposing of its engine, for
+#: the session closes a soft time limit left running (well inside the 60 s
+#: between the soft and the hard limit; a ROLLBACK takes milliseconds).
+MODULE_STORY_CLOSE_GRACE_S = 20.0
+
+
+async def _await_other_tasks(timeout: float) -> None:
+    """Wait (bounded) for every task on this loop but the current one to finish.
+
+    A Celery soft time limit arrives as a signal: while every chapter awaits
+    the model it lands in the loop's ``select()``, outside any task. Then
+    ``asyncio.run``'s teardown cancels every task and the main task's
+    TaskGroup cancels the chapters a second time, so a chapter can end while
+    its ``AsyncSession``'s shielded close task still holds a connection. The
+    engine must not be disposed before those closes return their connections,
+    or they stay open in the (long-lived) worker process.
+    """
+    import asyncio
+
+    current = asyncio.current_task()
+    others = {task for task in asyncio.all_tasks() if task is not current}
+    if others:
+        await asyncio.wait(others, timeout=timeout)
 
 
 def _safe_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
@@ -439,6 +477,44 @@ def generate_case_study_task(
         return {"status": "failed", "error": str(exc)}
 
 
+#: Re-arm the dedup key for the task that starts: when it still names the
+#: task, or when it expired while the task was queued and nobody has claimed
+#: it since. A key another dispatch now holds is left alone.
+_HOLD_IF_OWNER_OR_FREE_SCRIPT = """
+local holder = redis.call("get", KEYS[1])
+if holder == ARGV[1] or not holder then
+  redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2])
+  return 1
+end
+return 0
+"""
+
+
+def _hold_story_dispatch(dedup_key: str | None, task_id: str | None, ttl_s: int) -> None:
+    """Arm the API's dedup key for ``ttl_s`` from now, as the task starts (best effort).
+
+    The key was claimed at dispatch with the same TTL, so the time the task
+    waited in the queue (behind other long tasks, in a worker's prefetch
+    buffer) would otherwise come off its run: the key could expire while the
+    task still runs, and the next view would dispatch a second, paid,
+    generation of the same chapters.
+    """
+    if not dedup_key or not task_id:
+        return
+    try:
+        import redis
+
+        from app.infrastructure.config.settings import settings
+
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            client.eval(_HOLD_IF_OWNER_OR_FREE_SCRIPT, 1, dedup_key, task_id, ttl_s)
+        finally:
+            client.close()
+    except Exception as exc:
+        logger.warning("Story dispatch key not re-armed", key=dedup_key, error=str(exc))
+
+
 def _release_story_dispatch(dedup_key: str | None, task_id: str | None) -> None:
     """Release the API's dedup key if it still names this task (best effort).
 
@@ -467,39 +543,43 @@ def _release_story_dispatch(dedup_key: str | None, task_id: str | None) -> None:
 @celery_app.task(
     bind=True,
     base=CallbackTask,
-    soft_time_limit=STORY_SOFT_LIMIT,
-    time_limit=STORY_HARD_LIMIT,
+    soft_time_limit=MODULE_STORY_SOFT_LIMIT,
+    time_limit=MODULE_STORY_HARD_LIMIT,
     rate_limit="5/m",
 )
-def generate_story_task(
+def generate_module_story_task(
     self,
     module_id: str,
-    unit_id: str,
     language: str,
     country: str = "CI",
     level: int = 1,
     force_regenerate: bool = False,
     dedup_key: str | None = None,
 ) -> dict:
-    """Generate a lesson unit's story mode and cache it in ``story_courses``.
+    """Generate a module's story and cache it in ``story_courses`` (contract C-3).
 
-    Dispatched by ``GET /story-courses/unit/{module_id}/{unit_id}`` the first
-    time a learner opens the Story tab. ``country``/``level`` only choose which
-    cached lesson seeds the story (one story serves every learner of the unit
-    in that language). ``content_id`` in the result is the ``story_courses``
-    row id; an invalid story is stored as a draft and still reports
-    ``complete`` — the client's re-fetch then gets 409 ``story_unavailable``.
+    Dispatched by ``GET /story-courses/module/{module_id}`` the first time a
+    learner opens the module's story, or when it is stale. Every lesson
+    chapter that is missing or stale is made (generating the unit's lesson
+    and its covering quiz first when they are missing), concurrently, each in
+    its own session, then the module story is assembled from the cached
+    chapters (:class:`~app.domain.services.story_module_service.ModuleStoryService`).
+    ``country``/``level`` only choose which missing content is generated and
+    which cached rows are preferred: one story serves every learner of the
+    module in that language.
 
-    ``dedup_key`` is the API's Redis key for this (unit, language); it is
-    released when the task ends, however it ends. Not retried
-    (``autoretry_for`` is unset): every retry would be another paid generation.
-    On the soft time limit nothing half-built is stored — the story row is
-    written in one transaction at the very end, and an interrupted session
-    rolls back — and the task reports ``failed``.
+    Returns ``{"status": "complete", "content_id": <story_courses id>,
+    "is_valid": bool}``; a story that does not validate is stored as a draft
+    and still reports ``complete`` (the client's re-fetch gets 409). Otherwise
+    ``{"status": "failed", "content_id": None, "is_valid": False, "error":
+    ...}``, with ``"failed_units"`` when chapters failed: the module row is
+    then not written, and the chapters that were made stay cached for the
+    next open. On the soft time limit the chapters in flight are cancelled
+    (their sessions roll back) and the task reports ``time_limit_exceeded``.
 
-    Unlike the lesson task this does NOT chain ``assess_and_regenerate_unit_task``:
-    the quality rubric is written for lesson keys and its regenerator has no
-    story branch. The Appendix C validator is the story's quality gate.
+    ``dedup_key`` is the API's Redis key for this (module, language); it is
+    released when the task ends, however it ends. Never retried
+    (``autoretry_for`` is unset): a retry would pay for the chapters again.
     """
     import asyncio
 
@@ -510,76 +590,99 @@ def generate_story_task(
     from app.ai.rag.retriever import SemanticRetriever
     from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
     from app.domain.services.lesson_service import LessonGenerationService
-    from app.domain.services.story_from_lesson_service import StoryFromLessonService
+    from app.domain.services.quiz_service import QuizService
+    from app.domain.services.story_module_service import (
+        ChapterGenerationFailed,
+        ModuleStoryService,
+    )
     from app.infrastructure.config.settings import settings
 
     logger.info(
-        "Starting async story generation",
+        "Starting async module story generation",
         module_id=module_id,
-        unit_id=unit_id,
         language=language,
+        force_regenerate=force_regenerate,
         task_id=self.request.id,
     )
 
     async def _run() -> dict:
         set_ai_context(FEATURE_STORY_GENERATION, module_id=_safe_uuid(module_id))  # ledger
-        engine = create_async_engine(settings.database_url, echo=False, pool_size=5, max_overflow=2)
+        engine = create_async_engine(
+            settings.database_url,
+            echo=False,
+            pool_size=MODULE_STORY_POOL_SIZE,
+            max_overflow=MODULE_STORY_MAX_OVERFLOW,
+        )
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
-            async with session_factory() as session:
-                claude = ClaudeService()
-                embedding_service = EmbeddingService(
-                    api_key=settings.openai_api_key, model=settings.embedding_model
-                )
-                # The retriever is only used if the unit has no cached lesson yet.
-                lesson_service = LessonGenerationService(
-                    claude, SemanticRetriever(embedding_service)
-                )
-                service = StoryFromLessonService(claude, lesson_service=lesson_service)
-                record = await service.get_or_generate_unit_story(
-                    module_id=uuid.UUID(module_id),
-                    unit_id=unit_id,
-                    language=language,
-                    session=session,
-                    level=level,
-                    country=country,
-                    force_regenerate=force_regenerate,
-                )
-                return {
-                    "status": "complete",
-                    "content_id": str(record.id),
-                    "is_valid": bool(record.is_valid),
-                }
+            claude = ClaudeService()
+            # Shared by every chapter: both hold configuration only, and the
+            # embedding client is safe to use concurrently on one loop.
+            retriever = SemanticRetriever(
+                EmbeddingService(api_key=settings.openai_api_key, model=settings.embedding_model)
+            )
+            service = ModuleStoryService(
+                claude,
+                LessonGenerationService(claude, retriever),
+                QuizService(claude, retriever),
+            )
+            record = await service.get_or_generate_module_story(
+                uuid.UUID(module_id),
+                language,
+                session_factory,
+                level=level,
+                country=country,
+                force_regenerate=force_regenerate,
+            )
+            return {
+                "status": "complete",
+                "content_id": str(record.id),
+                "is_valid": bool(record.is_valid),
+            }
         finally:
+            # A chapter session's close can outlive its chapter on a soft
+            # time limit (see _await_other_tasks): let it finish first.
+            await _await_other_tasks(MODULE_STORY_CLOSE_GRACE_S)
             await engine.dispose()
 
+    failed: dict = {"status": "failed", "content_id": None, "is_valid": False}
     try:
+        _hold_story_dispatch(dedup_key, self.request.id, MODULE_STORY_DISPATCH_TTL_S)
         result = asyncio.run(_run())
         logger.info(
-            "Async story generation completed",
+            "Async module story generation completed",
             module_id=module_id,
-            unit_id=unit_id,
+            language=language,
             result=result,
             task_id=self.request.id,
         )
         return result
     except SoftTimeLimitExceeded:
         logger.warning(
-            "Story generation hit its soft time limit; nothing stored",
+            "Module story generation hit its soft time limit; the module story was not written",
             module_id=module_id,
-            unit_id=unit_id,
+            language=language,
             task_id=self.request.id,
         )
-        return {"status": "failed", "error": "time_limit_exceeded"}
+        return {**failed, "error": "time_limit_exceeded"}
+    except ChapterGenerationFailed as exc:
+        logger.warning(
+            "Module story generation failed: chapters could not be made",
+            module_id=module_id,
+            language=language,
+            failed_units=exc.failed_units,
+            task_id=self.request.id,
+        )
+        return {**failed, "error": "chapter_generation_failed", "failed_units": exc.failed_units}
     except Exception as exc:
         logger.error(
-            "Async story generation failed",
+            "Async module story generation failed",
             module_id=module_id,
-            unit_id=unit_id,
+            language=language,
             exception=str(exc),
             task_id=self.request.id,
         )
-        return {"status": "failed", "error": str(exc)}
+        return {**failed, "error": str(exc)}
     finally:
         _release_story_dispatch(dedup_key, self.request.id)
 

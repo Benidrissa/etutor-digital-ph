@@ -1,6 +1,7 @@
 /**
  * Recording that a learner finished a lesson unit — by the "Mark complete"
- * button or by reaching the end of the lesson's story.
+ * button, or by finishing that lesson's chapter of the module story (once
+ * per chapter; quiz and case-study chapters never complete their unit).
  *
  * On 2G `navigator.onLine` is often true while requests still die, so being
  * "online" is not enough to trust the POST. When the request never gets an

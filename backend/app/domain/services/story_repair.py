@@ -32,6 +32,13 @@ steps hold English and French respectively, whatever the target language.
 Story lines are capped at 100 characters in *both* languages (C2) so a story
 validates whether a validator reads those fields by language or by position.
 
+A lesson story is also one chapter of its module's story, which
+:mod:`app.domain.services.story_module_assembly` joins without a model call.
+For that (contract C-1) every chapter has the same :func:`pinned_cast`, its
+four deterministic frame steps carry a ``frame`` marker, every derived
+question names its source in ``derived_from`` and the document records the
+builder in ``sira_builder``.
+
 When the model leaves one language out, the builder still fills the gap by
 copying the other language — a story must always have both keys — but every
 such copy is recorded as a ``missing_translation`` issue, with the path of the
@@ -98,6 +105,20 @@ MINIGAME_ID = "g1"
 TUTOR_ID = "margo"
 MENTOR_ID = "mentor"
 PEER_ID = "peer"
+
+#: Written as the document's top-level ``sira_builder``. A lesson story is
+#: one chapter of its module's story (contract C-1); a cached chapter whose
+#: ``sira_builder`` differs was built by an older builder and is stale.
+CHAPTER_BUILDER_VERSION = 2
+
+#: The ``frame`` marker of the deterministic frame steps (C-1). The module
+#: assembler edits these steps by marker, never by matching their text, and
+#: no other step carries the key.
+FRAME_OPENER = "opener"
+FRAME_OBJECTIVES = "objectives"
+FRAME_FINISHED = "finished"
+FRAME_ASK_TUTOR = "ask_tutor"
+FRAMES = (FRAME_OPENER, FRAME_OBJECTIVES, FRAME_FINISHED, FRAME_ASK_TUTOR)
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _DERIVED_ID_RE = re.compile(r"^q\d+$")
@@ -410,6 +431,7 @@ class QuizMcq:
     explanation: str = ""
     #: Track A's ``option_misconceptions``: why each wrong option is wrong,
     #: positional, ``None`` at the correct index. Absent on older quizzes.
+    #: Prompt input only: never copied into a story a learner receives.
     option_misconceptions: list[str | None] = field(default_factory=list)
 
     @property
@@ -832,26 +854,14 @@ def _derived_question(
             continue
         item = distractors.get(index, {})
         option_text = {"en": choice["en"], "fr": choice["fr"]}
-        known = mcq.option_misconceptions[index] if index < len(mcq.option_misconceptions) else None
-        # The course's own misconception text exists in the target language
-        # only: declaring it copies that text under the home key too.
-        known_missing = [
-            (
-                f"{path}.distractors[{ids[index]}].misconception",
-                home,
-                f"no misconception for this wrong option; the course's"
-                f" {_LANGUAGE_NAMES[target]} wording was copied",
-            )
-        ]
+        # The course's option_misconceptions are prompt input only: they never
+        # fill a gap the model left, or they would reach the learner. An
+        # undeclared id is declared from the wrong option itself; a wrong
+        # option without one is left to the repair loop
+        # (distractor_without_misconception), as for a quiz that has none.
         misconception = registry.resolve(
-            item.get("misconception"),
-            {lang: known for lang in LANGS} if known else _wrong_choice_statement(option_text),
-            known_missing if known else None,
+            item.get("misconception"), _wrong_choice_statement(option_text)
         )
-        if misconception is None and known:
-            misconception = registry.declare(
-                f"m_{mcq.ref}_{ids[index]}", {"en": known, "fr": known}, known_missing
-            )
         if misconception:
             choice["misconception"] = misconception
         if misconception:
@@ -872,7 +882,12 @@ def _derived_question(
         "choices": choices,
         "traps": traps,
         "hints": hints,
-        "derived_from": mcq.source_id,
+        # C-1: which quiz unit and which of its questions this one copies.
+        # The module assembler de-duplicates on the pair across chapters.
+        "derived_from": {
+            "quiz_unit": ctx.quiz_unit_number or ctx.unit_number,
+            "question_id": mcq.source_id,
+        },
     }
     if situation is not None:
         question["stem"] = {lang: situation[lang] for lang in LANGS}
@@ -1335,45 +1350,30 @@ def _minigame(
 # --------------------------------------------------------------------------
 
 
-def _character_name(raw: Any, default: str) -> str:
-    name = _as_str(raw)
-    if not name or len(name) > 40 or "{" in name or "}" in name:
-        return default
-    return name
+def pinned_cast(is_kids: bool, language: str) -> list[dict[str, Any]]:
+    """The one cast of every chapter of every module story (contract C-1).
 
-
-def _cast(spine: dict[str, Any], ctx: LessonStoryContext) -> list[dict[str, Any]]:
-    names = spine.get("characters") if isinstance(spine.get("characters"), dict) else {}
-    if ctx.is_kids:
-        mentor = {
-            "id": MENTOR_ID,
-            "name": _character_name(
-                names.get("mentor"), "M. Kaboré" if ctx.target == "fr" else "Mr Kaboré"
-            ),
-            "kind": "adult",
-            "art": "mr_kabore",
-        }
-        peer = {
-            "id": PEER_ID,
-            "name": _character_name(names.get("peer"), "Awa"),
-            "kind": "child",
-            "art": "friend",
-        }
-    else:
-        mentor = {
-            "id": MENTOR_ID,
-            "name": _character_name(names.get("mentor"), "Dr Kaboré"),
-            "kind": "adult",
-            "art": "mr_kabore",
-        }
-        peer = {
-            "id": PEER_ID,
-            "name": _character_name(names.get("peer"), "Awa"),
-            "kind": "adult",
-            "art": "maman_olivia",
-        }
+    The names match the fixed art and never come from the model: the spine
+    has no ``characters`` key any more, and one that is sent anyway is
+    ignored, so every chapter of a module tells the story of the same people.
+    Fresh dicts on every call: callers may edit what they get.
+    """
     margo = {"id": TUTOR_ID, "name": "Margo", "kind": "ai_tutor", "art": "margo"}
+    if is_kids:
+        mentor_name = "M. Kaboré" if language == "fr" else "Mr Kaboré"
+        mentor = {"id": MENTOR_ID, "name": mentor_name, "kind": "adult", "art": "mr_kabore"}
+        peer = {"id": PEER_ID, "name": "Awa", "kind": "child", "art": "friend"}
+    else:
+        mentor = {"id": MENTOR_ID, "name": "Dr Kaboré", "kind": "adult", "art": "mr_kabore"}
+        peer = {"id": PEER_ID, "name": "Awa", "kind": "adult", "art": "maman_olivia"}
     return [margo, mentor, peer]
+
+
+def _framed(step: dict[str, Any] | None, marker: str) -> dict[str, Any] | None:
+    """``step`` with its C-1 ``frame`` marker (one of :data:`FRAMES`)."""
+    if step is not None:
+        step["frame"] = marker
+    return step
 
 
 def _line(kind: str, value: dict[str, str] | None, who: str | None = None) -> dict | None:
@@ -1398,6 +1398,39 @@ _BRIDGES = (
     ({"en": "Take a breath. One more question.", "fr": "Respire un coup. Encore une question."}),
     ({"en": "Good work so far, {child}.", "fr": "Beau travail jusqu'ici, {child}."}),
 )
+
+
+def bridge_line(index: int) -> dict[str, Any]:
+    """The ``index``-th bridge: a Margo line set between two runs of asks."""
+    return _line("say", _BRIDGES[index % len(_BRIDGES)], TUTOR_ID) or {}
+
+
+def enforce_ask_spacing(chapters: list[dict[str, Any]], *, first_bridge: int = 0) -> int:
+    """Insert a bridge line before any ask that would make the run too long.
+
+    The run is counted over the flattened story, across scene and chapter
+    boundaries, exactly as the validator counts it, and never exceeds
+    :data:`MAX_ASKS_IN_A_ROW`. Bridges cycle from ``first_bridge``; returns the
+    index of the next one. Shared by a lesson story's layout and the module
+    assembler, so both space questions the same way.
+    """
+    bridge = first_bridge
+    run = 0
+    for chapter in chapters:
+        for scene in chapter["scenes"]:
+            steps: list[dict[str, Any]] = []
+            for step in scene["steps"]:
+                if step["type"] == "ask":
+                    if run >= MAX_ASKS_IN_A_ROW:
+                        steps.append(bridge_line(bridge))
+                        bridge += 1
+                        run = 0
+                    run += 1
+                else:
+                    run = 0
+                steps.append(step)
+            scene["steps"] = steps
+    return bridge
 
 
 class _Layout:
@@ -1442,31 +1475,9 @@ class _Layout:
             "fr": [question.situation["fr"]],
         }
 
-    def bridge(self) -> dict[str, Any]:
-        text = _BRIDGES[self._bridge % len(_BRIDGES)]
-        self._bridge += 1
-        return _line("say", text, TUTOR_ID) or {}
-
     def enforce_spacing(self) -> None:
-        """Insert a bridge line before any ask that would make the run too long.
-
-        The run is counted over the flattened story, across scene and chapter
-        boundaries, exactly as the validator counts it.
-        """
-        run = 0
-        for chapter in self.chapters:
-            for scene in chapter["scenes"]:
-                steps: list[dict[str, Any]] = []
-                for step in scene["steps"]:
-                    if step["type"] == "ask":
-                        if run >= MAX_ASKS_IN_A_ROW:
-                            steps.append(self.bridge())
-                            run = 0
-                        run += 1
-                    else:
-                        run = 0
-                    steps.append(step)
-                scene["steps"] = steps
+        """Insert a bridge line before any ask that would make the run too long."""
+        self._bridge = enforce_ask_spacing(self.chapters, first_bridge=self._bridge)
 
 
 def _image_step(ctx: LessonStoryContext) -> dict[str, Any] | None:
@@ -1686,7 +1697,7 @@ def _layout(
         },
     )
     intro_steps = [
-        opener,
+        _framed(opener, FRAME_OPENER),
         _line("narrate", lines["opening"]),
         _line(
             "say",
@@ -1698,9 +1709,12 @@ def _layout(
             MENTOR_ID,
         ),
         _image_step(ctx),
-        layout.concept(
-            {"en": "What you will learn", "fr": "Ce que tu vas apprendre"},
-            {lang: [o[lang] for o in objectives] for lang in LANGS},
+        _framed(
+            layout.concept(
+                {"en": "What you will learn", "fr": "Ce que tu vas apprendre"},
+                {lang: [o[lang] for o in objectives] for lang in LANGS},
+            ),
+            FRAME_OBJECTIVES,
         ),
     ]
     intro["steps"] = [s for s in intro_steps if s]
@@ -1777,22 +1791,28 @@ def _layout(
         closing_steps += [{"type": "photo", "ref": e["id"]} for e in exercises]
     closing_steps.append(_line("narrate", lines["wrap_up"]))
     closing_steps.append(
-        _line(
-            "narrate",
-            {
-                "en": "Well done, {child}: you have finished this story.",
-                "fr": "Bravo, {child} : tu as terminé cette histoire.",
-            },
+        _framed(
+            _line(
+                "narrate",
+                {
+                    "en": "Well done, {child}: you have finished this story.",
+                    "fr": "Bravo, {child} : tu as terminé cette histoire.",
+                },
+            ),
+            FRAME_FINISHED,
         )
     )
     closing_steps.append(
-        _line(
-            "say",
-            {
-                "en": "Questions about this lesson? Ask me any time, {child}.",
-                "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
-            },
-            TUTOR_ID,
+        _framed(
+            _line(
+                "say",
+                {
+                    "en": "Questions about this lesson? Ask me any time, {child}.",
+                    "fr": "Une question sur cette leçon ? Demande-moi quand tu veux, {child}.",
+                },
+                TUTOR_ID,
+            ),
+            FRAME_ASK_TUTOR,
         )
     )
     closing["steps"] = [s for s in closing_steps if s]
@@ -1867,14 +1887,15 @@ def _tutor(spine: dict[str, Any], ctx: LessonStoryContext, objectives: list[dict
     }
 
 
-def _rewards(ctx: LessonStoryContext) -> dict[str, Any]:
+def rewards_for(is_kids: bool) -> dict[str, Any]:
+    """The rewards block: mangoes for children, points for adults."""
     rewards = copy.deepcopy(REWARD_DEFAULTS)
-    if not ctx.is_kids:
+    if not is_kids:
         rewards["unit"] = {"en": "points", "fr": "points"}
     return rewards
 
 
-def _predicted_typical(
+def predicted_typical(
     questions: list[dict], exercises: list[dict], minigame: dict | None
 ) -> dict[str, Any]:
     """C.9's typical run: two thirds right first time, the rest on the retry."""
@@ -2091,6 +2112,7 @@ def _assemble(
     doc: dict[str, Any] = {
         "format": FORMAT_VERSION,
         "id": ctx.slug,
+        "sira_builder": CHAPTER_BUILDER_VERSION,
         "course": ctx.course_title[ctx.target] or ctx.module_title[ctx.target] or "Sira",
         "unit": f"{ctx.unit_number} · {ctx.unit_title[ctx.target]}",
         "week": max(int(ctx.module_number or 1), 1),
@@ -2102,7 +2124,7 @@ def _assemble(
         "glossary": [],
         "calibration": [],
         "misconceptions": registry.used_only(used_misconceptions),
-        "cast": _cast(spine, ctx),
+        "cast": pinned_cast(ctx.is_kids, ctx.target),
         "facts": [],
         "chapters": chapters,
         "questions": questions,
@@ -2110,10 +2132,10 @@ def _assemble(
         "minigames": [minigame] if minigame else [],
         "videos": [],
         "tutor": _tutor(spine, ctx, objectives),
-        "rewards": _rewards(ctx),
+        "rewards": rewards_for(ctx.is_kids),
         "art_requests": [],
         "engine_requests": [],
-        "checks": {"predicted_typical": _predicted_typical(questions, exercises, minigame)},
+        "checks": {"predicted_typical": predicted_typical(questions, exercises, minigame)},
     }
     enforce_quiz_fidelity(doc, ctx)
     return StoryBuild(
@@ -2132,6 +2154,7 @@ def minimal_document(ctx: LessonStoryContext) -> dict[str, Any]:
     return {
         "format": FORMAT_VERSION,
         "id": ctx.slug,
+        "sira_builder": CHAPTER_BUILDER_VERSION,
         "course": ctx.course_title.get(ctx.target) or "Sira",
         "unit": f"{ctx.unit_number} · {ctx.unit_title.get(ctx.target, '')}",
         "week": max(int(ctx.module_number or 1), 1),
