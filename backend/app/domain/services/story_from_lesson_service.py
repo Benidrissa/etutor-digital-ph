@@ -70,7 +70,7 @@ from app.domain.services.story_bible import (
     StoryBible,
     default_bible,
     find_bible,
-    mission_of,
+    mission_for,
 )
 from app.domain.services.story_course_validator import validate_story_course
 
@@ -568,7 +568,7 @@ def validate_document(doc: dict[str, Any]) -> ValidationReport:
                 )
             ],
         )
-    return repair.publishable(validate_story_course(course), doc)
+    return repair.publishable(validate_story_course(course, generated=True), doc)
 
 
 def _parses(doc: dict[str, Any]) -> bool:
@@ -729,7 +729,12 @@ def build_context(
         quiz_scope="covering" if quiz_unit is not None else "unit",
         quiz_unit_number=str(quiz_unit.unit_number) if quiz_unit is not None else None,
         bible=bible.content,
-        mission=mission_of(bible.content, module.id),
+        mission=mission_for(
+            bible.content,
+            module.id,
+            module.module_number,
+            pair(module.title_en, module.title_fr),
+        ),
         arc=arc,
         country=country,
     )
@@ -954,11 +959,48 @@ class StoryFromLessonService:
         """
         report = repair.settle_translations(attempt.report)
         if report.ok:
-            return StoryGeneration(doc=attempt.build.doc, report=report, model_calls=0)
-        salvaged = self._salvage(ctx, attempt.spine, attempt.build, report)
-        if salvaged is None or salvaged.doc == empty_doc:
-            return None
-        return salvaged
+            result: StoryGeneration | None = StoryGeneration(
+                doc=attempt.build.doc, report=report, model_calls=0
+            )
+        else:
+            result = self._salvage(ctx, attempt.spine, attempt.build, report)
+            if result is None or result.doc == empty_doc:
+                return None
+        return self._with_fallback_cards(ctx, attempt.spine, result)
+
+    def _with_fallback_cards(
+        self, ctx: repair.LessonStoryContext, spine: dict[str, Any], result: StoryGeneration
+    ) -> StoryGeneration:
+        """``result`` with a card from the lesson for each concept it never taught.
+
+        Once the repair budget is spent a missed concept is only a warning, but
+        the chapter completes its lesson unit: the learner must see every
+        concept, so the lesson's own text stands in for the missing card.
+        """
+        if not any(w.code == repair.CONCEPT_NOT_COVERED for w in result.report.warnings):
+            return result
+        dropped = result.dropped
+        attempted = self._build_and_validate(
+            ctx,
+            spine,
+            drop_question_ids=dropped.get("questions", []),
+            drop_exercise_ids=dropped.get("exercises", []),
+            drop_minigame=bool(dropped.get("minigames")),
+            cover_missing_concepts=True,
+        )
+        if attempted is None:
+            return result
+        build, report = attempted
+        report = repair.settle_translations(report)
+        if not report.ok:
+            return result
+        return StoryGeneration(
+            doc=build.doc,
+            report=report,
+            model_calls=0,
+            salvaged=result.salvaged,
+            dropped=dict(dropped),
+        )
 
     def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:
         """The draft stored when no attempt could be built; it is never served.

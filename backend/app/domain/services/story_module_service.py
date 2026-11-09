@@ -86,13 +86,14 @@ from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.story_course import StoryCourseRecord
 from app.domain.services import story_repair as repair
 from app.domain.services.story_bible import (
+    DEFAULTED,
     BibleModule,
     StoryBible,
     StoryBibleService,
     default_bible,
     find_bible,
     find_bible_digest,
-    mission_of,
+    mission_for,
 )
 from app.domain.services.story_from_lesson_service import (
     MAX_REPAIR_CALLS,
@@ -387,14 +388,61 @@ def _manifest_is_current(manifest: dict[str, Any], bible_digest: str | None) -> 
     """The manifest's generator markers: assembler, chapter generator and bible.
 
     A module story made by the generator before #2674 records neither the
-    generator nor a bible, so it is stale and remade on next access.
+    generator nor a bible, so it is stale and remade on next access. Nor is a
+    draft the assembler itself failed to make valid ever current: it is merged
+    again on the next access (no model call: its chapters are cached).
     """
     return (
         manifest.get("assembler") == MODULE_ASSEMBLER_VERSION
         and manifest.get("generator") == repair.CHAPTER_BUILDER_VERSION
         and bible_digest is not None
         and manifest.get("bible") == bible_digest
+        and not manifest.get("assembly_failed")
     )
+
+
+def _pinned_quiz_rows(manifest: Any) -> list[list[Any]]:
+    """The quiz rows the rally was made from: ``[[id, revision, digest], ...]``."""
+    rally = manifest.get("rally") if isinstance(manifest, dict) else None
+    rows = rally.get("quiz_rows") if isinstance(rally, dict) else None
+    return [row for row in rows or [] if isinstance(row, list) and len(row) == 3]
+
+
+async def _rally_quizzes_unchanged(session: AsyncSession, manifest: Any) -> bool:
+    """The exact quiz rows the rally used still hold the same revision and content.
+
+    One query, and only for a module story with a rally. Which row would be
+    chosen today (another level or country) is not asked: that is the
+    chapters' affair, and would flap.
+    """
+    pinned = _pinned_quiz_rows(manifest)
+    if not pinned:
+        return True
+    ids = []
+    for row_id, _revision, _digest in pinned:
+        try:
+            ids.append(uuid.UUID(str(row_id)))
+        except ValueError:
+            return False
+    rows = {
+        row.id: row
+        for row in (
+            await session.execute(
+                select(
+                    GeneratedContent.id,
+                    GeneratedContent.content_revision,
+                    GeneratedContent.content,
+                ).where(GeneratedContent.id.in_(ids))
+            )
+        ).all()
+    }
+    for row_id, revision, digest in pinned:
+        row = rows.get(uuid.UUID(str(row_id)))
+        if row is None or (row.content_revision or 1) != revision:
+            return False
+        if content_digest(row.content) != digest:
+            return False
+    return True
 
 
 async def current_bible_digest(
@@ -423,7 +471,8 @@ async def module_story_is_fresh(
     changed (:func:`roster_digest`), a lesson's chapter row is not the one (id
     and ``updated_at``) its manifest records, or any of those chapters is
     stale (:func:`chapters_are_fresh`, one batched query for all of them, and
-    its bible and part in the mission).
+    its bible and part in the mission) — or, with a rally, when a quiz row the
+    rally was made from was regenerated or edited (a fifth query).
 
     ``units`` is the module's current roster (:func:`load_story_units`) when
     the caller has just read it; it saves the first query.
@@ -445,7 +494,9 @@ async def module_story_is_fresh(
     if record.source_rows.get("bible") != bible_digest:
         return False
     states = await _chapter_states(session, units, language, bible_digest)
-    return _module_story_matches(record, units, states, bible_digest)
+    if not _module_story_matches(record, units, states, bible_digest):
+        return False
+    return await _rally_quizzes_unchanged(session, record.source_rows)
 
 
 # --------------------------------------------------------------------------
@@ -591,6 +642,7 @@ class ModuleStoryService:
                 existing is not None
                 and not force_regenerate
                 and _module_story_matches(existing, units, states, bible_digest)
+                and await _rally_quizzes_unchanged(session, existing.source_rows)
             ):
                 return existing
             previous_rally = (
@@ -692,7 +744,10 @@ class ModuleStoryService:
         if module.course_id is None or module.course is None:
             return default_bible(detect_audience(module.course).is_kids)
         row = await find_bible(session, module.course_id)
-        return StoryBible(content=row.content, digest=row.digest) if row is not None else None
+        if row is None or row.model == DEFAULTED:
+            # None either way: a bible of defaults waits for its one retry.
+            return None
+        return StoryBible(content=row.content, digest=row.digest)
 
     @staticmethod
     async def _context(
@@ -886,7 +941,7 @@ class ModuleStoryService:
             return None
         async with session_factory() as session:
             sources = await _chapter_sources(session, ctx.language, units)
-            rally_ctx, inputs = await _rally_context(
+            rally_ctx, inputs, pinned = await _rally_context(
                 session, ctx, units, sources, quiz_units, level=level, country=country
             )
         if (
@@ -895,9 +950,16 @@ class ModuleStoryService:
             and previous.get("inputs") == inputs
             and previous.get("status") in ("ready", "draft", "none")
         ):
-            return previous
+            # The same inputs, quiz contents included: pin the rows read now.
+            return {**previous, "quiz_rows": pinned}
         if rally_ctx is None:
-            return {"inputs": inputs, "status": "none", "doc": None, "errors": []}
+            return {
+                "inputs": inputs,
+                "quiz_rows": pinned,
+                "status": "none",
+                "doc": None,
+                "errors": [],
+            }
         try:
             with ai_usage_context(
                 FEATURE_STORY_GENERATION, module_id=ctx.module_id, course_id=course_id
@@ -930,6 +992,9 @@ class ModuleStoryService:
         )
         return {
             "inputs": inputs,
+            # The exact quiz rows it was made from: an edit of one makes the
+            # module story stale (module_story_is_fresh).
+            "quiz_rows": pinned,
             "status": "ready" if ok else "draft",
             "doc": generation.doc if ok else None,
             "errors": sorted({issue.code for issue in generation.report.errors})[:10],
@@ -981,6 +1046,9 @@ class ModuleStoryService:
             if rally is not None:
                 manifest["rally"] = rally
             statuses = [entry["status"] for entry in entries]
+            if not report.ok and "ready" in statuses:
+                # Never fresh: merged again, at no model cost, on the next access.
+                manifest["assembly_failed"] = True
             if not report.ok:
                 # Valid chapters that do not merge into a valid story are an
                 # assembler bug; with no chapter ready it is just too thin.
@@ -1172,8 +1240,12 @@ async def _rally_context(
     *,
     level: int,
     country: str,
-) -> tuple[repair.LessonStoryContext | None, str]:
-    """:func:`rally_context` with each quiz unit's cached quiz read from the database."""
+) -> tuple[repair.LessonStoryContext | None, str, list[list[Any]]]:
+    """:func:`rally_context` with each quiz unit's cached quiz read from the database.
+
+    Also returns the rows it read, ``[[id, revision, content digest], ...]``,
+    pinned in the manifest so that an edit of one makes the story stale.
+    """
     quizzes: list[tuple[StoryUnit, Any]] = []
     for quiz_unit in quiz_units:
         row = await select_unit_content_row(
@@ -1181,7 +1253,12 @@ async def _rally_context(
         )
         if row is not None:
             quizzes.append((quiz_unit, row))
-    return rally_context(ctx, sources, quiz_units, quizzes, country=country)
+    pinned = [
+        [str(row.id), row.content_revision or 1, content_digest(row.content)]
+        for _unit, row in quizzes
+    ]
+    rally_ctx, inputs = rally_context(ctx, sources, quiz_units, quizzes, country=country)
+    return rally_ctx, inputs, pinned
 
 
 def rally_context(
@@ -1247,7 +1324,7 @@ def rally_context(
         mcq.ref = f"q{number}"
 
     bible = ctx.story_bible
-    mission = mission_of(bible.content, ctx.module_id)
+    mission = mission_for(bible.content, ctx.module_id, ctx.module_number, ctx.module_title)
     inputs = content_digest(
         [
             repair.CHAPTER_BUILDER_VERSION,

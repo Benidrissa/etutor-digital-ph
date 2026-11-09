@@ -52,6 +52,24 @@ VISUALS = (
     "image",
 )
 
+#: The catalog visuals the player draws today, with their exact params
+#: (``frontend/components/story/concept-visual.tsx``): ``{param: (required,
+#: description)}``. Any other visual shows "this picture is not available
+#: yet", so a generated story may only use these (or a lesson figure,
+#: ``image``).
+DRAWN_VISUALS: dict[str, dict[str, tuple[bool, str]]] = {
+    "hundred_square": {"highlight": (True, '"primes" or "multiples:N" (N a whole number)')},
+    "factor_tree": {
+        "n": (True, "a whole number from 4 to 1000"),
+        "first_split": (False, "[a, b], two whole numbers above 1 with a × b = n"),
+    },
+    "division_ladder": {"n": (True, "a whole number from 4 to 1000")},
+    "venn_primes": {
+        "a": (True, "a whole number from 2 to 1000"),
+        "b": (True, "a whole number from 2 to 1000"),
+    },
+}
+
 #: Scene backdrops (A.8). Open via ``art_requests``.
 PLACES = (
     "home",

@@ -288,9 +288,15 @@ def _slug(value: Any) -> str:
     return _SLUG_RE.sub("_", _str(value).lower()).strip("_")[:30]
 
 
-def _pair(value: Any) -> dict[str, str] | None:
+#: Lengths of a bible's bilingual texts: a place's title, a fact.
+TITLE_LIMIT = 80
+FACT_LIMIT = 200
+
+
+def _pair(value: Any, limit: int | None = TITLE_LIMIT) -> dict[str, str] | None:
+    """``{"en", "fr"}`` from a model value, each cut at ``limit`` (``None``: not cut)."""
     if isinstance(value, dict):
-        en, fr = _str(value.get("en"), 80), _str(value.get("fr"), 80)
+        en, fr = _str(value.get("en"), limit), _str(value.get("fr"), limit)
         if en or fr:
             return {"en": en or fr, "fr": fr or en}
     return None
@@ -383,7 +389,8 @@ def _cast(raw_cast: Any, audience: str) -> list[dict[str, Any]]:
     return cast
 
 
-def _places(raw_places: Any, audience: str) -> list[dict[str, Any]]:
+def _given_places(raw_places: Any) -> list[dict[str, Any]]:
+    """The places of the model's answer that pass the checks (at most MAX_PLACES)."""
     places: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in raw_places if isinstance(raw_places, list) else []:
@@ -396,6 +403,12 @@ def _places(raw_places: Any, audience: str) -> list[dict[str, Any]]:
             continue
         seen.add(place_id)
         places.append({"id": place_id, "title": title, "look": look.rstrip(" .")})
+    return places
+
+
+def _places(raw_places: Any, audience: str) -> list[dict[str, Any]]:
+    places = _given_places(raw_places)
+    seen = {place["id"] for place in places}
     for place_id, en, fr, look in _DEFAULT_PLACES[audience]:
         if len(places) >= MIN_PLACES:
             break
@@ -410,7 +423,7 @@ def _facts(raw_facts: Any, place_ids: set[str]) -> list[dict[str, Any]]:
     for item in raw_facts if isinstance(raw_facts, list) else []:
         if not isinstance(item, dict) or len(facts) >= MAX_FACTS:
             continue
-        text = _pair({"en": item.get("en"), "fr": item.get("fr")})
+        text = _pair({"en": item.get("en"), "fr": item.get("fr")}, FACT_LIMIT)
         if text is None:
             continue
         source = _str(item.get("source"), 200)
@@ -452,7 +465,7 @@ def _missions(raw_missions: Any, modules: Sequence[BibleModule]) -> dict[str, di
         number = item.get("module")
         if isinstance(number, str) and number.strip().isdigit():
             number = int(number.strip())
-        text = _pair({"en": _str(item.get("en"), 160), "fr": _str(item.get("fr"), 180)})
+        text = _pair({"en": _str(item.get("en"), 160), "fr": _str(item.get("fr"), 180)}, None)
         if isinstance(number, int) and not isinstance(number, bool) and text:
             by_number.setdefault(number, text)
     return {
@@ -533,6 +546,51 @@ def mission_of(content: dict[str, Any], module_id: uuid.UUID | str | None) -> di
     return dict(mission) if isinstance(mission, dict) else None
 
 
+def mission_for(
+    content: dict[str, Any],
+    module_id: uuid.UUID | str,
+    number: int | None,
+    title: dict[str, str],
+) -> dict[str, str]:
+    """The module's mission: the bible's, else one built from the module's title.
+
+    A module added after the bible has none stored; the fallback is
+    deterministic, so it never makes a chapter stale, and the stored bible
+    (and its digest) is left as it is.
+    """
+    stored = mission_of(content, module_id)
+    if stored:
+        return stored
+    module = BibleModule(
+        module_id if isinstance(module_id, uuid.UUID) else uuid.UUID(str(module_id)),
+        int(number or 1),
+        {
+            "en": title.get("en") or title.get("fr", ""),
+            "fr": title.get("fr") or title.get("en", ""),
+        },
+    )
+    return _default_mission(module)
+
+
+def usable_answer(raw: Any) -> dict[str, Any] | None:
+    """The model's bible answer, unwrapped, or ``None`` when it gives nothing usable.
+
+    A lone wrapper key (``{"bible": {...}}``) is opened. An answer with no cast
+    member under a known role and no place that passes the checks is not
+    usable: stored, it would be the defaults forever.
+    """
+    if not isinstance(raw, dict):
+        return None
+    answer = {k: v for k, v in raw.items() if k != "__complete"}
+    if "cast" not in answer and "places" not in answer and len(answer) == 1:
+        (inner,) = answer.values()
+        if isinstance(inner, dict):
+            answer = {k: v for k, v in inner.items() if k != "__complete"}
+    if not _by_role(answer.get("cast")) and not _given_places(answer.get("places")):
+        return None
+    return answer
+
+
 @dataclass(frozen=True)
 class StoryBible:
     """A course bible as the generator uses it: its content and digest."""
@@ -560,7 +618,18 @@ def default_bible(is_kids: bool, modules: Sequence[BibleModule] = ()) -> StoryBi
 
 
 class StoryBibleUnavailable(RuntimeError):
-    """The model's answers for the bible could not be read."""
+    """The model's answers for the bible could not be read or used."""
+
+
+class _CallImpossible(RuntimeError):
+    """The model could not be called at all (no answer, not a bad one)."""
+
+
+#: ``story_course_bibles.model`` of a bible made of defaults because the model
+#: could not be called: the next story of the course tries the call once more.
+DEFAULTED = "defaulted"
+#: ... and once that retry failed too: kept for good (no retry, no churn).
+DEFAULTED_KEPT = "defaulted-kept"
 
 
 async def find_bible(session: AsyncSession, course_id: uuid.UUID) -> Any | None:
@@ -575,16 +644,25 @@ async def find_bible(session: AsyncSession, course_id: uuid.UUID) -> Any | None:
 
 
 async def find_bible_digest(session: AsyncSession, course_id: uuid.UUID | None) -> str | None:
-    """Only the digest of a course's bible: what freshness compares."""
+    """Only the digest of a course's bible: what freshness compares.
+
+    ``None`` for a bible of defaults still waiting for its retry
+    (:data:`DEFAULTED`): its stories are not fresh, so the next one retries.
+    """
     if course_id is None:
         return None
     from app.domain.models.story_bible import StoryCourseBible
 
-    return (
+    row = (
         await session.execute(
-            select(StoryCourseBible.digest).where(StoryCourseBible.course_id == course_id)
+            select(StoryCourseBible.digest, StoryCourseBible.model).where(
+                StoryCourseBible.course_id == course_id
+            )
         )
-    ).scalar_one_or_none()
+    ).first()
+    if row is None or row.model == DEFAULTED:
+        return None
+    return row.digest
 
 
 def _lock_key(course_id: uuid.UUID) -> int:
@@ -624,35 +702,63 @@ class StoryBibleService:
         Creation is serialised per course (an advisory lock held until the
         commit), so two module stories of one course started together make
         one bible, with one model call.
+
+        An answer that cannot be read or used raises
+        :class:`StoryBibleUnavailable` and stores nothing, so the next story
+        asks again. Only when the model cannot be called at all is a bible of
+        defaults stored, marked :data:`DEFAULTED`; the next story of the course
+        tries the call once more and replaces it, or keeps it for good
+        (:data:`DEFAULTED_KEPT`).
         """
         row = await find_bible(session, course.id)
-        if row is None:
-            await _lock(session, course.id)
-            row = await find_bible(session, course.id)
-        if row is not None:
+        if row is not None and row.model != DEFAULTED:
+            return StoryBible(content=row.content, digest=row.digest)
+        await _lock(session, course.id)
+        row = await find_bible(session, course.id)
+        if row is not None and row.model != DEFAULTED:
             return StoryBible(content=row.content, digest=row.digest)
 
         from app.ai.prompts.audience import detect_audience
         from app.domain.models.story_bible import StoryCourseBible
 
         is_kids = detect_audience(course).is_kids
-        raw = await self._call(course, modules, is_kids=is_kids, country=country)
+        try:
+            raw = await self._call(course, modules, is_kids=is_kids, country=country)
+            model = (
+                _str(
+                    getattr(self.claude_service, "model", None)
+                    or getattr(self.claude_service, "_model", None),
+                    100,
+                )
+                or None
+            )
+        except (_CallImpossible, StoryBibleUnavailable) as exc:
+            if row is not None:
+                # The one retry of a bible of defaults failed: keep it for good.
+                row.model = DEFAULTED_KEPT
+                await session.commit()
+                logger.warning("Story bible of defaults kept", course_id=str(course.id))
+                return StoryBible(content=row.content, digest=row.digest)
+            if isinstance(exc, StoryBibleUnavailable):
+                raise
+            raw, model = {}, DEFAULTED
+            logger.warning(
+                "Story bible model call impossible: defaults stored", course_id=str(course.id)
+            )
         content = normalise_bible(raw, is_kids=is_kids, modules=modules, country=country)
         bible = StoryBible.of(content)
-        model = _str(
-            getattr(self.claude_service, "model", None)
-            or getattr(self.claude_service, "_model", None),
-            100,
-        )
-        session.add(
-            StoryCourseBible(
-                id=uuid.uuid4(),
-                course_id=course.id,
-                content=content,
-                digest=bible.digest,
-                model=model or None,
+        if row is not None:
+            row.content, row.digest, row.model = content, bible.digest, model
+        else:
+            session.add(
+                StoryCourseBible(
+                    id=uuid.uuid4(),
+                    course_id=course.id,
+                    content=content,
+                    digest=bible.digest,
+                    model=model,
+                )
             )
-        )
         await session.commit()
         logger.info(
             "Story bible created",
@@ -677,6 +783,7 @@ class StoryBibleService:
         from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
 
         system, user = build_bible_messages(course, modules, is_kids=is_kids, country=country)
+        called = False
         with ai_usage_context(
             FEATURE_STORY_GENERATION, course_id=getattr(course, "id", None), only_if_unset=True
         ):
@@ -688,12 +795,25 @@ class StoryBibleService:
                 except SoftTimeLimitExceeded:
                     raise
                 except ValueError as exc:
+                    called = True
                     logger.warning(
                         "Story bible answer unusable", attempt=attempt + 1, error=str(exc)
                     )
                     continue
-                if isinstance(raw, dict) and not raw.get("raw_response"):
-                    raw.pop("__complete", None)
-                    return raw
-                logger.warning("Story bible answer was not JSON", attempt=attempt + 1)
-        raise StoryBibleUnavailable(f"No readable story bible for course {course.id}")
+                except Exception as exc:
+                    logger.warning(
+                        "Story bible model call failed",
+                        attempt=attempt + 1,
+                        error_type=type(exc).__name__,
+                        error=str(exc)[:300],
+                    )
+                    continue
+                called = True
+                answer = None if isinstance(raw, dict) and raw.get("raw_response") else raw
+                answer = usable_answer(answer)
+                if answer is not None:
+                    return answer
+                logger.warning("Story bible answer gave no cast or place", attempt=attempt + 1)
+        if not called:
+            raise _CallImpossible(f"The model could not be called for course {course.id}")
+        raise StoryBibleUnavailable(f"No usable story bible for course {course.id}")

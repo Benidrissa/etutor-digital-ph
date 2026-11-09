@@ -25,6 +25,7 @@ from app.domain.services.story_bible import (
     default_bible,
     doc_cast,
     doc_places,
+    mission_for,
     mission_of,
     normalise_bible,
 )
@@ -299,7 +300,7 @@ async def test_concurrent_stories_of_a_course_make_one_bible_with_one_call(datab
             )
             await session.commit()
             the_course = await session.get(Course, course_id)
-        model = FakeClaude({})
+        model = FakeClaude({"cast": [{"id": "mentor", "name": "Zida"}]})
         service = StoryBibleService(model)
 
         async def make() -> StoryBible:
@@ -315,3 +316,112 @@ async def test_concurrent_stories_of_a_course_make_one_bible_with_one_call(datab
             assert count.scalar_one() == 1
     finally:
         await engine.dispose()
+
+
+# --------------------------------------------------------------------------
+# Review of #2678
+# --------------------------------------------------------------------------
+
+
+def test_missions_and_facts_are_never_cut_mid_sentence():
+    mission = {
+        "en": "Find out which treasures in Grandma's basket are alive before Friday's"
+        " science fair at the school",
+        "fr": "Découvrir quels trésors du panier de Mamie sont vivants avant la foire"
+        " scientifique de vendredi à l'école",
+    }
+    fact = {
+        "en": "Rood Woko, the central market of Ouagadougou, burned in 2003 and was"
+        " rebuilt; it reopened in 2009 with hundreds of stalls under its roofs.",
+        "fr": "Rood Woko, le marché central de Ouagadougou, a brûlé en 2003 puis a été"
+        " reconstruit ; il a rouvert en 2009 avec des centaines d'étals.",
+        "source": "Wikipedia",
+    }
+    title = {"en": "A very long place title " * 6, "fr": "Un très long titre de lieu " * 6}
+    content = normalise_bible(
+        {
+            "missions": [{"module": 1, **mission}],
+            "facts": [fact],
+            "places": [{"id": "market", "title": title, "look": "stalls"}],
+        },
+        is_kids=True,
+        modules=[MODULE],
+    )
+    assert mission_of(content, MODULE.module_id) == mission
+    assert content["facts"][0]["en"] == fact["en"] and content["facts"][0]["fr"] == fact["fr"]
+    assert len(content["places"][0]["title"]["en"]) <= 80
+
+
+def test_a_module_without_a_stored_mission_gets_one_from_its_title():
+    content = normalise_bible({}, is_kids=True, modules=[MODULE])
+    assert mission_for(content, MODULE.module_id, 1, MODULE.title) == mission_of(
+        content, MODULE.module_id
+    )
+    later = mission_for(content, str(OTHER.module_id), 2, {"en": "Cells", "fr": ""})
+    assert "Cells" in later["en"] and "Cells" in later["fr"]
+    assert mission_for(content, OTHER.module_id, 2, OTHER.title) == mission_for(
+        content, OTHER.module_id, 2, OTHER.title
+    )  # deterministic
+    assert str(OTHER.module_id) not in content["missions"]  # the bible is left alone
+
+
+@pytest.mark.parametrize(
+    ("answer", "usable"),
+    [
+        ({"cast": [{"id": "mentor"}]}, True),
+        ({"places": [{"id": "x", "title": {"en": "X", "fr": "X"}, "look": "l"}]}, True),
+        ({"bible": {"cast": [{"role": "teacher", "name": "Zida"}]}}, True),
+        ({"story_bible": {"places": []}, "__complete": True}, False),
+        ({"cast": [{"id": "dragon"}], "places": [{"id": "x"}]}, False),
+        ({"text": "Here is your bible"}, False),
+        ({}, False),
+        ("bible", False),
+    ],
+)
+def test_an_answer_with_no_cast_and_no_place_is_not_usable(answer, usable):
+    from app.domain.services.story_bible import usable_answer
+
+    assert (usable_answer(answer) is not None) is usable
+
+
+async def test_a_wrapped_answer_is_opened():
+    model = FakeClaude({"bible": {"cast": [{"id": "mentor", "name": "Zida"}]}, "__complete": True})
+    bible = await StoryBibleService(model).get_or_create(FakeSession(), course(), [MODULE])
+    assert next(m for m in bible.content["cast"] if m["id"] == "mentor")["name"] == "Zida"
+
+
+async def test_a_junk_answer_is_asked_again_then_fails_and_stores_nothing():
+    model = FakeClaude({"text": "Sorry"}, {"cast": [{"id": "dragon"}]})
+    session = FakeSession()
+    with pytest.raises(StoryBibleUnavailable):
+        await StoryBibleService(model).get_or_create(session, course(), [MODULE])
+    assert len(model.calls) == 2 and session.rows == {}
+
+
+async def test_defaults_are_stored_only_when_the_model_cannot_be_called():
+    from app.domain.services.story_bible import DEFAULTED, DEFAULTED_KEPT
+
+    down = FakeClaude(RuntimeError("provider down"))
+    session = FakeSession()
+    service = StoryBibleService(down)
+    first = await service.get_or_create(session, course(), [MODULE])
+    row = session.rows[course().id]
+    assert row.model == DEFAULTED and len(down.calls) == 2
+    assert first.content["cast"] == normalise_bible({}, is_kids=False, modules=[MODULE])["cast"]
+
+    # The next story tries once more: it works, and replaces the defaults.
+    service.claude_service = FakeClaude({"cast": [{"id": "mentor", "name": "Zida"}]})
+    second = await service.get_or_create(session, course(), [MODULE])
+    assert row.model == "fake-model-1" and row.digest == second.digest != first.digest
+    assert len(service.claude_service.calls) == 1
+
+    # Or it fails again: the defaults are kept for good, and never retried.
+    session = FakeSession()
+    service = StoryBibleService(FakeClaude(RuntimeError("down")))
+    kept = await service.get_or_create(session, course(), [MODULE])
+    again = await service.get_or_create(session, course(), [MODULE])
+    assert session.rows[course().id].model == DEFAULTED_KEPT
+    assert again.digest == kept.digest
+    assert len(service.claude_service.calls) == 4
+    third = await service.get_or_create(session, course(), [MODULE])
+    assert third.digest == kept.digest and len(service.claude_service.calls) == 4

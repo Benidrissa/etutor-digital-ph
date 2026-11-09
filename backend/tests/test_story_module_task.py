@@ -40,13 +40,24 @@ def test_the_task_is_declared_with_its_budget_and_no_retry():
 
     task = generate_module_story_task
     assert task.name == "app.tasks.content_generation.generate_module_story_task"
-    assert (MODULE_STORY_SOFT_LIMIT, MODULE_STORY_HARD_LIMIT) == (1620, 1680)
+    assert (MODULE_STORY_SOFT_LIMIT, MODULE_STORY_HARD_LIMIT) == (1800, 1860)
     assert task.soft_time_limit == MODULE_STORY_SOFT_LIMIT
     assert task.time_limit == MODULE_STORY_HARD_LIMIT
     assert task.rate_limit == "5/m"
     assert not getattr(task, "autoretry_for", ())
     # A chapter's slowest path: its lesson, the covering quiz, then every spine call.
     assert MODULE_STORY_SOFT_LIMIT >= 2 * POLL_SOFT_LIMIT + (1 + MAX_REPAIR_CALLS) * 150
+    # Before them the course bible (up to 2 calls), after them the rally.
+    from app.domain.services.story_bible import StoryBibleService
+    from app.domain.services.story_module_service import RALLY_REPAIR_CALLS
+
+    worst = (
+        StoryBibleService.MAX_CALLS * 150
+        + 2 * POLL_SOFT_LIMIT
+        + (1 + MAX_REPAIR_CALLS) * 150
+        + (1 + RALLY_REPAIR_CALLS) * 150
+    )
+    assert worst <= MODULE_STORY_SOFT_LIMIT
     # The API's dedup key (HARD + 60) expires before a redelivery or a lost result.
     dedup_ttl = MODULE_STORY_HARD_LIMIT + 60
     assert dedup_ttl < 3600

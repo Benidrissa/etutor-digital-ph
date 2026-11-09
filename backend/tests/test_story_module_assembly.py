@@ -876,3 +876,141 @@ def test_any_roster_assembles_into_a_sound_story(fixture, seed):
             "missing_chapters",
             "too_few_questions",
         }
+
+
+# --------------------------------------------------------------------------
+# The assembler's own edits never join runs of questions (review of #2678)
+# --------------------------------------------------------------------------
+
+
+def _say(doc: dict[str, Any], en: str, fr: str) -> dict[str, Any]:
+    """A ``say`` line of ``doc``'s first speaker, with these words."""
+    first = next(
+        s for sc in doc["chapters"][0]["scenes"] for s in sc["steps"] if s["type"] == "say"
+    )
+    return {**{k: v for k, v in first.items() if k not in ("en", "fr")}, "en": en, "fr": fr}
+
+
+def _asks_only_in_scene_two(doc: dict[str, Any], steps: list[dict[str, Any]]) -> None:
+    """Every ask of ``doc`` moved into its second scene, right after its concept card."""
+    scenes = doc["chapters"][0]["scenes"]
+    for scene in scenes:
+        scene["steps"] = [s for s in scene["steps"] if s["type"] != "ask"]
+    second = scenes[1]["steps"]
+    card = next(i for i, s in enumerate(second) if s["type"] == "concept") + 1
+    second[card:card] = steps
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_retold_line_between_two_runs_of_questions_stays(fixture, language):
+    """The reviewers' repro: dropping the retold line would join q4 q5 | q6 x1."""
+    sources = chapter_sources(fixture, language)
+    first = next(s.doc for s in sources if s.unit.unit_number == "1.1")
+    second = next(s.doc for s in sources if s.unit.unit_number == "1.2")
+    line = _say(first, "Great thinking, {child}, keep going!", "Bien pensé, {child}, continue !")
+    first["chapters"][0]["scenes"][0]["steps"].insert(2, copy.deepcopy(line))
+    _asks_only_in_scene_two(
+        second,
+        [
+            {"type": "ask", "ref": "q4"},
+            {"type": "ask", "ref": "q5"},
+            copy.deepcopy(line),
+            {"type": "ask", "ref": "q6"},
+            {"type": "ask", "ref": "x1"},
+        ],
+    )
+    for doc in (first, second):
+        assert repair.publishable(
+            validate_story_course(StoryCourse.model_validate(doc), generated=True), doc
+        ).ok
+
+    doc = assemble_module_story(module_ctx(fixture, language), sources, rally(fixture, language))
+
+    report = validate_module_story(doc)
+    assert report.ok, [e.model_dump() for e in report.errors]
+    kept = [s for s in chapter_steps(doc["chapters"][1]) if s.get("en") == line["en"]]
+    assert len(kept) == 1 and kept[0]["retold"] is True
+    # Not a separator anywhere else: told again, it is still left out.
+    assert "retold" not in next(
+        s for s in chapter_steps(doc["chapters"][0]) if s.get("en") == line["en"]
+    )
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_short_praise_with_a_name_is_never_a_retold_line(fixture, language):
+    """'Bravo, {child} !' is as short as 'Bravo !': it may come back in any chapter."""
+    sources = chapter_sources(fixture, language)
+    for source in sources[:3]:
+        source.doc["chapters"][0]["scenes"][0]["steps"].insert(
+            1, _say(source.doc, "Well done, {child}!", "Bravo, {child} !")
+        )
+    doc = assemble_module_story(module_ctx(fixture, language), sources, rally(fixture, language))
+    praise = [s for s in all_steps(doc) if s.get("en") == "Well done, {child}!"]
+    assert len(praise) == 3 and not any("retold" in s for s in praise)
+    assert validate_module_story(doc).ok
+    assert repair.repeat_keys(praise[0]) == set()
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_copy_whose_situation_card_separates_two_runs_is_kept(fixture, language):
+    """Dropping the copy and its situation card would join q5 q6 | q99 x1 q4."""
+    sources = chapter_sources(fixture, language)
+    first = next(s.doc for s in sources if s.unit.unit_number == "1.1")
+    second = next(s.doc for s in sources if s.unit.unit_number == "1.2")
+    copied = copy.deepcopy(next(q for q in first["questions"] if q["id"] == "q2"))
+    copied["id"] = "q99"
+    copied["stem"] = dict(copied["prompt"])  # a long stem: shown on a situation card
+    second["questions"].append(copied)
+    second["misconceptions"] += [
+        m
+        for m in first["misconceptions"]
+        if m["id"] in {c.get("misconception") for c in copied["choices"]}
+        and m["id"] not in {x["id"] for x in second["misconceptions"]}
+    ]
+    second["checks"]["max_points"] += 2
+    situation = {
+        "type": "concept",
+        "id": repair.situation_step_id("q99"),
+        "title": {"en": "The situation", "fr": "La situation"},
+        "en": [copied["stem"]["en"]],
+        "fr": [copied["stem"]["fr"]],
+    }
+    _asks_only_in_scene_two(
+        second,
+        [
+            {"type": "ask", "ref": "q5"},
+            {"type": "ask", "ref": "q6"},
+            situation,
+            {"type": "ask", "ref": "q99"},
+            {"type": "ask", "ref": "x1"},
+            {"type": "ask", "ref": "q4"},
+        ],
+    )
+    assert repair.publishable(
+        validate_story_course(StoryCourse.model_validate(second), generated=True), second
+    ).ok
+
+    doc = assemble_module_story(module_ctx(fixture, language), sources, rally(fixture, language))
+
+    assert "u1_2-q99" in {q["id"] for q in doc["questions"]}
+    report = validate_module_story(doc)
+    assert report.ok, [e.model_dump() for e in report.errors]
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_run_too_long_in_a_chapter_is_capped_with_its_points(fixture, language):
+    """The backstop: a chapter that slipped through with four asks in a row."""
+    sources = chapter_sources(fixture, language)
+    second = next(s.doc for s in sources if s.unit.unit_number == "1.2")
+    _asks_only_in_scene_two(
+        second,
+        [{"type": "ask", "ref": ref} for ref in ("q4", "q5", "q6", "x1")],
+    )
+    doc = assemble_module_story(module_ctx(fixture, language), sources, rally(fixture, language))
+
+    assert "u1_2-x1" not in {q["id"] for q in doc["questions"]}
+    report = validate_module_story(doc)
+    assert report.ok, [e.model_dump() for e in report.errors]
+    covers = {c["covers"]["unit_number"]: c["covers"] for c in doc["chapters"]}
+    assert covers["1.2"]["max_points"] == second["checks"]["max_points"] - 2
+    assert sum(c["max_points"] for c in covers.values()) == report.checks.max_points

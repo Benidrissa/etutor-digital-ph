@@ -32,6 +32,7 @@ from app.api.v1.schemas.story_course import (
     ART_KEYS,
     CAST_ROLES,
     COPY_SHAPES,
+    DRAWN_VISUALS,
     LENGTH_LIMITS,
     MINIGAME_ENGINES,
     MOODS,
@@ -81,39 +82,133 @@ def _norm(text: str) -> str:
 
 
 #: Honorifics a line may put before a speaker's name ("M. Kaboré dit : ...").
-_HONORIFIC = r"(?:(?:mr|mrs|ms|miss|dr|m|mme|mlle|monsieur|madame|maître|maitre|teacher)\.?\s+)?"
-#: What follows a speaker's name when a line is labelled with it.
-_SPEECH_TAG = (
-    r"(?:\s*:|\s+(?:says|said|asks|asked|replies|answers|explains|shouts|whispers|"
-    r"dit|demande|répond|repond|explique|crie|chuchote)\b)"
+#: Shared by the validator and the generator's builder, which strips what this
+#: flags.
+HONORIFICS = (
+    "mr",
+    "mrs",
+    "ms",
+    "miss",
+    "dr",
+    "m",
+    "mme",
+    "mlle",
+    "monsieur",
+    "madame",
+    "maître",
+    "maitre",
+    "teacher",
 )
+#: Verbs that, with a colon or an opening quote after them, label a line.
+SPEECH_VERBS = (
+    "says",
+    "said",
+    "asks",
+    "asked",
+    "replies",
+    "answers",
+    "explains",
+    "shouts",
+    "whispers",
+    "dit",
+    "demande",
+    "répond",
+    "repond",
+    "explique",
+    "crie",
+    "chuchote",
+)
+_HONORIFIC = rf"(?:(?:{'|'.join(HONORIFICS)})\.?\s+)?"
+_OPENING_QUOTES = "«\"“‘'"
+#: ``Name:`` — or ``Name <speech verb>`` followed by a colon or an opening
+#: quote. ``Kaboré dit que…`` or ``Margo says the…`` is reported speech, not
+#: a label.
+_SPEECH_TAG = rf"(?:\s*:|\s+(?:{'|'.join(SPEECH_VERBS)})\s*(?::|(?=[{_OPENING_QUOTES}])))"
 
 
 def speaker_prefix_pattern(names: list[str]) -> re.Pattern[str] | None:
     """A line that opens with a speaker's name used as a label, or ``None``.
 
-    ``M. Kaboré dit : « ... »``, ``Awa: ...`` or ``{friend} says: ...`` — a
+    ``M. Kaboré dit : « ... »``, ``Awa: ...`` or ``{friend} says: "..."`` — a
     ``say`` step already names its speaker in ``who``, and the stage shows the
-    bubble on that character, so the line must be the words alone.
+    bubble on that character, so the line must be the words alone. The match
+    ends after the colon, or before the opening quote. The generator's
+    builder strips exactly what this matches.
     """
     alternatives = sorted({n.strip() for n in names if n and n.strip()}, key=len, reverse=True)
     if not alternatives:
         return None
     joined = "|".join(re.escape(n) for n in alternatives)
-    return re.compile(rf"^[\s«\"'“‘(]*{_HONORIFIC}(?:{joined}){_SPEECH_TAG}", re.IGNORECASE)
+    return re.compile(
+        rf"^[\s{_OPENING_QUOTES}(]*{_HONORIFIC}(?:{joined}){_SPEECH_TAG}", re.IGNORECASE
+    )
+
+
+_PLACEHOLDERS_RE = re.compile(r"\{(?:child|friend)\}", re.IGNORECASE)
 
 
 def line_key(text: Any) -> str:
-    """A story line folded for the repetition check: case, spaces, edge punctuation."""
-    value = re.sub(r"\s+", " ", str(text or "")).strip().casefold()
+    """A story line folded for the repetition check.
+
+    Case, spaces and edge punctuation are folded, and the ``{child}`` and
+    ``{friend}`` placeholders left out, so "Bravo, {child} !" is as short as
+    "Bravo !" and falls under :data:`MIN_REPEAT_LENGTH`.
+    """
+    value = _PLACEHOLDERS_RE.sub("", str(text or ""))
+    value = re.sub(r"\s+", " ", value).strip().casefold()
+    value = re.sub(r"\s+([,.!?…;:])", r"\1", value)
     return value.strip(" .!?…,;:«»\"'“”‘’-–—")
+
+
+def drawn_visual_problem(visual: str, params: Any) -> str | None:
+    """Why the player cannot draw ``visual`` with ``params``, or ``None``.
+
+    Only :data:`DRAWN_VISUALS` are drawn, and only with their params.
+    """
+    spec = DRAWN_VISUALS.get(visual)
+    if spec is None:
+        return f"{visual!r} is not a visual the player draws: use one of {', '.join(DRAWN_VISUALS)}"
+    params = params if isinstance(params, dict) else {}
+    for name, (required, description) in spec.items():
+        if required and name not in params:
+            return f"{visual} needs params.{name}: {description}"
+    if visual == "hundred_square":
+        highlight = str(params.get("highlight"))
+        if highlight != "primes" and not re.fullmatch(r"multiples:[1-9]\d?", highlight):
+            return 'params.highlight is "primes" or "multiples:N"'
+        return None
+
+    def whole(value: Any, low: int) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and low <= value <= 1000
+
+    if visual in ("factor_tree", "division_ladder"):
+        n = params.get("n")
+        if not whole(n, 4):
+            return f"params.n of {visual} is a whole number from 4 to 1000"
+        split = params.get("first_split")
+        bad_split = split is not None and (
+            not isinstance(split, list)
+            or len(split) != 2
+            or not all(whole(x, 2) for x in split)
+            or split[0] * split[1] != n
+        )
+        if visual == "factor_tree" and bad_split:
+            return "params.first_split is [a, b] with a × b = n"
+        return None
+    if not (whole(params.get("a"), 2) and whole(params.get("b"), 2)):
+        return "params.a and params.b of venn_primes are whole numbers from 2 to 1000"
+    return None
 
 
 class StoryCourseValidator:
     """Runs the Appendix C checks over one parsed course file."""
 
-    def __init__(self, course: StoryCourse) -> None:
+    def __init__(self, course: StoryCourse, *, generated: bool = False) -> None:
         self.course = course
+        #: A story the generator made (#2674): the screenplay rules that are only
+        #: warnings for a hand-authored week (mood, speaker label, a line told
+        #: again, a visual the player cannot draw) are errors.
+        self.generated = generated
         self.errors: list[ValidationIssue] = []
         self.warnings: list[ValidationIssue] = []
         self._target, self._home = course.language_codes
@@ -135,6 +230,13 @@ class StoryCourseValidator:
 
     def _error(self, code: str, path: str, message: str) -> None:
         self.errors.append(ValidationIssue(severity="error", code=code, path=path, message=message))
+
+    def _strict(self, code: str, path: str, message: str) -> None:
+        """An error in a generated story, a warning in a hand-authored week."""
+        if self.generated:
+            self._error(code, path, message)
+        else:
+            self._warn(code, path, message)
 
     def _warn(self, code: str, path: str, message: str) -> None:
         self.warnings.append(
@@ -285,11 +387,15 @@ class StoryCourseValidator:
                         f"{step.visual!r} is not in the visual catalog and has no "
                         "art_requests entry",
                     )
+                elif step.visual != "image" and (
+                    problem := drawn_visual_problem(step.visual, step.params)
+                ):
+                    self._strict("visual_not_drawn", f"{step_path}.visual", problem)
             elif step.type in _REF_TARGETS:
                 self._check_step_ref(step, step_path)
 
             if step.mood and step.mood not in MOODS:
-                self._error(
+                self._strict(
                     "unknown_mood",
                     f"{step_path}.mood",
                     f"{step.mood!r} is not a mood: use one of {', '.join(MOODS)}",
@@ -302,7 +408,7 @@ class StoryCourseValidator:
         for lang in ("en", "fr"):
             value = getattr(step, lang, None)
             if isinstance(value, str) and self._prefix.match(value):
-                self._error(
+                self._strict(
                     "speaker_prefix",
                     f"{step_path}.{lang}",
                     "the line starts with the speaker's name: 'who' already says who"
@@ -750,13 +856,19 @@ class StoryCourseValidator:
 
         A line every chapter opens or closes with ("Well done, {child}: the
         lesson is over") reads as boilerplate, not story. Steps marked with
-        ``frame`` are the application's own placeholder lines and exempt.
+        ``frame`` are the application's own placeholder lines, and steps marked
+        ``retold`` were kept on purpose by the module assembler (dropping them
+        would have joined two runs of questions): both are exempt.
         """
         first_seen: dict[tuple[str, str], str] = {}
         for chapter in self.course.chapters:
             for scene in chapter.scenes:
                 for index, step in enumerate(scene.steps):
-                    if step.type not in ("narrate", "say") or getattr(step, "frame", None):
+                    if (
+                        step.type not in ("narrate", "say")
+                        or getattr(step, "frame", None)
+                        or getattr(step, "retold", None)
+                    ):
                         continue
                     for lang in ("en", "fr"):
                         value = getattr(step, lang, None)
@@ -765,7 +877,7 @@ class StoryCourseValidator:
                             continue
                         seen_in = first_seen.setdefault((lang, key), chapter.id)
                         if seen_in != chapter.id:
-                            self._error(
+                            self._strict(
                                 "repeated_line",
                                 f"chapters[{chapter.id}].scenes[{scene.id}].steps[{index}].{lang}",
                                 f"this line was already told in chapter {seen_in}: every"
@@ -1079,6 +1191,11 @@ class StoryCourseValidator:
         )
 
 
-def validate_story_course(course: StoryCourse) -> ValidationReport:
-    """Run every Appendix C check over a parsed course file."""
-    return StoryCourseValidator(course).run()
+def validate_story_course(course: StoryCourse, *, generated: bool = False) -> ValidationReport:
+    """Run every Appendix C check over a parsed course file.
+
+    ``generated``: a story the generator made, held to the screenplay rules
+    (mood, speaker label, a line told again, a visual the player draws) as
+    errors; a hand-authored week gets them as warnings.
+    """
+    return StoryCourseValidator(course, generated=generated).run()

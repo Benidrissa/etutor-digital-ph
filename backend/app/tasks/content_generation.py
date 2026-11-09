@@ -15,22 +15,23 @@ POLL_SOFT_LIMIT = 300
 POLL_HARD_LIMIT = 320
 
 #: A module story's worst case. The course bible comes first when the course
-#: has none (one call, ~150 s, once per course). Its lesson chapters are then
-#: made concurrently, at most ``ModuleStoryService``'s cap (6) at a time, so
-#: they take about as long as the slowest chapter: the unit's lesson generated
-#: first (the lesson task's POLL_SOFT_LIMIT, 300 s), the covering quiz
-#: generated first when it is missing (shared by the chapters it covers; the
-#: quiz task's 300 s), then up to 3 screenplay calls of ~150 s each
+#: has none: up to 2 calls of ~150 s (``StoryBibleService.MAX_CALLS``; an
+#: unusable answer is asked again once), once per course. Its lesson chapters
+#: are then made concurrently, at most ``ModuleStoryService``'s cap (6) at a
+#: time, so they take about as long as the slowest chapter: the unit's lesson
+#: generated first (the lesson task's POLL_SOFT_LIMIT, 300 s), the covering
+#: quiz generated first when it is missing (shared by the chapters it covers;
+#: the quiz task's 300 s), then up to 3 screenplay calls of ~150 s each
 #: (1 + MAX_REPAIR_CALLS; each ONE provider call). The rally follows, with up
-#: to 2 calls (1 + RALLY_REPAIR_CALLS). 150 + 300 + 300 + 450 + 300 = 1500 s,
+#: to 2 calls (1 + RALLY_REPAIR_CALLS). 300 + 300 + 300 + 450 + 300 = 1650 s,
 #: rounded up with slack; the hard limit follows by 60 s, as for the other
 #: long content tasks. A module with more lessons than the cap can still run
 #: out on its first open; every chapter finished is cached, so the next open
 #: makes only the rest and converges. HARD + 60 (the API's dedup TTL) stays
 #: well under the broker's 3600 s visibility timeout and the result backend's
 #: expiry.
-MODULE_STORY_SOFT_LIMIT = 1620
-MODULE_STORY_HARD_LIMIT = 1680
+MODULE_STORY_SOFT_LIMIT = 1800
+MODULE_STORY_HARD_LIMIT = 1860
 
 #: The API's dedup key for a module story lives this long: claimed for it at
 #: dispatch (covering the queue wait), and armed again for it when the task

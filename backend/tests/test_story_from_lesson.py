@@ -1980,3 +1980,20 @@ async def test_the_spine_call_turns_off_the_inner_json_retry(raw):
         make_ctx(raw, "en"), system_prompt="system"
     )
     assert seen == [0]
+
+
+async def test_a_concept_the_model_never_teaches_is_taught_from_the_lesson(raw):
+    """After the repair budget the chapter publishes, with the concept on a card."""
+    spine = copy.deepcopy(raw["en"]["spine"])
+    spine["scenes"][1]["steps"][4].pop("teaches")
+    model = FakeClaude(spine)
+    generation = await StoryFromLessonService(model).generate_document(
+        make_ctx(raw, "en"), system_prompt="system"
+    )
+    assert generation.model_calls == 3
+    assert "[concept_not_covered] lesson.concepts[2]" in model.messages[1]
+    assert generation.report.ok
+    assert [w.code for w in generation.report.warnings] == ["concept_not_covered"]
+    taught = sorted(s["teaches"] for s in steps(generation.doc) if "teaches" in s)
+    assert taught == [1, 2, 3]
+    assert revalidate(generation.doc).ok

@@ -25,6 +25,7 @@ import copy
 import json
 import re
 import uuid
+from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
@@ -558,3 +559,20 @@ async def test_the_rally_inputs_change_with_what_the_lessons_asked():
 
 def by_id(ctx: repair.LessonStoryContext, quiz_id: str) -> repair.QuizMcq:
     return next(m for m in ctx.mcqs if m.source_id == quiz_id)
+
+
+async def test_a_module_the_bible_has_no_mission_for_still_gets_one():
+    """A module added after the bible: a mission from its title, in the rally too."""
+    result = await tell("en")
+    content = copy.deepcopy(bible().content)
+    content["missions"] = {}
+    ctx = replace(module_ctx("en"), bible=StoryBible.of(content))
+    units = story_units()
+    quiz_units = [u for u in units if u.role == "quiz_checkpoint"]
+    rally_ctx, _inputs = rally_context(
+        ctx, result["sources"], quiz_units, [(quiz_units[0], quiz_row("en"))]
+    )
+    assert rally_ctx.mission is not None
+    assert "Life detectives: what is alive?" in rally_ctx.mission["en"]
+    message = build_story_user_message(rally_ctx)
+    assert rally_ctx.mission["en"] in message and "LAST chapter" in message

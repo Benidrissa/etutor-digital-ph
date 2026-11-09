@@ -1078,16 +1078,24 @@ class TestScreenplay:
         }
         assert validate(build.doc).ok
 
-    def test_a_catalog_visual_with_params_is_kept(self, raw):
+    def test_only_a_visual_the_player_draws_is_kept(self, raw):
         spine = spine_for(raw)
-        spine["scenes"][2]["steps"].insert(
-            1, {"type": "show", "visual": "timeline", "params": {"events": ["June", "Sept"]}}
-        )
-        spine["scenes"][2]["steps"].insert(2, {"type": "show", "visual": "hologram"})
+        steps = spine["scenes"][2]["steps"]
+        steps[1:1] = [
+            {"type": "show", "visual": "factor_tree", "params": {"n": 12, "first_split": [3, 4]}},
+            {"type": "show", "visual": "timeline", "params": {"events": ["June", "Sept"]}},
+            {"type": "show", "visual": "factor_tree", "params": {"n": 12, "first_split": [5, 7]}},
+            {"type": "show", "visual": "hundred_square", "params": {"highlight": "evens"}},
+            {"type": "show", "visual": "venn_primes", "params": {"a": 12}},
+            {"type": "show", "visual": "hologram"},
+        ]
         build = repair.build_story_document(make_ctx(raw), spine)
         visuals = [s["visual"] for s in all_steps(build.doc) if s["type"] == "show"]
-        assert visuals == ["image", "timeline"]
-        assert _codes(build) == {("visual_not_usable", "scenes[2].steps[2]")}
+        assert visuals == ["image", "factor_tree"]
+        assert _codes(build) == {
+            ("visual_not_usable", f"scenes[2].steps[{index}]") for index in range(2, 7)
+        }
+        assert validate(build.doc).ok
 
     def test_every_lesson_concept_must_be_taught(self, raw):
         spine = spine_for(raw)
@@ -1156,3 +1164,89 @@ class TestScreenplay:
             repair.with_generator_issues(validate(build.doc), build)
         )
         assert not report.ok
+
+
+# --------------------------------------------------------------------------
+# Review of #2678: labels, honorifics, missing concepts, prompts
+# --------------------------------------------------------------------------
+
+
+class TestReviewFixes:
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Kaboré dit que la nuit est longue.",
+            "Kaboré dit qu'il faut un test.",
+            "Margo says the answer is near, {child}.",
+            "Kaboré asks a good question.",
+            "Kaboré: no, wait.",  # in a narrate step, never stripped
+        ],
+    )
+    def test_reported_speech_is_not_a_label(self, raw, line):
+        spine = spine_for(raw)
+        index = 3 if not line.endswith("wait.") else 0
+        spine["scenes"][0]["steps"][index]["en"] = line
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.doc["chapters"][0]["scenes"][0]["steps"][index]["en"] == line
+        assert build.issues == []
+        assert validate_story_course(StoryCourse.model_validate(build.doc), generated=True).ok
+
+    @pytest.mark.parametrize(
+        ("line", "spoken"),
+        [
+            ("Kaboré says « Look at the clock. »", "Look at the clock."),
+            ("Teacher Kaboré: look at the clock.", "look at the clock."),
+            ('{friend} says: "Look!"', "Look!"),
+        ],
+    )
+    def test_what_the_validator_flags_the_builder_strips(self, raw, line, spoken):
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][3]["en"] = line
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.doc["chapters"][0]["scenes"][0]["steps"][3]["en"] == spoken
+        assert _codes(build) == {("line_labelled", "scenes[0].steps[3].en")}
+        assert validate_story_course(StoryCourse.model_validate(build.doc), generated=True).ok
+
+    def test_a_concept_never_taught_gets_a_card_from_the_lesson_once_the_budget_is_spent(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][1]["steps"][4].pop("teaches")
+        plain = repair.build_story_document(make_ctx(raw), spine)
+        covered = repair.build_story_document(make_ctx(raw), spine, cover_missing_concepts=True)
+        assert not [s for s in all_steps(plain.doc) if s.get("teaches") == 2]
+        (card,) = [s for s in all_steps(covered.doc) if s.get("teaches") == 2]
+        assert card["en"][0].startswith("Test before you treat.")
+        assert len(card["en"]) == len(card["fr"]) <= repair.MAX_CONCEPT_ROWS
+        # Before the card of the next concept.
+        steps = all_steps(covered.doc)
+        assert steps.index(card) < next(i for i, s in enumerate(steps) if s.get("teaches") == 3)
+        (issue,) = covered.issues
+        assert issue.code == "concept_not_covered" and "was added" in issue.message
+        assert validate(covered.doc).ok
+
+    def test_the_prompt_offers_only_the_visuals_the_player_draws(self, raw):
+        message = build_story_user_message(make_ctx(raw))
+        for name in ("hundred_square", "factor_tree", "division_ladder", "venn_primes"):
+            assert f'"{name}"' in message
+        for name in ("timeline", "number_line", "place_value", "thermometer"):
+            assert name not in message
+        assert '"multiples:N"' in message and "first_split" in message
+
+    def test_the_prompt_keeps_both_children_gender_neutral(self, raw):
+        message = build_story_user_message(make_ctx(raw, "fr"))
+        assert "he/she/him/her/his or il/elle" in message
+        assert "« J'ai fait une erreur » (not « Je me suis trompé »)" in message
+        from app.ai.prompts.story_from_lesson import get_story_system_prompt
+
+        for course in (None, _kids_course()):
+            system = get_story_system_prompt("fr", "BF", 1, "", course=course)
+            assert "il/elle" in system and "J'ai fait une erreur" in system
+
+
+def _kids_course():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        taxonomy_categories=[SimpleNamespace(type="audience", slug="primary_school")],
+        title_en="Science (Ages 8-10)",
+        title_fr="Sciences",
+    )

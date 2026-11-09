@@ -227,8 +227,8 @@
   ],
   "missions": {
    "aab749f1-fba3-45d3-bcff-e0f4f925475a": {
-    "en": "Find out which treasures in Grandma's basket are alive before Friday's science",
-    "fr": "Découvrir quels trésors du panier de Mamie sont vivants avant la foire"
+    "en": "Find out which treasures in Grandma's basket are alive before Friday's science fair",
+    "fr": "Découvrir quels trésors du panier de Mamie sont vivants avant la foire scientifique de vendredi"
    }
   }
  },
@@ -678,7 +678,7 @@
     "sira_builder": 3,
     "sira_chapter": {
      "kind": "lesson",
-     "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+     "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
      "arc": "opens"
     },
     "course": "Les détectives du vivant",
@@ -1768,7 +1768,7 @@
     "sira_builder": 3,
     "sira_chapter": {
      "kind": "lesson",
-     "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+     "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
      "arc": "continues"
     },
     "course": "Les détectives du vivant",
@@ -2775,7 +2775,7 @@
     "sira_builder": 3,
     "sira_chapter": {
      "kind": "lesson",
-     "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+     "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
      "arc": "continues"
     },
     "course": "Les détectives du vivant",
@@ -3777,7 +3777,7 @@
     "sira_builder": 3,
     "sira_chapter": {
      "kind": "lesson",
-     "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+     "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
      "arc": "opens"
     },
     "course": "Life detectives",
@@ -4867,7 +4867,7 @@
     "sira_builder": 3,
     "sira_chapter": {
      "kind": "lesson",
-     "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+     "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
      "arc": "continues"
     },
     "course": "Life detectives",
@@ -5874,7 +5874,7 @@
     "sira_builder": 3,
     "sira_chapter": {
      "kind": "lesson",
-     "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+     "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
      "arc": "continues"
     },
     "course": "Life detectives",
@@ -6877,7 +6877,7 @@
    "sira_builder": 3,
    "sira_chapter": {
     "kind": "rally",
-    "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+    "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
     "arc": "closes"
    },
    "course": "Les détectives du vivant",
@@ -7756,7 +7756,7 @@
    "sira_builder": 3,
    "sira_chapter": {
     "kind": "rally",
-    "bible": "1bde9b68b36ef9efb4024dfb1f460757d3119e884be562be92587cc5dfc1ab96",
+    "bible": "2a7a07cc0a4a8a90515b2eb5659a7415f89a55df07c99a5429111133d7ca9b15",
     "arc": "closes"
    },
    "course": "Life detectives",

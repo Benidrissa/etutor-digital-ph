@@ -33,14 +33,17 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.ai.usage_context import current_ai_context
+from app.api.v1.schemas.story_course import ValidationIssue
 from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.story_bible import StoryCourseBible
 from app.domain.models.story_course import StoryCourseRecord
+from app.domain.services import story_module_service
 from app.domain.services import story_repair as repair
 from app.domain.services.story_bible import find_bible
+from app.domain.services.story_from_lesson_service import content_digest
 from app.domain.services.story_module_assembly import MODULE_ASSEMBLER_VERSION, module_story_slug
 from app.domain.services.story_module_service import (
     ChapterGenerationFailed,
@@ -261,8 +264,11 @@ class FakeClaude:
         self.bible_calls = 0
         self.rally_calls = 0
         self.rally_answer: Any = None
-        #: The course bible's answer: by default, the audience's default cast and places.
-        self.bible_answer: dict[str, Any] = {}
+        #: The course bible's answer: by default, the five roles and nothing more
+        #: (normalised into the audience's default cast and places).
+        self.bible_answer: dict[str, Any] = {
+            "cast": [{"id": role} for role in ("hero", "friend", "mentor", "family", "margo")]
+        }
         self.features: list[str | None] = []
         self.cancelled: list[str] = []
         self.in_flight = 0
@@ -1079,7 +1085,7 @@ async def test_every_chapter_has_its_own_session(raw, sessions):
 # --------------------------------------------------------------------------
 
 
-async def test_module_story_freshness_is_four_queries_however_many_chapters(raw, sessions, engine):
+async def test_module_story_freshness_is_five_queries_however_many_chapters(raw, sessions, engine):
     seed_, _service, _model, _lessons, _quizzes, record = await _first(raw, sessions)
     statements: list[str] = []
 
@@ -1093,11 +1099,11 @@ async def test_module_story_freshness_is_four_queries_however_many_chapters(raw,
     finally:
         sa.event.remove(engine.sync_engine, "before_cursor_execute", count)
 
-    # The roster, the bible's digest, the four chapter rows, and one query of
-    # all their sources.
-    assert len(statements) == 4, statements
+    # The roster, the bible's digest, the four chapter rows, one query of all
+    # their sources, and the quiz rows the rally was made from.
+    assert len(statements) == 5, statements
     assert "story_course_bibles" in statements[1]
-    assert "generated_content" in statements[3]
+    assert "generated_content" in statements[3] and "generated_content" in statements[4]
 
     # A caller that has just read the roster (the API) passes it: two queries.
     statements.clear()
@@ -1111,7 +1117,7 @@ async def test_module_story_freshness_is_four_queries_however_many_chapters(raw,
             assert not await module_story_is_fresh(session, record, units=renamed)
     finally:
         sa.event.remove(engine.sync_engine, "before_cursor_execute", count)
-    assert len(statements) == 3, statements
+    assert len(statements) == 4, statements
     assert not any("FROM module_units" in statement for statement in statements)
 
 
@@ -1327,3 +1333,107 @@ async def test_two_modules_of_a_course_share_one_bible(raw, sessions):
         ).scalar_one()
     assert row.content["sira_chapter"]["arc"] == "opens_closes"
     assert "rally" not in second.source_rows
+
+
+# --------------------------------------------------------------------------
+# Review of #2678: an assembler failure is merged again; the rally's quiz is pinned
+# --------------------------------------------------------------------------
+
+
+async def test_a_draft_the_assembler_failed_is_merged_again_at_no_model_cost(raw, sessions):
+    seed_ = await seed(sessions, raw)
+    service, model, lessons, quizzes = make_service(raw)
+    real = story_module_service.validate_module_story
+
+    def failing(doc):
+        report = real(doc)
+        issue = ValidationIssue(
+            severity="error", code="too_many_questions_in_a_row", path="chapters", message="m"
+        )
+        return repair.with_issues(report, [issue])
+
+    with patch.object(story_module_service, "validate_module_story", side_effect=failing):
+        draft = await generate(service, seed_, sessions)
+    assert draft.status == "draft" and draft.source_rows["assembly_failed"] is True
+    async with sessions.maker() as session:
+        assert not await module_story_is_fresh(session, draft)
+    calls = (len(model.calls), model.rally_calls, model.bible_calls)
+
+    record = await generate(service, seed_, sessions)
+
+    assert (len(model.calls), model.rally_calls, model.bible_calls) == calls  # nothing paid
+    assert lessons.calls == ["1.2", "1.5"] and quizzes.calls == ["1.3"]  # from the first run
+    assert record.id == draft.id and record.status == "published"
+    assert "assembly_failed" not in record.source_rows
+    async with sessions.maker() as session:
+        assert await module_story_is_fresh(session, record)
+
+
+async def test_the_rally_pins_the_quiz_rows_it_was_made_from(raw, sessions):
+    seed_, service, model, _lessons, _quizzes, first = await _first(raw, sessions)
+    async with sessions.maker() as session:
+        quiz = (
+            await session.execute(
+                sa.select(GeneratedContent).where(
+                    GeneratedContent.module_unit_id == seed_.units["1.3"],
+                    GeneratedContent.content_type == "quiz",
+                )
+            )
+        ).scalar_one()
+    pinned = first.source_rows["rally"]["quiz_rows"]
+    assert pinned == [[str(quiz.id), quiz.content_revision or 1, content_digest(quiz.content)]]
+
+    # The row the rally read is edited: the module story is stale (a
+    # different row is never looked for: the pinned one is compared).
+    edited = copy.deepcopy(first.source_rows)
+    edited["rally"]["quiz_rows"][0][2] = "0" * 64
+    await execute(
+        sessions,
+        sa.update(StoryCourseRecord)
+        .where(StoryCourseRecord.id == first.id)
+        .values(source_rows=edited),
+    )
+    async with sessions.maker() as session:
+        stale = await find_module_story(session, seed_.module_id, "en")
+        assert not await module_story_is_fresh(session, stale)
+    rallies = model.rally_calls
+
+    record = await generate(service, seed_, sessions)
+
+    assert model.calls == []  # the lesson chapters are fresh
+    assert model.rally_calls == rallies  # the rally's inputs did not change
+    async with sessions.maker() as session:
+        assert await module_story_is_fresh(session, record)
+    assert record.source_rows["rally"]["quiz_rows"] == pinned
+
+
+async def test_a_bible_of_defaults_is_tried_once_more_then_kept(raw, sessions):
+    seed_ = await seed(sessions, raw)
+    service, model, *_rest = make_service(raw)
+    real = model.generate_structured_content
+
+    async def no_bible(system, user, content_type, max_retries=1):
+        if user.startswith("COURSE:"):
+            model.bible_calls += 1
+            raise RuntimeError("provider down")
+        return await real(system, user, content_type, max_retries)
+
+    model.generate_structured_content = no_bible
+    first = await generate(service, seed_, sessions)
+    assert model.bible_calls == 2  # the call, then its one retry
+    async with sessions.maker() as session:
+        row = await find_bible(session, seed_.course_id)
+        assert row.model == "defaulted"
+        assert not await module_story_is_fresh(session, first)  # waits for its retry
+    chapters = len(model.calls)
+
+    second = await generate(service, seed_, sessions)  # the retry fails too
+
+    assert model.bible_calls == 4
+    assert len(model.calls) == chapters  # same defaults, same digest: chapters reused
+    async with sessions.maker() as session:
+        row = await find_bible(session, seed_.course_id)
+        assert row.model == "defaulted-kept"
+        assert await module_story_is_fresh(session, second)
+    await generate(service, seed_, sessions)
+    assert model.bible_calls == 4  # kept for good: never asked again

@@ -62,7 +62,7 @@ from __future__ import annotations
 import copy
 import re
 import uuid
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -75,7 +75,6 @@ from app.api.v1.schemas.story_course import (
     LENGTH_LIMITS,
     MOODS,
     REWARD_DEFAULTS,
-    VISUALS,
     ValidationIssue,
     ValidationReport,
 )
@@ -92,7 +91,12 @@ from app.domain.services.story_bible import (
     doc_places,
     normalise_bible,
 )
-from app.domain.services.story_course_validator import MIN_REPEAT_LENGTH, line_key
+from app.domain.services.story_course_validator import (
+    MIN_REPEAT_LENGTH,
+    drawn_visual_problem,
+    line_key,
+    speaker_prefix_pattern,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -196,6 +200,7 @@ _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((?:[^)]+)\)")
 _MD_EMPHASIS_RE = re.compile(r"(\*\*|__|\*|`)")
 _MD_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _MD_BULLET_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+", re.MULTILINE)
+_SENTENCE_RE = re.compile(r"(?<=[.!?…])\s+(?=[A-ZÀ-ÖØ-Þ0-9«\"(])")
 _AI_DISCLOSURE_RE = re.compile(r"\b(ai|ia|robot|intelligence artificielle)\b", re.IGNORECASE)
 
 
@@ -258,6 +263,16 @@ def clean_text(text: Any) -> str:
     value = _MD_BULLET_RE.sub("", value)
     value = _MD_EMPHASIS_RE.sub("", value)
     return " ".join(value.split())
+
+
+def split_sentences(text: str, max_rows: int = 4) -> list[str]:
+    """Split prose into at most ``max_rows`` rows, merging the overflow."""
+    sentences = [s.strip() for s in _SENTENCE_RE.split(text) if s.strip()]
+    if len(sentences) <= max_rows:
+        return sentences
+    head = sentences[: max_rows - 1]
+    head.append(" ".join(sentences[max_rows - 1 :]))
+    return head
 
 
 def truncate(text: str, limit: int) -> str:
@@ -1525,12 +1540,10 @@ MIN_ON_STAGE, MAX_ON_STAGE = 2, 3
 #: Rows of a concept card.
 MAX_CONCEPT_ROWS = 4
 
-_SPEECH_TAG_RE = (
-    r"(?:\s*:|\s+(?:says|said|asks|asked|replies|answers|explains|shouts|whispers|"
-    r"dit|demande|répond|repond|explique|crie|chuchote)\b\s*:?)"
-)
-_HONORIFIC_RE = r"(?:(?:mr|mrs|ms|miss|dr|m|mme|mlle|monsieur|madame|maître|maitre)\.?\s+)?"
-_QUOTES = " \"'«»“”‘’"
+#: A fallback concept card's rows, when the model never taught a concept.
+FALLBACK_ROW_LIMIT = 160
+_OPEN_QUOTES = "\"'«“‘"
+_CLOSE_QUOTES = "\"'»”’"
 
 
 @dataclass
@@ -1569,20 +1582,24 @@ class _Cast:
         return [name for name in out if name]
 
 
-def _prefix_re(cast: _Cast) -> re.Pattern[str]:
-    names = sorted({n for n in cast.names()}, key=len, reverse=True)
-    joined = "|".join(re.escape(n) for n in names) or r"(?!)"
-    return re.compile(rf"^[{_QUOTES}(]*{_HONORIFIC_RE}(?:{joined}){_SPEECH_TAG_RE}", re.IGNORECASE)
+def _prefix_re(cast: _Cast) -> re.Pattern[str] | None:
+    """The validator's own speaker-label pattern: what it flags, the builder strips."""
+    return speaker_prefix_pattern(cast.names())
 
 
-def _strip_prefix(text: str, pattern: re.Pattern[str]) -> str | None:
-    """``text`` without its "Name: " / "Name dit :" label, or ``None`` if it has none."""
-    match = pattern.match(text)
+def _strip_prefix(text: str, pattern: re.Pattern[str] | None) -> str | None:
+    """``text`` without its "Name: " / "Name dit : « »" label, or ``None`` if it has none.
+
+    Reported speech ("Kaboré dit que…") is not a label and is left alone.
+    """
+    match = pattern.match(text) if pattern is not None else None
     if not match:
         return None
     rest = text[match.end() :].strip()
-    if len(rest) >= 2 and rest[0] in "\"'«“‘" and rest[-1] in "\"'»”’":
-        rest = rest[1:-1].strip()
+    if rest[:1] in _OPEN_QUOTES:
+        rest = rest[1:].strip()
+        if rest[-1:] in _CLOSE_QUOTES:
+            rest = rest[:-1].strip()
     return rest or None
 
 
@@ -1689,12 +1706,13 @@ def _show_step(ctx: LessonStoryContext, raw: dict[str, Any], path: str) -> dict[
                 ' {"type": "show", "figure": N} with a figure listed above, or leave it out',
             )
         return step
-    if visual not in VISUALS or not isinstance(raw.get("params"), dict):
+    problem = drawn_visual_problem(visual, raw.get("params"))
+    if problem is not None:
+        # The player draws only these: anything else would show "not available".
         builder_issue(
             UNKNOWN_VISUAL,
             path,
-            f"{visual!r} with these params is not a visual of the catalog: use a lesson"
-            " figure or a catalog visual with its params, or leave it out",
+            f"{problem}. Use a lesson figure or a drawn visual with its params, or leave it out",
         )
         return None
     step = {"type": "show", "visual": visual, "params": copy.deepcopy(raw["params"])}
@@ -1918,25 +1936,89 @@ def _flat(scenes: list[dict[str, Any]]) -> Iterator[tuple[dict[str, Any], int, d
             yield scene, index, step
 
 
-def _drop_repeated_lines(scenes: list[dict[str, Any]], seen: set[tuple[str, str]]) -> None:
-    """Keep the first telling of a line; a later one is dropped and reported."""
+def repeat_keys(step: dict[str, Any]) -> set[tuple[str, str]]:
+    """The repetition keys of a story line (none for a short one or a non-line)."""
+    if step.get("type") not in ("narrate", "say") or step.get("frame"):
+        return set()
+    keys = {(lang, line_key(step.get(lang))) for lang in LANGS if isinstance(step.get(lang), str)}
+    return {key for key in keys if len(key[1]) >= MIN_REPEAT_LENGTH}
+
+
+def joins_ask_runs(steps: list[dict[str, Any]], index: int) -> bool:
+    """Whether removing ``steps[index]`` leaves more than MAX_ASKS_IN_A_ROW asks in a row."""
+    before = after = 0
+    i = index - 1
+    while i >= 0 and steps[i].get("type") == "ask":
+        before, i = before + 1, i - 1
+    i = index + 1
+    while i < len(steps) and steps[i].get("type") == "ask":
+        after, i = after + 1, i + 1
+    return before + after > MAX_ASKS_IN_A_ROW
+
+
+def drop_steps_keeping_runs(
+    scenes: list[dict[str, Any]], pick: Callable[[dict[str, Any]], bool]
+) -> list[dict[str, Any]]:
+    """Remove the steps ``pick`` chooses, in order, but never a separator.
+
+    A picked step whose removal would join two runs of questions into one
+    longer than :data:`MAX_ASKS_IN_A_ROW` is kept; those are returned.
+    ``scenes`` are one chapter's, so runs are counted across its scenes.
+    """
+    alive = [step for scene in scenes for step in scene["steps"]]
+    removed: set[int] = set()
+    kept: list[dict[str, Any]] = []
+    index = 0
+    while index < len(alive):
+        step = alive[index]
+        if pick(step):
+            if joins_ask_runs(alive, index):
+                kept.append(step)
+            else:
+                removed.add(id(step))
+                alive.pop(index)
+                continue
+        index += 1
     for scene in scenes:
-        kept: list[dict[str, Any]] = []
-        for step in scene["steps"]:
-            if step["type"] in ("narrate", "say") and not step.get("frame"):
-                keys = {(lang, line_key(step[lang])) for lang in LANGS}
-                keys = {k for k in keys if len(k[1]) >= MIN_REPEAT_LENGTH}
-                if keys & seen:
-                    builder_issue(
-                        REPEATED_LINE,
-                        "scenes",
-                        f"this line is told twice: {step['en'][:60]!r}; every line is"
-                        " written for its own moment",
-                    )
-                    continue
-                seen |= keys
-            kept.append(step)
-        scene["steps"] = kept
+        scene["steps"] = [step for step in scene["steps"] if id(step) not in removed]
+    return kept
+
+
+def ask_run_excess(steps: list[dict[str, Any]]) -> list[str]:
+    """The refs of the asks beyond :data:`MAX_ASKS_IN_A_ROW` in each run of ``steps``."""
+    excess: list[str] = []
+    run = 0
+    for step in steps:
+        if step.get("type") == "ask":
+            run += 1
+            if run > MAX_ASKS_IN_A_ROW and step.get("ref"):
+                excess.append(step["ref"])
+        else:
+            run = 0
+    return excess
+
+
+def _drop_repeated_lines(scenes: list[dict[str, Any]], seen: set[tuple[str, str]]) -> None:
+    """Keep the first telling of a line; a later one is dropped, and reported.
+
+    Unless it is the only thing between two runs of questions: then it stays
+    (still reported, so the model writes a new line).
+    """
+
+    def told_before(step: dict[str, Any]) -> bool:
+        keys = repeat_keys(step)
+        if keys & seen:
+            builder_issue(
+                REPEATED_LINE,
+                "scenes",
+                f"this line is told twice: {step['en'][:60]!r}; every line is"
+                " written for its own moment",
+            )
+            return True
+        seen.update(keys)
+        return False
+
+    drop_steps_keeping_runs(scenes, told_before)
 
 
 def _place_unasked(
@@ -2005,19 +2087,54 @@ def _cap_ask_runs(scenes: list[dict[str, Any]]) -> set[str]:
     return dropped
 
 
-def _check_coverage(ctx: LessonStoryContext, scenes: list[dict[str, Any]]) -> None:
-    """Every concept of the lesson is taught by a concept card that names it."""
+def _check_coverage(
+    ctx: LessonStoryContext, scenes: list[dict[str, Any]], *, cover: bool = False
+) -> None:
+    """Every concept of the lesson is taught by a concept card that names it.
+
+    With ``cover`` (once the repair budget is spent) a concept the model never
+    taught gets a card built from the lesson's own text, so the learner always
+    sees it: before the card of the next concept, else at the end.
+    """
     concepts = ctx.lesson_list("concepts")
     taught = {step.get("teaches") for _scene, _index, step in _flat(scenes)}
     for number, paragraph in enumerate(concepts, start=1):
-        if number not in taught:
-            builder_issue(
-                CONCEPT_NOT_COVERED,
-                f"lesson.concepts[{number}]",
-                f"lesson concept {number} ({truncate(paragraph, 70)!r}) is never taught:"
-                " show it happening to the characters, then add a concept card with"
-                f' "teaches": {number}',
-            )
+        if number in taught:
+            continue
+        builder_issue(
+            CONCEPT_NOT_COVERED,
+            f"lesson.concepts[{number}]",
+            f"lesson concept {number} ({truncate(paragraph, 70)!r}) is never taught:"
+            " show it happening to the characters, then add a concept card with"
+            f' "teaches": {number}'
+            + ("; a card from the lesson's own text was added instead" if cover else ""),
+        )
+        if cover:
+            _add_fallback_card(ctx, scenes, number, paragraph)
+
+
+def _add_fallback_card(
+    ctx: LessonStoryContext, scenes: list[dict[str, Any]], number: int, paragraph: str
+) -> None:
+    rows = [truncate(row, FALLBACK_ROW_LIMIT) for row in split_sentences(paragraph)]
+    if not rows:
+        return
+    rows = rows[:MAX_CONCEPT_ROWS]
+    card = {
+        "type": "concept",
+        "id": f"cfallback{number}",
+        "title": {"en": f"Key idea {number}", "fr": f"Idée clé {number}"},
+        # The lesson exists in the target language only.
+        "en": list(rows),
+        "fr": list(rows),
+        "teaches": number,
+    }
+    for scene in scenes:
+        for index, step in enumerate(scene["steps"]):
+            if isinstance(step.get("teaches"), int) and step["teaches"] > number:
+                scene["steps"].insert(index, card)
+                return
+    scenes[-1]["steps"].append(card)
 
 
 def _place_items(
@@ -2207,6 +2324,7 @@ def build_story_document(
     drop_question_ids: Iterable[str] = (),
     drop_exercise_ids: Iterable[str] = (),
     drop_minigame: bool = False,
+    cover_missing_concepts: bool = False,
 ) -> StoryBuild:
     """Check the model's screenplay and turn it into a ``story-course/1`` chapter.
 
@@ -2214,6 +2332,8 @@ def build_story_document(
     give the same document, so the repair loop can rebuild after every model
     call and the salvage pass can rebuild without the items it drops. Every
     fix made to the answer is returned in :attr:`StoryBuild.issues`.
+    ``cover_missing_concepts`` (once the repair budget is spent) adds a card
+    from the lesson's own text for every concept the screenplay never taught.
     """
     sink = _Translations()
     token = _SINK.set(sink)
@@ -2224,6 +2344,7 @@ def build_story_document(
             drop_q=set(drop_question_ids),
             drop_e=set(drop_exercise_ids),
             drop_minigame=drop_minigame,
+            cover=cover_missing_concepts,
         )
     finally:
         _SINK.reset(token)
@@ -2343,6 +2464,7 @@ def _assemble(
     drop_q: set[str],
     drop_e: set[str],
     drop_minigame: bool,
+    cover: bool = False,
 ) -> StoryBuild:
     registry = _Misconceptions(spine.get("misconceptions"))
     held = _Held()
@@ -2388,7 +2510,7 @@ def _assemble(
                 f" {MAX_SCENES} scenes, each at one of the course's places",
             )
         if not ctx.is_rally:
-            _check_coverage(ctx, scenes)
+            _check_coverage(ctx, scenes, cover=cover)
 
     objectives, exercises, moved = _rebalance(objectives, built, exercises)
     for scene in scenes:

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app.ai.prompts.lesson import _apply_settings_template
-from app.api.v1.schemas.story_course import MOODS, VISUALS, ValidationIssue
+from app.api.v1.schemas.story_course import DRAWN_VISUALS, MOODS, ValidationIssue
 from app.domain.services.story_repair import (
     ARC_CLOSES,
     ARC_CONTINUES,
@@ -288,7 +288,15 @@ def _schema(ctx: LessonStoryContext, plan: StoryPlan) -> str:
     target, home = ctx.target, ctx.home
     concepts = len(ctx.lesson_list("concepts"))
     moods = ", ".join(MOODS)
-    visuals = ", ".join(v for v in VISUALS if v != "image")
+    visuals = "; ".join(
+        f'"{name}" with params {{'
+        + ", ".join(
+            f'"{param}": {desc}' + ("" if required else " (optional)")
+            for param, (required, desc) in params.items()
+        )
+        + "}"
+        for name, params in DRAWN_VISUALS.items()
+    )
     en_limit, fr_limit = STORY_LINE_LIMITS["en"], STORY_LINE_LIMITS["fr"]
     title_line = (
         '  "chapter_title": {"en": "the rally\'s title", "fr": "..."},\n' if ctx.is_rally else ""
@@ -364,7 +372,7 @@ THE SCREENPLAY ("scenes"):
 - "say": "who" is a cast id and "mood" one of {moods}. The line is ONLY the words spoken: never "Name:", "Name says" or "X dit :" in front, no quotation marks around it.
 - The hero ({{child}}) speaks in the first person, often: asks, guesses, gets something wrong, works it out. The friend is "{{friend}}", written exactly so. Margo appears at most once or twice, to give a hint, never an answer.
 - "narrate" is short stage direction in the present tense: where we are, what happens.
-- "show": {{"type": "show", "figure": N}} with a FIGURE listed above, or a catalog visual ({visuals}) with its "params" when the lesson's numbers fit one. Only where it helps.
+- "show": {{"type": "show", "figure": N}} with a FIGURE listed above, or — only when the lesson's numbers fit one — a drawn visual, {{"type": "show", "visual": ..., "params": {{...}}}}, one of: {visuals}. No other visual exists: the player cannot draw it. Only where it helps.
 - {{"type": "game"}} once, where a playful moment fits; {{"type": "photo", "ref": "E1"}} once per exercise (E1, E2... in the order of "exercises"), when a character hands over a task to do on paper.
 - Every line is written for its moment: no "This story is about you", no "Well done, the lesson is over", no line that would fit any chapter, nothing about pages, quizzes or the app.
 - Story lines at most {en_limit} characters in English and {fr_limit} in French; question prompts at most 150; hints at most 120.
@@ -378,7 +386,8 @@ COUNTS AND RULES FOR THIS CHAPTER:
 - "facts": the real local details your scenes use, each with its source; a detail you made up has "invented": true instead.
 - Every misconception id you use must be in "misconceptions". Never put a misconception on a correct option.
 - No prompt or hint may contain the correct answer's words. No two options of a question may be the same.
-- The learner is {{child}}: write it exactly like that. Speak to the learner as "you" / "tu"; in French never make an adjective or participle agree with {{child}} or {{friend}} (either may be a girl or a boy).
+- The learner is {{child}}: write it exactly like that. Speak to the learner as "you" / "tu".
+- {{child}} and {{friend}} may each be a girl or a boy (a woman or a man). Never refer to either with he/she/him/her/his or il/elle/lui/la/le/sa/son/ses: repeat the name, or say "you" / "tu". In French never make an adjective or participle agree with them, in any line — the hero's own included. In the hero's first-person lines write, e.g., « J'ai fait une erreur » (not « Je me suis trompé »), « Aucun doute ! » (not « J'en suis sûr »), « C'est parti ! » (not « Je suis prêt »), « Ça me plaît ! » (not « Je suis content »), « J'ai trouvé ! », « Je comprends maintenant ».
 """
 
 

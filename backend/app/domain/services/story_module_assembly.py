@@ -71,8 +71,6 @@ from app.domain.services.story_bible import (
     doc_places,
 )
 from app.domain.services.story_course_validator import (
-    MIN_REPEAT_LENGTH,
-    line_key,
     validate_story_course,
 )
 
@@ -372,13 +370,41 @@ def _drop_questions(doc: dict[str, Any], ids: set[str]) -> int:
     return points
 
 
+def _chapter_steps(doc: dict[str, Any]) -> list[list[dict[str, Any]]]:
+    """Each chapter of ``doc``'s steps, flattened across its scenes."""
+    return [
+        [step for scene in chapter["scenes"] for step in scene["steps"]]
+        for chapter in doc.get("chapters") or []
+    ]
+
+
+def _runs_hold_without(doc: dict[str, Any], ids: set[str]) -> bool:
+    """Whether ``doc`` keeps at most MAX_ASKS_IN_A_ROW asks in a row without ``ids``.
+
+    Their asks and situation cards go, as :func:`_drop_questions` removes them:
+    a situation card can be what separates two runs.
+    """
+    situations = {repair.situation_step_id(qid) for qid in ids}
+    for steps in _chapter_steps(doc):
+        kept = [
+            step
+            for step in steps
+            if not (step.get("type") == "ask" and step.get("ref") in ids)
+            and not (step.get("type") == "concept" and step.get("id") in situations)
+        ]
+        if repair.ask_run_excess(kept):
+            return False
+    return True
+
+
 def _deduplicate(docs: dict[int, dict[str, Any]], language: str) -> dict[int, list[str]]:
     """Drop later copies of a quiz question, in chapter order, with the floor rule.
 
     Copies are the same verbatim question (:func:`derived_key`). A copy is
     kept when dropping it would leave its chapter with fewer than
-    :data:`story_repair.MIN_QUESTIONS` questions. Returns the dropped ids per
-    chapter index (ids as the chapter had them).
+    :data:`story_repair.MIN_QUESTIONS` questions, or would join two runs of
+    questions into one longer than :data:`story_repair.MAX_ASKS_IN_A_ROW`.
+    Returns the dropped ids per chapter index (ids as the chapter had them).
     """
     seen: set[DerivedKey] = set()
     dropped: dict[int, list[str]] = {}
@@ -392,7 +418,9 @@ def _deduplicate(docs: dict[int, dict[str, Any]], language: str) -> dict[int, li
                 continue
             if key not in seen:
                 seen.add(key)
-            elif remaining - 1 >= repair.MIN_QUESTIONS:
+            elif remaining - 1 >= repair.MIN_QUESTIONS and _runs_hold_without(
+                doc, {*drop, question["id"]}
+            ):
                 drop.append(question["id"])
                 remaining -= 1
         if drop:
@@ -653,23 +681,43 @@ def _max_points(source_doc: dict[str, Any], dropped_points: int) -> int:
     return max(max_points - dropped_points, 0)
 
 
-def _drop_retold_lines(scenes: list[dict[str, Any]], seen: set[tuple[str, str]]) -> None:
-    """A line told in an earlier chapter is dropped from this one (never a frame line)."""
-    for scene in scenes:
-        kept: list[dict[str, Any]] = []
-        for step in scene["steps"]:
-            if step.get("type") in ("narrate", "say") and not step.get("frame"):
-                keys = {
-                    (lang, line_key(step.get(lang)))
-                    for lang in ("en", "fr")
-                    if isinstance(step.get(lang), str)
-                }
-                keys = {key for key in keys if len(key[1]) >= MIN_REPEAT_LENGTH}
-                if keys & seen:
-                    continue
-                seen |= keys
-            kept.append(step)
-        scene["steps"] = kept
+def _drop_retold_lines(doc: dict[str, Any], seen: set[tuple[str, str]]) -> None:
+    """A line told in an earlier chapter is dropped from this one (never a frame line).
+
+    Unless it is all that separates two runs of questions: dropping it would
+    join them into one longer than :data:`story_repair.MAX_ASKS_IN_A_ROW`. It
+    then stays, marked ``retold`` so the repetition check lets it pass.
+    """
+
+    def told_before(step: dict[str, Any]) -> bool:
+        keys = repair.repeat_keys(step)
+        if keys & seen:
+            return True
+        seen.update(keys)
+        return False
+
+    for chapter in doc.get("chapters") or []:
+        for step in repair.drop_steps_keeping_runs(chapter["scenes"], told_before):
+            step["retold"] = True
+
+
+def _cap_runs(doc: dict[str, Any]) -> int:
+    """Leave out the asks of a run past MAX_ASKS_IN_A_ROW (a backstop); returns their points.
+
+    The chapter and the assembler's own edits keep runs short; this makes sure
+    an assembled story never fails on them. It never leaves the chapter with
+    fewer than :data:`story_repair.MIN_QUESTIONS` questions.
+    """
+    points = 0
+    for _ in range(len(doc.get("questions") or []) + 1):
+        excess = [ref for steps in _chapter_steps(doc) for ref in repair.ask_run_excess(steps)]
+        room = len(doc.get("questions") or []) - repair.MIN_QUESTIONS
+        excess = excess[: max(room, 0)]
+        if not excess:
+            break
+        logger.warning("Questions left out to keep runs short", questions=excess)
+        points += _drop_questions(doc, set(excess))
+    return points
 
 
 def _rally_unit(sources: Sequence[ChapterSource]) -> StoryUnit | None:
@@ -758,10 +806,10 @@ def assemble_module_story(
         max_points = 0
         if index in ready:
             chapter_doc = ready[index].doc
+            _drop_retold_lines(chapter_doc, seen_lines)
+            ready[index].dropped_points += _cap_runs(chapter_doc)
             ns = _Namespace(prefix, chapter_doc)
             scenes = _lesson_scenes(chapter_doc, ns)
-            _drop_retold_lines(scenes, seen_lines)
-            scenes = [scene for scene in scenes if scene["steps"]]
             _merge_chapter(merged, chapter_doc, ns)
             typical = _typical(chapter_doc)
             typical_points += int(typical["points"])
@@ -908,7 +956,7 @@ def validate_module_story(doc: dict[str, Any]) -> ValidationReport:
     except Exception as exc:
         return _failed("malformed_course_file", str(exc))
     try:
-        return repair.publishable(validate_story_course(course), doc)
+        return repair.publishable(validate_story_course(course, generated=True), doc)
     except SoftTimeLimitExceeded:
         raise
     except Exception as exc:  # pragma: no cover - the validator owns its shapes

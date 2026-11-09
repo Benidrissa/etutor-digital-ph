@@ -1227,11 +1227,14 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "- The learner's first name is the literal placeholder {{child}} and the"
             " colleague's is {{friend}}: write them exactly like that, braces included,"
             " never a real name.\n"
-            '- Speak to the learner as "you" / "tu". French: write gender-neutrally for'
-            " {{child}} and {{friend}} (either may be a woman or a man). Never use an"
-            " adjective or past participle that agrees with them (avoid"
+            '- Speak to the learner as "you" / "tu". {{child}} and {{friend}} may each be'
+            " a woman or a man: never refer to them with he/she/him/her/his or"
+            ' il/elle/lui/sa/son — repeat the name, or say "you" / "tu". French: never'
+            " use an adjective or past participle that agrees with them (avoid"
             ' "prêt"/"prête", "content"/"contente"); prefer "Bravo", "Bien joué",'
-            ' "À toi", "Tu as réussi".\n'
+            ' "À toi", "Tu as réussi". In the hero\'s own lines too: « J\'ai fait une'
+            " erreur » (not « Je me suis trompé »), « Aucun doute » (not « J'en suis"
+            " sûr »), « C'est parti » (not « Je suis prêt »).\n"
             "- Register: warm, respectful and professional, with humour where it fits.\n\n"
             "LANGUAGES:\n"
             'Every text has an "en" (English) and an "fr" (French) version. The keys name'
@@ -1666,11 +1669,15 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "- The child's first name is the literal placeholder {{child}} and the best"
             " friend's is {{friend}}: write them exactly like that, braces included,"
             " never a real name.\n"
-            '- Speak to the child as "you" / "tu". French: write gender-neutrally for'
-            " {{child}} and {{friend}} (either may be a girl or a boy). Never use an"
-            " adjective or past participle that agrees with them (avoid"
+            '- Speak to the child as "you" / "tu". {{child}} and {{friend}} may each be a'
+            " girl or a boy: never refer to them with he/she/him/her/his or"
+            ' il/elle/lui/sa/son — repeat the name, or say "you" / "tu". French: never'
+            " use an adjective or past participle that agrees with them (avoid"
             ' "prêt"/"prête", "content"/"contente", "ton ami"/"ton amie": say'
-            ' "{{friend}}"); prefer "Bravo", "Bien joué", "À toi", "Tu as réussi".\n'
+            ' "{{friend}}"); prefer "Bravo", "Bien joué", "À toi", "Tu as réussi". In'
+            " the hero's own lines too: « J'ai fait une erreur » (not « Je me suis"
+            " trompé »), « Aucun doute » (not « J'en suis sûr »), « C'est parti » (not"
+            " « Je suis prêt »), « Ça me plaît » (not « Je suis content »).\n"
             "- Register: playful and encouraging, a cartoon a child in {country} would"
             " love.\n\n"
             "LANGUAGES:\n"
