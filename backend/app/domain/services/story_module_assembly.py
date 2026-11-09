@@ -23,8 +23,9 @@ What the assembler does, and nothing else:
   intro scene listing every unit, and the last one closes with the module's
   closing scene. Every step the assembler writes carries a ``frame`` marker
   (see :data:`GENERATED_FRAMES`) and addresses ``{child}``.
-* **Duplicates.** A quiz question copied into two lessons' chapters (same
-  ``derived_from``) is kept in the first; a later copy is dropped unless that
+* **Duplicates.** A quiz question copied into two lessons' chapters (both
+  carry ``derived_from`` and read the same stem, options and answer in the
+  target language) is kept in the first; a later copy is dropped unless that
   would leave its chapter with fewer than :data:`story_repair.MIN_QUESTIONS`.
 * **Everything module-level**: header, merged sources, objectives,
   misconceptions, glossary and facts, the tutor brief, rewards, one pass of
@@ -286,14 +287,37 @@ def _unusable_reason(source: ChapterSource, language: str) -> str | None:
 # --------------------------------------------------------------------------
 
 
-def _derived_key(question: dict[str, Any]) -> tuple[str, str] | None:
-    source = question.get("derived_from")
-    if not isinstance(source, dict):
+#: What makes two copied quiz questions the same question for the learner.
+DerivedKey = tuple[str, tuple[str, ...], str]
+
+
+def _derived_key(question: dict[str, Any], language: str) -> DerivedKey | None:
+    """The verbatim quiz question a derived question copies, by its content.
+
+    Only a question with ``derived_from`` (C-1) is a copy, but its identity is
+    what the learner reads in the target language — the stem (or the prompt
+    when the stem fits it), the options in order and the correct one — never
+    the ``(quiz_unit, question_id)`` label. Two chapters can be built from
+    different quiz rows of one quiz unit (another level or country) whose
+    generated ids are the same ``q1..qN`` for other questions; and a quiz unit
+    renumbered between two chapters' builds labels one question twice.
+    """
+    if not isinstance(question.get("derived_from"), dict):
         return None
-    quiz_unit, question_id = source.get("quiz_unit"), source.get("question_id")
-    if isinstance(quiz_unit, str) and isinstance(question_id, str):
-        return quiz_unit, question_id
-    return None
+    reading = question.get("stem")
+    if not isinstance(reading, dict):
+        reading = question.get("prompt")
+    text = _text(reading.get(language)) if isinstance(reading, dict) else ""
+    choices = question.get("choices")
+    options = (
+        tuple(_text(c.get(language)) for c in choices or [] if isinstance(c, dict))
+        if isinstance(choices, list)
+        else ()
+    )
+    answer = question.get("answer")
+    if not text or not options or not all(options) or not isinstance(answer, str):
+        return None
+    return text, options, answer
 
 
 def _question_points(doc: dict[str, Any], question: dict[str, Any]) -> int:
@@ -349,21 +373,22 @@ def _drop_questions(doc: dict[str, Any], ids: set[str]) -> int:
     return points
 
 
-def _deduplicate(docs: dict[int, dict[str, Any]]) -> dict[int, list[str]]:
+def _deduplicate(docs: dict[int, dict[str, Any]], language: str) -> dict[int, list[str]]:
     """Drop later copies of a quiz question, in chapter order, with the floor rule.
 
-    A copy is kept when dropping it would leave its chapter with fewer than
+    Copies are the same verbatim question (:func:`_derived_key`). A copy is
+    kept when dropping it would leave its chapter with fewer than
     :data:`story_repair.MIN_QUESTIONS` questions. Returns the dropped ids per
     chapter index (ids as the chapter had them).
     """
-    seen: set[tuple[str, str]] = set()
+    seen: set[DerivedKey] = set()
     dropped: dict[int, list[str]] = {}
     for index in sorted(docs):
         doc = docs[index]
         remaining = len(doc["questions"])
         drop: list[str] = []
         for question in doc["questions"]:
-            key = _derived_key(question)
+            key = _derived_key(question, language)
             if key is None:
                 continue
             if key not in seen:
@@ -828,7 +853,7 @@ def assemble_module_story(
                 reason=reason,
             )
 
-    for index, ids in _deduplicate({i: r.doc for i, r in ready.items()}).items():
+    for index, ids in _deduplicate({i: r.doc for i, r in ready.items()}, language).items():
         ready[index].dropped_points = _drop_questions(ready[index].doc, set(ids))
         logger.info(
             "Quiz questions already told by an earlier chapter left out",

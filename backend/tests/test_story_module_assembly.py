@@ -26,6 +26,7 @@ import json
 import os
 import random
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -476,6 +477,16 @@ def check_story_lines(doc: dict[str, Any]) -> None:
             assert "{child}" in step["en"] and "{child}" in step["fr"], step
 
 
+def copy_key(question: dict[str, Any], language: str) -> tuple[Any, ...]:
+    """What makes two derived questions one quiz question: what the learner reads."""
+    reading = question.get("stem") or question["prompt"]
+    return (
+        reading[language],
+        tuple(c[language] for c in question["choices"]),
+        question["answer"],
+    )
+
+
 def check_no_text_changed(doc: dict[str, Any], sources: list[ChapterSource]) -> None:
     """Every learner-facing item of a ready lesson is its chapter's own, ids aside.
 
@@ -497,7 +508,7 @@ def check_no_text_changed(doc: dict[str, Any], sources: list[ChapterSource]) -> 
 
         # De-duplication: only later copies, and never below the floor.
         keys = {
-            q["id"]: (q["derived_from"]["quiz_unit"], q["derived_from"]["question_id"])
+            q["id"]: copy_key(q, doc["languages"]["target"])
             for q in src["questions"]
             if isinstance(q.get("derived_from"), dict)
         }
@@ -793,6 +804,78 @@ def test_a_kids_module_uses_the_kids_cast_rewards_and_places(fixture):
     assert generated and {s["place"] for s in generated} == {"classroom"}
     assert validate_module_story(doc).ok
     assert assemble(fixture, "fr")["rewards"]["unit"] == {"en": "points", "fr": "points"}
+
+
+def other_level_quiz(lesson_raw: dict[str, Any], language: str) -> list[dict[str, Any]]:
+    """Another quiz row of unit 1.3 (say level 2): the same ids, other questions."""
+    quiz = covering_quiz(lesson_raw, language)
+    for question in quiz:
+        question["question"] = f"LEVEL2 {question['question']}"
+        question["options"] = [f"L2 {option}" for option in question["options"]]
+        question["explanation"] = f"LEVEL2 {question['explanation']}"
+    return quiz
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+async def test_questions_of_another_quiz_row_with_the_same_ids_are_not_duplicates(
+    fixture, lesson_raw, language
+):
+    """Chapters can come from different quiz rows of one quiz unit (levels, countries).
+
+    Their generated ids are both ``q1..qN``; the questions are not the same,
+    so none of 1.2's is dropped as a copy of 1.1's.
+    """
+    unit = UNITS[1]
+    mcqs, dropped = repair.parse_quiz_mcqs(other_level_quiz(lesson_raw, language))
+    assert dropped == []
+    ctx = replace(chapter_ctx(lesson_raw, language, unit), mcqs=mcqs)
+    generation = await StoryFromLessonService(
+        FakeClaude(chapter_spine(lesson_raw, language, "1.2"))
+    ).generate_document(ctx, system_prompt="system")
+    assert generation.report.ok, [e.model_dump() for e in generation.report.errors]
+    level2 = generation.doc
+    derived = [q for q in level2["questions"] if "derived_from" in q]
+    assert len(derived) == 3
+    # The same labels as the level-1 chapter 1.1's copies: q2 is in both.
+    first = fixture["chapters"][language]["1.1"]
+    labels = lambda doc: {  # noqa: E731
+        (q["derived_from"]["quiz_unit"], q["derived_from"]["question_id"])
+        for q in doc["questions"]
+        if "derived_from" in q
+    }
+    assert labels(first) & labels(level2)
+    units = story_units(fixture)
+    sources = [
+        ChapterSource(units[0], copy.deepcopy(first)),
+        ChapterSource(units[1], level2),
+    ]
+
+    doc = assemble_module_story(module_ctx(fixture, language), sources)
+
+    assert validate_module_story(doc).ok
+    kept = [q for q in owned(doc["questions"], "u1_2-") if "derived_from" in q]
+    assert len(kept) == 3
+    assert all(q["prompt"][language].startswith("LEVEL2") or q.get("stem") for q in kept)
+    check_no_text_changed(doc, sources)
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_copy_labelled_with_an_old_quiz_unit_number_is_still_a_copy(fixture, language):
+    """A chapter built before its quiz unit was renumbered: the same question, another label."""
+    sources = chapter_sources(fixture, language)
+    before = sources[1].doc
+    assert before is not None
+    for question in before["questions"]:
+        if "derived_from" in question:
+            question["derived_from"]["quiz_unit"] = "1.9"
+
+    doc = assemble_module_story(module_ctx(fixture, language), sources)
+
+    # 1.1 asked q2 first: 1.2's copy is dropped all the same (it keeps two).
+    source = lambda q: q["derived_from"]["question_id"]  # noqa: E731
+    assert [source(q) for q in owned(doc["questions"], "u1_2-")] == ["q3", "q4"]
+    assert validate_module_story(doc).ok
+    check_no_text_changed(doc, sources)
 
 
 async def test_dedup_may_thin_an_objective_which_is_only_a_warning(fixture, lesson_raw):
