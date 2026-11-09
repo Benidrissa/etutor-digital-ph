@@ -1,17 +1,23 @@
-"""Story mode for a lesson unit: generate once, validate, cache, serve.
+"""The story of one lesson unit: one chapter of its module's story.
 
-The first time a learner opens a lesson's Story tab, the unit's own lesson and
-quiz are turned into a ``story-course/1`` week and stored in ``story_courses``
-bound to ``(module_unit_id, language)``. Every later learner gets the cached
-week; the front end substitutes their first name for ``{child}``.
+Story mode tells a whole module as one story (:mod:`story_module_service`),
+with one chapter per unit. A lesson unit's chapter is made here: the unit's
+lesson and the quiz of the quiz unit covering it are turned into a
+``story-course/1`` week and stored in ``story_courses`` bound to
+``(module_unit_id, language)`` — the chapter cache (contract C-1). The module
+story task (:func:`app.tasks.content_generation.generate_module_story_task`)
+makes sure the lesson and the covering quiz exist, then calls
+:meth:`StoryFromLessonService.get_or_generate_unit_story` once per lesson unit
+and assembles the module story from the cached chapters. The front end
+substitutes the learner's first name for ``{child}``.
 
-Pipeline (one Celery task, :func:`app.tasks.content_generation.generate_story_task`):
+Pipeline of one chapter:
 
 1. read the cached lesson row (generating it through the lesson service only
-   when the unit has none) and the quiz the story's questions come from — the
-   lesson unit's own cached quiz, else the cached quiz of the module's quiz
-   unit that covers the lesson (:func:`covering_quiz_unit`); never a quiz
-   generated for the purpose;
+   when the unit has none and a lesson service was given) and the cached quiz
+   of the module's quiz unit that covers the lesson
+   (:func:`covering_quiz_unit`) — never the lesson unit's own quiz, which an
+   offline download can create, and never a quiz generated here;
 2. one model call for the *spine* (pedagogy and translations only);
 3. :func:`app.domain.services.story_repair.build_story_document` — the
    deterministic layer that builds everything structural and normalises the
@@ -38,13 +44,13 @@ import json
 import math
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -107,7 +113,12 @@ def content_digest(content: Any) -> str:
 
 
 def story_dispatch_key(module_unit_id: uuid.UUID, language: str) -> str:
-    """Redis key holding the task id generating a unit's story in ``language``."""
+    """Redis key of the per-unit story route (deprecated).
+
+    Kept only while ``GET /story-courses/unit/...`` exists; it goes with that
+    route. A module story's key is
+    :func:`app.domain.services.story_module_service.story_dispatch_key`.
+    """
     return f"story_dispatch:{module_unit_id}:{language}"
 
 
@@ -128,10 +139,10 @@ return 0
 
 @dataclass(frozen=True)
 class StoryBinding:
-    """Which lesson unit a story tells, and which source rows it came from.
+    """Which lesson unit a chapter tells, and which source rows it came from.
 
-    The quiz row is the lesson unit's own, or the covering quiz unit's; the
-    digests are :func:`content_digest` of each row's content.
+    The quiz row is the covering quiz unit's; the digests are
+    :func:`content_digest` of each row's content.
     """
 
     module_id: uuid.UUID
@@ -145,6 +156,20 @@ class StoryBinding:
     quiz_digest: str | None = None
 
 
+@dataclass(frozen=True)
+class ModuleStoryBinding:
+    """A module story: its module and language, manifest and roster digest (C-3).
+
+    ``source_rows`` is ``{"assembler": int, "units": [...]}``; ``units_digest``
+    is the sha256 of the module's roster.
+    """
+
+    module_id: uuid.UUID
+    language: str
+    source_rows: dict[str, Any]
+    units_digest: str
+
+
 async def upsert_story_course(
     db: AsyncSession,
     *,
@@ -154,15 +179,16 @@ async def upsert_story_course(
     course_id: uuid.UUID | None,
     publish: bool,
     created_by: uuid.UUID | None = None,
-    binding: StoryBinding | None = None,
+    binding: StoryBinding | ModuleStoryBinding | None = None,
 ) -> StoryCourseRecord:
     """Create or update the row for ``course.id`` (its slug). Does not commit.
 
-    Shared by the authoring endpoint and the lesson-story generator so both
-    write exactly the same columns. A hand-authored week that is saved
-    without ``publish`` keeps a ``published`` status (the author is editing a
-    live week); a lesson story that is not publishable is always demoted to
-    ``draft``, so an invalid regeneration can never be served.
+    Shared by the authoring endpoint, the chapter generator and the module
+    story so all write exactly the same columns. A hand-authored week that is
+    saved without ``publish`` keeps a ``published`` status (the author is
+    editing a live week); a chapter or module story that is not publishable
+    is always demoted to ``draft``, so an invalid regeneration can never be
+    served.
     """
     record = (
         await db.execute(select(StoryCourseRecord).where(StoryCourseRecord.slug == course.id))
@@ -187,7 +213,7 @@ async def upsert_story_course(
     elif binding is not None or record.status != "published":
         record.status = "draft"
 
-    if binding is not None:
+    if isinstance(binding, StoryBinding):
         record.module_id = binding.module_id
         record.module_unit_id = binding.module_unit_id
         record.language = binding.language
@@ -197,12 +223,27 @@ async def upsert_story_course(
         record.source_quiz_revision = binding.quiz_revision
         record.source_lesson_digest = binding.lesson_digest
         record.source_quiz_digest = binding.quiz_digest
+        record.source_rows = None
+        record.source_units_digest = None
+    elif isinstance(binding, ModuleStoryBinding):
+        record.module_id = binding.module_id
+        record.module_unit_id = None
+        record.language = binding.language
+        record.source_lesson_content_id = None
+        record.source_lesson_revision = None
+        record.source_quiz_content_id = None
+        record.source_quiz_revision = None
+        record.source_lesson_digest = None
+        record.source_quiz_digest = None
+        record.source_rows = binding.source_rows
+        record.source_units_digest = binding.units_digest
     return record
 
 
 async def find_unit_story(
     session: AsyncSession, module_unit_id: uuid.UUID, language: str
 ) -> StoryCourseRecord | None:
+    """The chapter row of a lesson unit in ``language``, if any."""
     return (
         await session.execute(
             select(StoryCourseRecord).where(
@@ -270,86 +311,190 @@ async def find_covering_quiz_unit(session: AsyncSession, lesson_unit_id: uuid.UU
     return covering_quiz_unit(units, lesson_unit_id)
 
 
-async def _has_quiz(session: AsyncSession, unit_ids: list[uuid.UUID], language: str) -> bool:
-    found = (
-        await session.execute(
-            select(GeneratedContent.id)
-            .where(
-                GeneratedContent.module_unit_id.in_(unit_ids),
-                GeneratedContent.content_type == "quiz",
-                GeneratedContent.language == language,
+def covering_quiz_units(units: Sequence[Any]) -> dict[Any, Any | None]:
+    """Each unit's covering quiz unit id (:func:`covering_quiz_unit`), or ``None``."""
+    out: dict[Any, Any | None] = {}
+    for unit in units:
+        covering = covering_quiz_unit(units, unit.id)
+        out[unit.id] = covering.id if covering is not None else None
+    return out
+
+
+def _source_unchanged(row: Any, revision: int | None, digest: str | None) -> bool:
+    """The row exists with the recorded ``content_revision`` and content digest."""
+    return (
+        row is not None
+        and revision is not None
+        and (row.content_revision or 1) == revision
+        and digest is not None
+        and content_digest(row.content) == digest
+    )
+
+
+def _chapter_builder(record: StoryCourseRecord) -> Any:
+    content = record.content
+    return content.get("sira_builder") if isinstance(content, dict) else None
+
+
+def _chapter_can_be_fresh(record: StoryCourseRecord, builder: Any) -> bool:
+    """What a chapter row must carry before its sources are worth reading."""
+    if record.module_unit_id is None or record.module_id is None or not record.language:
+        return False
+    if builder != repair.CHAPTER_BUILDER_VERSION:
+        # Built by an older chapter builder (no frame markers, no derived_from,
+        # the spine's own cast): rebuild it once.
+        return False
+    if (
+        record.source_lesson_content_id is None
+        or record.source_lesson_revision is None
+        or record.source_lesson_digest is None
+    ):
+        return False
+    # A recorded quiz revision without its row: the quiz was deleted since
+    # (FK SET NULL), or the digest was never written.
+    return record.source_quiz_revision is None or (
+        record.source_quiz_content_id is not None and record.source_quiz_digest is not None
+    )
+
+
+async def chapters_are_fresh(
+    session: AsyncSession,
+    records: Sequence[StoryCourseRecord],
+    *,
+    builders: Sequence[Any] | None = None,
+    covering: Mapping[uuid.UUID, uuid.UUID | None] | None = None,
+) -> list[bool]:
+    """:func:`story_sources_are_fresh` for many chapter rows: one query of their sources.
+
+    A chapter is stale when:
+
+    * it was not built by this chapter builder (``content["sira_builder"]``
+      is not :data:`story_repair.CHAPTER_BUILDER_VERSION`);
+    * its lesson row is gone, regenerated (``content_revision`` moved) or
+      edited (its content no longer matches the recorded digest — an admin's
+      manual edit of a lesson does not bump the revision);
+    * the quiz row it used is gone, regenerated or edited, the same way, or
+      is the lesson unit's own quiz (never a source since contract C-1);
+    * it was built without a quiz and its covering quiz unit now has one in
+      its language.
+
+    The lesson unit's own quiz — the offline download creates one — is never
+    a source, so one appearing never makes a chapter stale. Nor does the
+    module's roster: a chapter built from a quiz stays fresh while that quiz
+    is unchanged, even if a quiz unit is added in between.
+
+    ``builders`` are the records' ``content["sira_builder"]``, for a caller
+    that read them in SQL and deferred ``content``; by default they are read
+    from each record. ``covering`` maps lesson unit ids to their covering
+    quiz unit id (``None``: no quiz unit); without it, the rosters of the
+    modules of the chapters built without a quiz are read in one more query.
+    Rows that are not chapters (no ``module_unit_id``) are reported stale.
+    """
+    if builders is None:
+        builders = [_chapter_builder(record) for record in records]
+    results = [False] * len(records)
+    candidates = [
+        index
+        for index, (record, builder) in enumerate(zip(records, builders, strict=True))
+        if _chapter_can_be_fresh(record, builder)
+    ]
+    if not candidates:
+        return results
+
+    no_quiz = [i for i in candidates if records[i].source_quiz_revision is None]
+    if no_quiz and covering is None:
+        module_ids = sorted({records[i].module_id for i in no_quiz}, key=str)
+        roster = (
+            await session.execute(
+                select(
+                    ModuleUnit.id,
+                    ModuleUnit.module_id,
+                    ModuleUnit.unit_number,
+                    ModuleUnit.order_index,
+                    ModuleUnit.unit_type,
+                ).where(ModuleUnit.module_id.in_(module_ids))
             )
-            .limit(1)
+        ).all()
+        covering = {}
+        for module_id in module_ids:
+            covering.update(covering_quiz_units([u for u in roster if u.module_id == module_id]))
+    covering = covering or {}
+
+    source_ids: list[uuid.UUID] = []
+    for i in candidates:
+        source_ids.append(records[i].source_lesson_content_id)
+        if records[i].source_quiz_content_id is not None:
+            source_ids.append(records[i].source_quiz_content_id)
+    quiz_units = sorted(
+        {q for i in no_quiz if (q := covering.get(records[i].module_unit_id)) is not None},
+        key=str,
+    )
+    conditions = [GeneratedContent.id.in_(source_ids)]
+    if quiz_units:
+        conditions.append(
+            and_(
+                GeneratedContent.module_unit_id.in_(quiz_units),
+                GeneratedContent.content_type == "quiz",
+                GeneratedContent.language.in_(sorted({records[i].language for i in no_quiz})),
+            )
         )
-    ).first()
-    return found is not None
+    rows = (
+        await session.execute(
+            select(
+                GeneratedContent.id,
+                GeneratedContent.content_revision,
+                GeneratedContent.content,
+                GeneratedContent.module_unit_id,
+                GeneratedContent.content_type,
+                GeneratedContent.language,
+            ).where(or_(*conditions))
+        )
+    ).all()
+    by_id = {row.id: row for row in rows}
+    quizzes_by_unit = {
+        (row.module_unit_id, row.language) for row in rows if row.content_type == "quiz"
+    }
+
+    for i in candidates:
+        record = records[i]
+        lesson = by_id.get(record.source_lesson_content_id)
+        if not _source_unchanged(
+            lesson, record.source_lesson_revision, record.source_lesson_digest
+        ):
+            continue
+        if record.source_quiz_revision is not None:
+            quiz = by_id.get(record.source_quiz_content_id)
+            if not _source_unchanged(quiz, record.source_quiz_revision, record.source_quiz_digest):
+                continue
+            if quiz.module_unit_id == record.module_unit_id:
+                continue  # the lesson unit's own quiz: never a source now
+            results[i] = True
+            continue
+        quiz_unit = covering.get(record.module_unit_id)
+        results[i] = quiz_unit is None or (quiz_unit, record.language) not in quizzes_by_unit
+    return results
 
 
 async def story_sources_are_fresh(session: AsyncSession, record: StoryCourseRecord) -> bool:
-    """Whether the lesson and quiz a story was derived from are unchanged.
+    """Whether a story row can still be served as it is.
 
-    Stale when:
-
-    * the lesson row is gone, regenerated (``content_revision`` moved) or
-      edited (its content no longer matches ``source_lesson_digest`` — an
-      admin's manual edit of a lesson does not bump the revision);
-    * the quiz row it used — the lesson unit's own or the covering quiz
-      unit's — is gone, regenerated or edited, the same way;
-    * it used the covering quiz unit's quiz and the lesson unit now has a quiz
-      of its own, which the generator prefers;
-    * it was built without a quiz and the lesson unit, or its covering quiz
-      unit, now has one — so its questions come to be derived from it.
-
-    Hand-authored weeks are never stale.
+    * A hand-authored week (``module_id`` null) is never stale.
+    * A chapter (``module_unit_id`` set) is fresh while its builder, lesson
+      and covering quiz are unchanged (:func:`chapters_are_fresh`).
+    * A module story must never be judged here: its freshness depends on its
+      roster and every chapter
+      (:func:`app.domain.services.story_module_service.module_story_is_fresh`),
+      so it is reported stale.
     """
+    if record.module_id is None:
+        return True
     if record.module_unit_id is None:
-        return True
-    if record.source_lesson_content_id is None or record.source_lesson_revision is None:
-        return False
-
-    ids = [record.source_lesson_content_id]
-    if record.source_quiz_content_id is not None:
-        ids.append(record.source_quiz_content_id)
-    rows = {
-        row.id: row
-        for row in (
-            await session.execute(
-                select(
-                    GeneratedContent.id,
-                    GeneratedContent.content_revision,
-                    GeneratedContent.content,
-                    GeneratedContent.module_unit_id,
-                ).where(GeneratedContent.id.in_(ids))
-            )
-        ).all()
-    }
-
-    def unchanged(row: Any, revision: int | None, digest: str | None) -> bool:
-        return (
-            row is not None
-            and (row.content_revision or 1) == revision
-            and digest is not None
-            and content_digest(row.content) == digest
+        logger.warning(
+            "A module story was checked as a chapter; use module_story_is_fresh",
+            slug=record.slug,
         )
-
-    lesson = rows.get(record.source_lesson_content_id)
-    if not unchanged(lesson, record.source_lesson_revision, record.source_lesson_digest):
         return False
-
-    if record.source_quiz_revision is not None:
-        quiz = rows.get(record.source_quiz_content_id) if record.source_quiz_content_id else None
-        if not unchanged(quiz, record.source_quiz_revision, record.source_quiz_digest):
-            return False
-        if quiz.module_unit_id != record.module_unit_id:
-            # Built from the covering quiz unit: a quiz of the lesson's own wins.
-            return not await _has_quiz(session, [record.module_unit_id], record.language)
-        return True
-
-    candidates = [record.module_unit_id]
-    covering = await find_covering_quiz_unit(session, record.module_unit_id)
-    if covering is not None:
-        candidates.append(covering.id)
-    return not await _has_quiz(session, candidates, record.language)
+    return (await chapters_are_fresh(session, [record]))[0]
 
 
 async def select_unit_content_row(
@@ -532,9 +677,10 @@ def build_context(
 ) -> repair.LessonStoryContext:
     """Everything the deterministic layer needs, read once from the ORM rows.
 
-    ``quiz_unit`` is the covering quiz unit ``quiz_row`` belongs to, or
-    ``None`` when the quiz is the lesson unit's own (every MCQ is then a
-    question; from a covering quiz they are candidates the model picks from).
+    ``quiz_unit`` is the covering quiz unit ``quiz_row`` belongs to; its MCQs
+    are candidates the model picks from. ``None`` (a quiz scoped to the unit
+    itself, every MCQ a question) is kept for direct callers: the pipeline
+    never reads a lesson unit's own quiz any more.
     """
     from app.ai.prompts.audience import detect_audience
 
@@ -564,7 +710,7 @@ def build_context(
 
 
 class StoryFromLessonService:
-    """Generates and caches the story mode of one lesson unit."""
+    """Generates and caches one lesson unit's story: a chapter of its module story."""
 
     def __init__(
         self,
@@ -908,12 +1054,12 @@ class StoryFromLessonService:
         country: str = "CI",
         force_regenerate: bool = False,
     ) -> StoryCourseRecord:
-        """Return the unit's story, generating and caching it when needed.
+        """Return the unit's chapter, generating and caching it when needed.
 
-        A cached story is returned as-is while its sources are fresh — valid or
-        not, so a story that could not be made valid is not regenerated (and
-        paid for) on every view; it is retried when the lesson or quiz changes,
-        or when an admin forces it.
+        A cached chapter is returned as-is while it is fresh — valid or not,
+        so a chapter that could not be made valid is not regenerated (and paid
+        for) on every view; it is retried when the lesson or quiz changes, when
+        the chapter builder changes, or when an admin forces it.
 
         Raises :class:`NotALessonUnit` for a quiz, case-study or scenario unit
         before anything is generated.
@@ -996,23 +1142,22 @@ class StoryFromLessonService:
         language: str,
         lesson_row: GeneratedContent,
     ) -> tuple[GeneratedContent | None, Any | None]:
-        """``(quiz row, covering quiz unit)`` the story's questions come from.
+        """``(quiz row, covering quiz unit)`` the chapter's questions come from.
 
-        1. The lesson unit's own cached quiz (an offline download can create
-           one), whose every MCQ becomes a question: ``(row, None)``.
-        2. Else the cached quiz of the module's quiz unit that covers the
-           lesson (:func:`covering_quiz_unit`), whose MCQs are candidates the
-           model picks from: ``(row, quiz unit)``.
-        3. Else ``(None, None)``: every question is model-authored. A quiz is
-           never generated for a story — that would be a second paid
-           generation the learner did not ask for.
+        Only the cached quiz of the module's quiz unit that covers the lesson
+        (:func:`covering_quiz_unit`, contract C-1): its MCQs are candidates the
+        model picks from, at most :data:`story_repair.MAX_PICKED_MCQS`, copied
+        verbatim. The lesson unit's own quiz — an offline download creates one
+        for every unit — is never used: under the old rule one learner's
+        download made the story stale for everyone, and paid for again.
+        ``(None, None)`` when there is no covering quiz unit or it has no
+        cached quiz in ``language``: every question is then model-authored.
+        No quiz is generated here; the module story task generates a missing
+        covering quiz before it asks for the chapter.
 
         Level and country follow the lesson row the story is built from.
         """
         level, country = lesson_row.level, lesson_row.country_context
-        own = await select_unit_content_row(session, unit.id, "quiz", language, level, country)
-        if own is not None:
-            return own, None
         quiz_unit = await find_covering_quiz_unit(session, unit.id)
         if quiz_unit is None:
             return None, None
