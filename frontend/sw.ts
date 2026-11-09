@@ -114,6 +114,11 @@ const serwist = new Serwist({
         // a stale "generating" body keeps the quiz spinner alive forever
         // when the device is offline.
         if (url.pathname.startsWith("/api/v1/content/status/")) return false;
+        // Story mode: a module story is gated per learner, rewritten when
+        // any of its lessons or quizzes changes, and its offline copy lives
+        // in IndexedDB (saved by the module download). SWR would replay a
+        // regenerated, or no longer authorised, story for up to a day.
+        if (url.pathname.startsWith("/api/v1/story-courses/")) return false;
         if (url.pathname.startsWith("/api/")) return true;
         return false;
       },
