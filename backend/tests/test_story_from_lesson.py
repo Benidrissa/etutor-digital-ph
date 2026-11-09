@@ -1549,8 +1549,11 @@ _UNREADABLE = {"raw_response": True, "content": "Here is your story, in prose."}
 def _with_course_misconceptions(ctx: repair.LessonStoryContext) -> repair.LessonStoryContext:
     """Track A: every wrong option of every MCQ says why a learner would pick it.
 
-    With these, the story built from no answer at all has no error but its
-    copied translations — exactly what must never be published.
+    Prompt input only: they never fill a wrong option the model left without
+    a misconception (that text would reach learners). The tests below that
+    need a story built from (almost) no answer to be valid but for its copied
+    translations — exactly what must never be published — validate with
+    :func:`_ignoring_derived_distractor_gaps`.
     """
     for mcq in ctx.mcqs:
         mcq.option_misconceptions = [
@@ -1568,9 +1571,33 @@ def _spine_with_x1(raw: dict[str, Any], language: str) -> dict[str, Any]:
     return spine
 
 
-def _failing_question(question_id: str):
+def _ignoring_derived_distractor_gaps(real=None):
+    """``validate_document`` without its errors on the quiz's wrong options left unexplained.
+
+    Those are the derived questions' (``q1``..) ``distractor_without_misconception``
+    errors: what the course's option_misconceptions used to fill before they
+    became prompt input only. A model-authored question's (``x9``) stay.
+    """
+    real = real or validate_document
+
+    def validate(doc: dict[str, Any]):
+        report = real(doc)
+        errors = [
+            e
+            for e in report.errors
+            if not (
+                e.code == "distractor_without_misconception" and e.path.startswith("questions[q")
+            )
+        ]
+        checks = report.checks.model_copy(update={"errors": len(errors)})
+        return report.model_copy(update={"ok": not errors, "errors": errors, "checks": checks})
+
+    return validate
+
+
+def _failing_question(question_id: str, real=None):
     """``validate_document`` plus one hard error on ``question_id`` whenever it is asked."""
-    real = validate_document
+    real = real or validate_document
 
     def validate(doc: dict[str, Any]):
         report = real(doc)
@@ -1598,7 +1625,8 @@ async def test_an_unreadable_answer_never_beats_a_readable_attempt(raw, language
     ctx = _with_course_misconceptions(make_ctx(raw, language))
     spine = _spine_with_x1(raw, language)
     model = FakeClaude(spine, _UNREADABLE, spine)
-    with patch.object(service_module, "validate_document", side_effect=_failing_question("x1")):
+    validate = _failing_question("x1", _ignoring_derived_distractor_gaps())
+    with patch.object(service_module, "validate_document", side_effect=validate):
         generation = await StoryFromLessonService(model).generate_document(
             ctx, system_prompt="system"
         )
@@ -1628,7 +1656,11 @@ async def test_a_story_without_model_content_is_never_published(raw, language, a
         "wrapped spine": {"story_spine": raw[language]["spine"]},
     }[answer]
     model = FakeClaude(response)
-    generation = await StoryFromLessonService(model).generate_document(ctx, system_prompt="system")
+    validate = _ignoring_derived_distractor_gaps()
+    with patch.object(service_module, "validate_document", side_effect=validate):
+        generation = await StoryFromLessonService(model).generate_document(
+            ctx, system_prompt="system"
+        )
 
     assert generation.model_calls == 3
     assert not generation.report.ok
@@ -1795,7 +1827,11 @@ async def test_a_clean_salvage_beats_an_answer_valid_only_on_copies(
     thin_answer = _thin_answer(raw, language, thin)
     answers = (thin_answer, real) if thin_first else (real, thin_answer, real)
     model = FakeClaude(*answers)
-    generation = await StoryFromLessonService(model).generate_document(ctx, system_prompt="system")
+    validate = _ignoring_derived_distractor_gaps()
+    with patch.object(service_module, "validate_document", side_effect=validate):
+        generation = await StoryFromLessonService(model).generate_document(
+            ctx, system_prompt="system"
+        )
 
     assert generation.model_calls == 3
     assert generation.report.ok, [e.model_dump() for e in generation.report.errors]

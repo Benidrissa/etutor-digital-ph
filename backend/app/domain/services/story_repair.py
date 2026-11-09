@@ -431,6 +431,7 @@ class QuizMcq:
     explanation: str = ""
     #: Track A's ``option_misconceptions``: why each wrong option is wrong,
     #: positional, ``None`` at the correct index. Absent on older quizzes.
+    #: Prompt input only: never copied into a story a learner receives.
     option_misconceptions: list[str | None] = field(default_factory=list)
 
     @property
@@ -853,26 +854,14 @@ def _derived_question(
             continue
         item = distractors.get(index, {})
         option_text = {"en": choice["en"], "fr": choice["fr"]}
-        known = mcq.option_misconceptions[index] if index < len(mcq.option_misconceptions) else None
-        # The course's own misconception text exists in the target language
-        # only: declaring it copies that text under the home key too.
-        known_missing = [
-            (
-                f"{path}.distractors[{ids[index]}].misconception",
-                home,
-                f"no misconception for this wrong option; the course's"
-                f" {_LANGUAGE_NAMES[target]} wording was copied",
-            )
-        ]
+        # The course's option_misconceptions are prompt input only: they never
+        # fill a gap the model left, or they would reach the learner. An
+        # undeclared id is declared from the wrong option itself; a wrong
+        # option without one is left to the repair loop
+        # (distractor_without_misconception), as for a quiz that has none.
         misconception = registry.resolve(
-            item.get("misconception"),
-            {lang: known for lang in LANGS} if known else _wrong_choice_statement(option_text),
-            known_missing if known else None,
+            item.get("misconception"), _wrong_choice_statement(option_text)
         )
-        if misconception is None and known:
-            misconception = registry.declare(
-                f"m_{mcq.ref}_{ids[index]}", {"en": known, "fr": known}, known_missing
-            )
         if misconception:
             choice["misconception"] = misconception
         if misconception:

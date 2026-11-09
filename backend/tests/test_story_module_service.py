@@ -492,6 +492,41 @@ async def test_the_first_open_makes_every_chapter_and_a_published_module_story(
     assert SENTINEL not in json.dumps(record.content, ensure_ascii=False)
 
 
+class _UndeclaredMisconceptionsModel(FakeClaude):
+    """A spine whose wrong options name misconception ids it never declared."""
+
+    async def generate_structured_content(self, system, user, content_type, max_retries=1):
+        spine = await super().generate_structured_content(system, user, content_type, max_retries)
+        for entry in spine.get("derived", []):
+            for n, item in enumerate(entry.get("distractors", [])):
+                item["misconception"] = f"m_never_declared_{entry['ref']}_{n}"
+        return spine
+
+
+async def test_option_misconceptions_never_fill_a_gap_the_model_left(raw, sessions):
+    """The fallback path: every wrong option of every picked question names an
+    undeclared id. Each is declared from its wrong option, never from the
+    covering quiz's option_misconceptions (sentinels): not in the chapters,
+    not in the module story the API serves."""
+    seed_ = await seed(sessions, raw, cached_quiz=True)
+    model = _UndeclaredMisconceptionsModel(raw, "en")
+    service = ModuleStoryService(model, FakeLessonService(raw), FakeQuizService(raw))
+
+    record = await generate(service, seed_, sessions)
+
+    chapters = await chapter_rows(sessions, seed_)
+    assert sorted(chapters) == LESSONS
+    for chapter in chapters.values():
+        assert SENTINEL not in json.dumps(chapter.content, ensure_ascii=False)
+    assert SENTINEL not in json.dumps(record.content, ensure_ascii=False)
+    assert any(
+        m["id"].startswith("u1_1-m_never_declared") for m in record.content["misconceptions"]
+    )
+    assert record.status == "published" and record.is_valid
+    assert all(c.status == "published" and c.is_valid for c in chapters.values())
+    assert sorted(model.calls) == LESSONS  # published at once: nothing to repair
+
+
 async def test_the_second_open_calls_nothing_and_changes_nothing(raw, sessions):
     seed_ = await seed(sessions, raw)
     service, model, lessons, quizzes = make_service(raw)

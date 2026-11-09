@@ -36,7 +36,10 @@ from app.api.v1.schemas.story_course import StoryCourse
 from app.domain.services import story_module_assembly as assembly
 from app.domain.services import story_repair as repair
 from app.domain.services.story_course_validator import validate_story_course
-from app.domain.services.story_from_lesson_service import StoryFromLessonService
+from app.domain.services.story_from_lesson_service import (
+    MAX_REPAIR_CALLS,
+    StoryFromLessonService,
+)
 from app.domain.services.story_module_assembly import (
     ChapterSource,
     ModuleStoryContext,
@@ -1248,3 +1251,48 @@ def test_any_roster_assembles_into_a_sound_story(fixture, seed):
             "missing_minigame",
             "too_few_questions",
         }
+
+
+@pytest.mark.parametrize("fault", ["no_distractors", "undeclared_ids"])
+@pytest.mark.parametrize("language", LANGUAGES)
+async def test_a_gap_the_model_leaves_is_never_filled_from_option_misconceptions(
+    lesson_raw, fixture, language, fault
+):
+    """The real chapter pipeline, then the assembler, on the two fallback paths.
+
+    The covering quiz carries a sentinel in every option_misconceptions slot.
+    Lesson 1.1's spine (every repair answer too) gives the wrong options of the
+    quiz questions it picks either no misconception at all, or one whose id it
+    never declared. Neither gap is ever filled with the course's text: not in
+    the chapter, not in the module story.
+    """
+    unit = next(u for u in UNITS if u["unit_number"] == "1.1")
+    spine = chapter_spine(lesson_raw, language, "1.1")
+    for entry in spine["derived"]:
+        if fault == "no_distractors":
+            entry["distractors"] = []
+        else:
+            for n, item in enumerate(entry["distractors"]):
+                item["misconception"] = f"m_never_declared_{entry['ref']}_{n}"
+    model = FakeClaude(spine)
+    generation = await StoryFromLessonService(model).generate_document(
+        chapter_ctx(lesson_raw, language, unit), system_prompt="system"
+    )
+    assert SENTINEL in model.messages[0]  # shown to the model, as prompt input only
+    assert SENTINEL not in json.dumps(generation.doc, ensure_ascii=False)
+    if fault == "no_distractors":
+        # Left to the repair loop, as for a quiz without option_misconceptions.
+        assert generation.model_calls == 1 + MAX_REPAIR_CALLS
+        assert "distractor_without_misconception" in model.messages[-1]
+    else:
+        # Declared from the wrong option itself: the chapter publishes at once.
+        assert generation.model_calls == 1 and generation.report.ok
+
+    sources = chapter_sources(fixture, language)
+    assert sources[0].unit.unit_number == "1.1"
+    ready = generation.doc if generation.report.ok else None
+    sources[0] = ChapterSource(sources[0].unit, ready)
+    doc = assemble_module_story(module_ctx(fixture, language), sources)
+    assert doc["chapters"][0]["covers"]["status"] == ("ready" if ready else "unavailable")
+    assert SENTINEL not in json.dumps(doc, ensure_ascii=False)
+    assert validate_module_story(doc).ok
