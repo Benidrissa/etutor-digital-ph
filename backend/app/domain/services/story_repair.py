@@ -1411,6 +1411,39 @@ _BRIDGES = (
 )
 
 
+def bridge_line(index: int) -> dict[str, Any]:
+    """The ``index``-th bridge: a Margo line set between two runs of asks."""
+    return _line("say", _BRIDGES[index % len(_BRIDGES)], TUTOR_ID) or {}
+
+
+def enforce_ask_spacing(chapters: list[dict[str, Any]], *, first_bridge: int = 0) -> int:
+    """Insert a bridge line before any ask that would make the run too long.
+
+    The run is counted over the flattened story, across scene and chapter
+    boundaries, exactly as the validator counts it, and never exceeds
+    :data:`MAX_ASKS_IN_A_ROW`. Bridges cycle from ``first_bridge``; returns the
+    index of the next one. Shared by a lesson story's layout and the module
+    assembler, so both space questions the same way.
+    """
+    bridge = first_bridge
+    run = 0
+    for chapter in chapters:
+        for scene in chapter["scenes"]:
+            steps: list[dict[str, Any]] = []
+            for step in scene["steps"]:
+                if step["type"] == "ask":
+                    if run >= MAX_ASKS_IN_A_ROW:
+                        steps.append(bridge_line(bridge))
+                        bridge += 1
+                        run = 0
+                    run += 1
+                else:
+                    run = 0
+                steps.append(step)
+            scene["steps"] = steps
+    return bridge
+
+
 class _Layout:
     """Builds chapters while keeping asks spread out (C.5)."""
 
@@ -1453,31 +1486,9 @@ class _Layout:
             "fr": [question.situation["fr"]],
         }
 
-    def bridge(self) -> dict[str, Any]:
-        text = _BRIDGES[self._bridge % len(_BRIDGES)]
-        self._bridge += 1
-        return _line("say", text, TUTOR_ID) or {}
-
     def enforce_spacing(self) -> None:
-        """Insert a bridge line before any ask that would make the run too long.
-
-        The run is counted over the flattened story, across scene and chapter
-        boundaries, exactly as the validator counts it.
-        """
-        run = 0
-        for chapter in self.chapters:
-            for scene in chapter["scenes"]:
-                steps: list[dict[str, Any]] = []
-                for step in scene["steps"]:
-                    if step["type"] == "ask":
-                        if run >= MAX_ASKS_IN_A_ROW:
-                            steps.append(self.bridge())
-                            run = 0
-                        run += 1
-                    else:
-                        run = 0
-                    steps.append(step)
-                scene["steps"] = steps
+        """Insert a bridge line before any ask that would make the run too long."""
+        self._bridge = enforce_ask_spacing(self.chapters, first_bridge=self._bridge)
 
 
 def _image_step(ctx: LessonStoryContext) -> dict[str, Any] | None:
@@ -1887,14 +1898,15 @@ def _tutor(spine: dict[str, Any], ctx: LessonStoryContext, objectives: list[dict
     }
 
 
-def _rewards(ctx: LessonStoryContext) -> dict[str, Any]:
+def rewards_for(is_kids: bool) -> dict[str, Any]:
+    """The rewards block: mangoes for children, points for adults."""
     rewards = copy.deepcopy(REWARD_DEFAULTS)
-    if not ctx.is_kids:
+    if not is_kids:
         rewards["unit"] = {"en": "points", "fr": "points"}
     return rewards
 
 
-def _predicted_typical(
+def predicted_typical(
     questions: list[dict], exercises: list[dict], minigame: dict | None
 ) -> dict[str, Any]:
     """C.9's typical run: two thirds right first time, the rest on the retry."""
@@ -2131,10 +2143,10 @@ def _assemble(
         "minigames": [minigame] if minigame else [],
         "videos": [],
         "tutor": _tutor(spine, ctx, objectives),
-        "rewards": _rewards(ctx),
+        "rewards": rewards_for(ctx.is_kids),
         "art_requests": [],
         "engine_requests": [],
-        "checks": {"predicted_typical": _predicted_typical(questions, exercises, minigame)},
+        "checks": {"predicted_typical": predicted_typical(questions, exercises, minigame)},
     }
     enforce_quiz_fidelity(doc, ctx)
     return StoryBuild(
