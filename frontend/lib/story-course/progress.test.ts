@@ -21,6 +21,7 @@ import {
 import type { Chapter } from "./types";
 
 const STORY_ID = "module-6f1c2d3e4b5a69788a9b0c1d2e3f4a5b-fr";
+const USER = "user-1";
 
 function chapter(id: string, unitId?: string): Chapter {
   return {
@@ -47,8 +48,26 @@ afterEach(() => {
 });
 
 describe("story progress", () => {
-  it("uses the contract's key", () => {
-    expect(storyProgressKey(STORY_ID)).toBe(`sira.story.progress:${STORY_ID}`);
+  it("keys the progress by learner and story", () => {
+    expect(storyProgressKey(STORY_ID, USER)).toBe(`sira.story.progress:${USER}:${STORY_ID}`);
+  });
+
+  it("keeps each learner's progress apart on a shared phone", () => {
+    writeStoryProgress(STORY_ID, "learner-a", withChapterDone(emptyStoryProgress(), "unit-a", 3));
+    expect(readStoryProgress(STORY_ID, "learner-b")).toEqual(emptyStoryProgress());
+    expect(readStoryProgress(STORY_ID, "learner-a").completedUnits).toEqual(["unit-a"]);
+  });
+
+  it("neither reads nor saves without a known learner", () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    writeStoryProgress(STORY_ID, null, withChapterDone(emptyStoryProgress(), "unit-a", 3));
+    expect(setItem).not.toHaveBeenCalled();
+    window.localStorage.setItem(
+      `sira.story.progress:${STORY_ID}`,
+      JSON.stringify({ v: 1, completedUnits: ["unit-a"], points: {} }),
+    );
+    expect(readStoryProgress(STORY_ID, null)).toEqual(emptyStoryProgress());
+    expect(readStoryProgress(STORY_ID, undefined)).toEqual(emptyStoryProgress());
   });
 
   it("derives the backend's module story id from the module uuid", () => {
@@ -60,13 +79,13 @@ describe("story progress", () => {
 
   it("round-trips through localStorage", () => {
     const progress = withChapterDone(emptyStoryProgress(), "unit-a", 3);
-    writeStoryProgress(STORY_ID, progress);
-    expect(JSON.parse(window.localStorage.getItem(storyProgressKey(STORY_ID))!)).toEqual({
+    writeStoryProgress(STORY_ID, USER, progress);
+    expect(JSON.parse(window.localStorage.getItem(storyProgressKey(STORY_ID, USER))!)).toEqual({
       v: 1,
       completedUnits: ["unit-a"],
       points: { "unit-a": 3 },
     });
-    expect(readStoryProgress(STORY_ID)).toEqual(progress);
+    expect(readStoryProgress(STORY_ID, USER)).toEqual(progress);
   });
 
   it.each([
@@ -75,16 +94,16 @@ describe("story progress", () => {
     ["another version", JSON.stringify({ v: 2, completedUnits: ["a"], points: {} })],
     ["not an object", JSON.stringify("hello")],
   ])("starts empty when the value is %s", (_label, raw) => {
-    if (raw !== null) window.localStorage.setItem(storyProgressKey(STORY_ID), raw);
-    expect(readStoryProgress(STORY_ID)).toEqual(emptyStoryProgress());
+    if (raw !== null) window.localStorage.setItem(storyProgressKey(STORY_ID, USER), raw);
+    expect(readStoryProgress(STORY_ID, USER)).toEqual(emptyStoryProgress());
   });
 
   it("drops malformed entries but keeps the good ones", () => {
     window.localStorage.setItem(
-      storyProgressKey(STORY_ID),
+      storyProgressKey(STORY_ID, USER),
       JSON.stringify({ v: 1, completedUnits: ["a", 7, "a", "b"], points: { a: 2, b: "x", c: -1 } }),
     );
-    expect(readStoryProgress(STORY_ID)).toEqual({
+    expect(readStoryProgress(STORY_ID, USER)).toEqual({
       v: 1,
       completedUnits: ["a", "b"],
       points: { a: 2 },
@@ -98,8 +117,8 @@ describe("story progress", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("QuotaExceededError");
     });
-    expect(readStoryProgress(STORY_ID)).toEqual(emptyStoryProgress());
-    expect(() => writeStoryProgress(STORY_ID, emptyStoryProgress())).not.toThrow();
+    expect(readStoryProgress(STORY_ID, USER)).toEqual(emptyStoryProgress());
+    expect(() => writeStoryProgress(STORY_ID, USER, emptyStoryProgress())).not.toThrow();
   });
 
   it("lists a unit once and keeps its best score", () => {

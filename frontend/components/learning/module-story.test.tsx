@@ -58,6 +58,7 @@ const completeMock = vi.mocked(completeLessonUnit);
 
 const MODULE_ID = "6f1c2d3e-4b5a-6978-8a9b-0c1d2e3f4a5b";
 const STORY_ID = "module-6f1c2d3e4b5a69788a9b0c1d2e3f4a5b-fr";
+const USER_ID = "u1";
 
 function covers(
   unit: string,
@@ -237,7 +238,7 @@ beforeEach(() => {
   window.localStorage.setItem(
     "user",
     JSON.stringify({
-      id: "u1",
+      id: USER_ID,
       email: null,
       name: "Dr Aminata Diallo",
       preferred_language: "fr",
@@ -517,7 +518,7 @@ describe("ModuleStory — reading", () => {
 
   it("resumes at the first chapter not finished in this browser", async () => {
     window.localStorage.setItem(
-      storyProgressKey(STORY_ID),
+      storyProgressKey(STORY_ID, USER_ID),
       JSON.stringify({ v: 1, completedUnits: ["unit-1.1"], points: { "unit-1.1": 2 } }),
     );
     loadMock.mockResolvedValue(moduleStory());
@@ -533,7 +534,7 @@ describe("ModuleStory — reading", () => {
   });
 
   it("still plays when the saved progress is corrupt", async () => {
-    window.localStorage.setItem(storyProgressKey(STORY_ID), "{oops");
+    window.localStorage.setItem(storyProgressKey(STORY_ID, USER_ID), "{oops");
     loadMock.mockResolvedValue(moduleStory());
     renderPanel();
     expect(await screen.findByText(CH1_LINE)).toBeInTheDocument();
@@ -576,7 +577,7 @@ describe("ModuleStory — completion", () => {
     const status = await screen.findByText("Chapitre terminé !");
     expect(status.closest("[role=status]")).toHaveTextContent("2 sur 2 points");
     expect(await screen.findByText("La leçon 1.1 est marquée comme terminée.")).toBeInTheDocument();
-    expect(JSON.parse(window.localStorage.getItem(storyProgressKey(STORY_ID))!)).toEqual({
+    expect(JSON.parse(window.localStorage.getItem(storyProgressKey(STORY_ID, USER_ID))!)).toEqual({
       v: 1,
       completedUnits: ["unit-1.1"],
       points: { "unit-1.1": 2 },
@@ -610,7 +611,7 @@ describe("ModuleStory — completion", () => {
     const todo = screen.getByRole("link", { name: /Aller au quiz 1.3/ });
     expect(todo).toHaveAttribute("href", `/modules/${MODULE_ID}/units/1.3`);
     expect(screen.queryByRole("link", { name: /Aller à l'étude de cas 1.4/ })).not.toBeInTheDocument();
-    expect(JSON.parse(window.localStorage.getItem(storyProgressKey(STORY_ID))!).completedUnits).toEqual([
+    expect(JSON.parse(window.localStorage.getItem(storyProgressKey(STORY_ID, USER_ID))!).completedUnits).toEqual([
       "unit-1.1",
       "unit-1.2",
       "unit-1.3",
@@ -663,9 +664,73 @@ describe("ModuleStory — completion", () => {
     }
   });
 
+  it("never resumes from another learner's progress on a shared phone", async () => {
+    // Learner A finished the whole story on this phone, then logged out.
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, "learner-a"),
+      JSON.stringify({
+        v: 1,
+        completedUnits: ["unit-1.1", "unit-1.2", "unit-1.3", "unit-1.4"],
+        points: { "unit-1.1": 2 },
+      }),
+    );
+    loadMock.mockResolvedValue(moduleStory());
+    renderPanel();
+
+    // Learner u1 starts at the first chapter, with none of A's points.
+    expect(await screen.findByText(CH1_LINE)).toBeInTheDocument();
+    expect(screen.getByText("Chapitre 1 sur 4")).toBeInTheDocument();
+    expect(screen.getByText("0 sur 2 points")).toBeInTheDocument();
+    expect(screen.queryByText("Histoire terminée !")).not.toBeInTheDocument();
+    expect(screen.queryByText("Toutes les unités de ce module sont terminées.")).not.toBeInTheDocument();
+  });
+
+  it("lists a lesson finished here that the server does not have, never 'all done'", async () => {
+    // Every chapter finished in this browser; the server has the quiz and the
+    // case, but neither lesson (their completions never reached it).
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({
+        v: 1,
+        completedUnits: ["unit-1.1", "unit-1.2", "unit-1.3", "unit-1.4"],
+        points: { "unit-1.1": 2 },
+      }),
+    );
+    detailMock.mockResolvedValue(moduleDetail(["1.3", "1.4"]));
+    loadMock.mockResolvedValue(moduleStory());
+    renderPanel();
+
+    expect(await screen.findByRole("link", { name: /Aller à la leçon 1.1/ })).toHaveAttribute(
+      "href",
+      `/modules/${MODULE_ID}/units/1.1`,
+    );
+    expect(screen.getByRole("link", { name: /Aller à la leçon 1.2/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Aller au quiz 1.3/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Toutes les unités de ce module sont terminées.")).not.toBeInTheDocument();
+    // Opening the summary posts nothing: the story did not play those chapters now.
+    expect(completeMock).not.toHaveBeenCalled();
+  });
+
+  it("does not say all is done when the server cannot be asked (offline)", async () => {
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({ v: 1, completedUnits: ["unit-1.1", "unit-1.2"], points: {} }),
+    );
+    detailMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    const story = moduleStory();
+    story.chapters = story.chapters.slice(0, 2); // lessons only
+    loadMock.mockResolvedValue(story);
+    renderPanel();
+
+    expect(await screen.findByText("Histoire terminée !")).toBeInTheDocument();
+    await waitFor(() => expect(detailMock).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.queryByText("Toutes les unités de ce module sont terminées.")).not.toBeInTheDocument();
+  });
+
   it("opens on the summary when every chapter is done, and says all is done", async () => {
     window.localStorage.setItem(
-      storyProgressKey(STORY_ID),
+      storyProgressKey(STORY_ID, USER_ID),
       JSON.stringify({
         v: 1,
         completedUnits: ["unit-1.1", "unit-1.2", "unit-1.3", "unit-1.4"],

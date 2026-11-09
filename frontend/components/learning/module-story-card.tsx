@@ -6,6 +6,7 @@ import { BookOpen, ChevronRight, Loader2, Lock } from 'lucide-react';
 
 import { Link } from '@/i18n/routing';
 import { ApiError } from '@/lib/api';
+import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { getModuleStoryStatus } from '@/lib/story-course/api';
 import { moduleStoryId, readStoryProgress } from '@/lib/story-course/progress';
 import type { ModuleStoryStatus } from '@/lib/story-course/types';
@@ -20,15 +21,19 @@ type CardState =
   | { kind: 'subscribersOnly' }
   | { kind: 'unavailable' };
 
-/** Start, resume or done, from this browser's progress and the chapter count. */
-function fromProgress(storyId: string, chapters: number | null): CardState {
-  const completed = readStoryProgress(storyId).completedUnits.length;
+/** Start, resume or done, from this learner's progress here and the chapter count. */
+function fromProgress(storyId: string, userId: string | null, chapters: number | null): CardState {
+  const completed = readStoryProgress(storyId, userId).completedUnits.length;
   if (!chapters || chapters <= 0 || completed <= 0) return { kind: 'start' };
   if (completed >= chapters) return { kind: 'done' };
   return { kind: 'resume', current: completed + 1, total: chapters };
 }
 
-function cardStateFor(status: ModuleStoryStatus, storyId: string): CardState {
+function cardStateFor(
+  status: ModuleStoryStatus,
+  storyId: string,
+  userId: string | null,
+): CardState {
   if (status.state === 'disabled') return { kind: 'hidden' };
   if (status.access === 'subscription_required') return { kind: 'subscribersOnly' };
   switch (status.state) {
@@ -38,7 +43,7 @@ function cardStateFor(status: ModuleStoryStatus, storyId: string): CardState {
       return { kind: 'generating' };
     default:
       // ready, or not_ready (opening it writes the story).
-      return fromProgress(storyId, status.chapters);
+      return fromProgress(storyId, userId, status.chapters);
   }
 }
 
@@ -58,14 +63,18 @@ interface ModuleStoryCardProps {
  */
 export function ModuleStoryCard({ moduleId, language }: ModuleStoryCardProps) {
   const t = useTranslations('ModuleOverview.storyCard');
+  const { user, isHydrated } = useCurrentUser();
+  const userId = user?.id ?? null;
   const [state, setState] = useState<CardState>({ kind: 'loading' });
 
   useEffect(() => {
+    // The progress line is this learner's: wait for the signed-in user.
+    if (!isHydrated) return;
     let cancelled = false;
     const storyId = moduleStoryId(moduleId, language);
     getModuleStoryStatus(moduleId, language)
       .then((status) => {
-        if (!cancelled) setState(cardStateFor(status, storyId));
+        if (!cancelled) setState(cardStateFor(status, storyId, userId));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -76,12 +85,12 @@ export function ModuleStoryCard({ moduleId, language }: ModuleStoryCardProps) {
         }
         // Offline or a server error: the link still works for a downloaded
         // story, so offer it from what this browser knows.
-        setState(fromProgress(storyId, null));
+        setState(fromProgress(storyId, userId, null));
       });
     return () => {
       cancelled = true;
     };
-  }, [moduleId, language]);
+  }, [moduleId, language, isHydrated, userId]);
 
   if (state.kind === 'loading' || state.kind === 'hidden') return null;
 

@@ -1,7 +1,11 @@
 /**
  * Where a learner is in a module story, kept in this browser (contract C-5).
  *
- * `sira.story.progress:{storyId}` holds `{v: 1, completedUnits, points}`.
+ * `sira.story.progress:{userId}:{storyId}` holds `{v: 1, completedUnits,
+ * points}`. It is per learner: the story id is the same for every learner of
+ * the module, and a phone is often shared, so one learner must never resume
+ * from (or be told they finished with) another's progress. Without a known
+ * learner nothing is read or saved.
  * Progress is keyed by the chapter's module unit id, not by a chapter or step
  * index, so it survives the story being regenerated: a rewritten chapter of
  * the same unit is still done, and chapters keep their place when a unit is
@@ -24,8 +28,8 @@ export interface StoryProgress {
 
 const PREFIX = "sira.story.progress:";
 
-export function storyProgressKey(storyId: string): string {
-  return `${PREFIX}${storyId}`;
+export function storyProgressKey(storyId: string, userId: string): string {
+  return `${PREFIX}${userId}:${storyId}`;
 }
 
 /**
@@ -53,11 +57,18 @@ export function emptyStoryProgress(): StoryProgress {
   return { v: 1, completedUnits: [], points: {} };
 }
 
-/** The saved progress, or an empty one when there is none or it cannot be read. */
-export function readStoryProgress(storyId: string): StoryProgress {
+/**
+ * This learner's saved progress, or an empty one when there is none, it
+ * cannot be read, or the learner is not known.
+ */
+export function readStoryProgress(
+  storyId: string,
+  userId: string | null | undefined,
+): StoryProgress {
+  if (!userId) return emptyStoryProgress();
   let raw: string | null;
   try {
-    raw = window.localStorage.getItem(storyProgressKey(storyId));
+    raw = window.localStorage.getItem(storyProgressKey(storyId, userId));
   } catch {
     return emptyStoryProgress();
   }
@@ -84,10 +95,15 @@ export function readStoryProgress(storyId: string): StoryProgress {
   }
 }
 
-/** Save the progress; a storage failure only means it is not remembered. */
-export function writeStoryProgress(storyId: string, progress: StoryProgress): void {
+/** Save this learner's progress; a storage failure only means it is not remembered. */
+export function writeStoryProgress(
+  storyId: string,
+  userId: string | null | undefined,
+  progress: StoryProgress,
+): void {
+  if (!userId) return;
   try {
-    window.localStorage.setItem(storyProgressKey(storyId), JSON.stringify(progress));
+    window.localStorage.setItem(storyProgressKey(storyId, userId), JSON.stringify(progress));
   } catch {
     // Not remembered; the story still plays for this visit.
   }

@@ -56,6 +56,7 @@ const detailMock = vi.mocked(getModuleDetailWithProgress);
 
 const MODULE_ID = "6f1c2d3e-4b5a-6978-8a9b-0c1d2e3f4a5b";
 const STORY_ID = moduleStoryId(MODULE_ID, "fr");
+const USER_ID = "u1";
 
 function status(overrides: Partial<ModuleStoryStatus> = {}): ModuleStoryStatus {
   return {
@@ -68,9 +69,9 @@ function status(overrides: Partial<ModuleStoryStatus> = {}): ModuleStoryStatus {
   };
 }
 
-function saveProgress(completedUnits: string[]) {
+function saveProgress(completedUnits: string[], userId = USER_ID) {
   window.localStorage.setItem(
-    storyProgressKey(STORY_ID),
+    storyProgressKey(STORY_ID, userId),
     JSON.stringify({ v: 1, completedUnits, points: {} }),
   );
 }
@@ -90,6 +91,10 @@ async function cardLink() {
 beforeEach(() => {
   statusMock.mockReset();
   detailMock.mockReset();
+  window.localStorage.setItem(
+    "user",
+    JSON.stringify({ id: USER_ID, email: null, name: "Awa", preferred_language: "fr", current_level: 1 }),
+  );
 });
 
 afterEach(() => {
@@ -134,6 +139,15 @@ describe("ModuleStoryCard", () => {
     statusMock.mockResolvedValue(status());
     renderCard();
     expect(await cardLink()).toHaveTextContent("Histoire terminée — la rejouer");
+  });
+
+  it("never shows another learner's progress (a shared phone)", async () => {
+    saveProgress(["a", "b", "c", "d"], "another-learner");
+    statusMock.mockResolvedValue(status());
+    renderCard();
+    const link = await cardLink();
+    expect(link).toHaveTextContent("Tout le module raconté");
+    expect(link).not.toHaveTextContent("Histoire terminée");
   });
 
   it("says the story is being written", async () => {

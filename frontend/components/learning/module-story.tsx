@@ -278,9 +278,11 @@ export function ModuleStory({ moduleId, language }: ModuleStoryProps) {
   if (story && personalized) {
     return (
       <ModuleStoryReader
-        // A new revision is a new story: its progress is read afresh.
-        key={`${story.id}:${story.module_story?.revision ?? ''}`}
+        // A new revision is a new story, and another learner has their own
+        // progress: either way it is read afresh.
+        key={`${story.id}:${story.module_story?.revision ?? ''}:${user?.id ?? ''}`}
         storyId={story.id}
+        userId={user?.id ?? null}
         story={personalized}
         moduleId={moduleId}
       />
@@ -371,8 +373,10 @@ export function ModuleStory({ moduleId, language }: ModuleStoryProps) {
 /* -------------------------------------------------------------------------- */
 
 interface ReaderProps {
-  /** The cached document's id: progress is stored under it. */
+  /** The cached document's id: progress is stored under it, per learner. */
   storyId: string;
+  /** The signed-in learner; without one, progress is neither read nor saved. */
+  userId: string | null;
   /** The story, personalised for this learner. */
   story: StoryCourse;
   moduleId: string;
@@ -390,7 +394,7 @@ interface FinishedChapter {
  * resume from this browser's progress, per-chapter lesson completion, and
  * the end-of-module summary.
  */
-function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
+function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
   const t = useTranslations('ModuleStory');
   const target = story.languages?.target ?? 'en';
   const home = story.languages?.home ?? 'fr';
@@ -399,7 +403,7 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
   // Resume at the first chapter not finished in this browser; -1 is the
   // summary (every chapter done).
   const [initial] = useState(() => {
-    const saved = readStoryProgress(storyId);
+    const saved = readStoryProgress(storyId, userId);
     return { progress: saved, selected: firstIncompleteChapter(chapters, saved) };
   });
   const [progress, setProgress] = useState<StoryProgress>(initial.progress);
@@ -413,6 +417,10 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
   // ones this page has recorded since. Best effort: offline it stays empty.
   const [serverCompleted, setServerCompleted] = useState<ReadonlySet<string>>(() => new Set());
   const serverCompletedRef = useRef<ReadonlySet<string>>(new Set());
+  // Whether that list was read: only the server can say every unit is done.
+  const [serverRead, setServerRead] = useState(false);
+  // Lesson units whose completion this page posted and has not heard back on.
+  const [posting, setPosting] = useState<ReadonlySet<string>>(() => new Set());
   const [recorded, setRecorded] = useState<ReadonlySet<string>>(() => new Set());
   // Completion is posted at most once per chapter, whatever happens to it.
   const postedRef = useRef<Set<string>>(new Set());
@@ -434,6 +442,7 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
         markServerCompleted(
           (detail.units ?? []).filter((unit) => unit.status === 'completed').map((unit) => unit.id),
         );
+        setServerRead(true);
       })
       .catch(() => {
         // Offline or refused: completions are still posted, and a unit the
@@ -482,7 +491,7 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
     const next = withChapterDone(progressRef.current, chapterKey(chapter), outcome.points);
     progressRef.current = next;
     setProgress(next);
-    writeStoryProgress(storyId, next);
+    writeStoryProgress(storyId, userId, next);
     setFinished({ index, points: outcome.points, maxPoints: outcome.maxPoints });
     // Bring "Chapter complete" and its Next button into view on a phone.
     // (Optional call: jsdom and some old WebViews lack scrollIntoView.)
@@ -498,14 +507,23 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
     if (serverCompletedRef.current.has(covers.module_unit_id)) return;
     if (postedRef.current.has(chapter.id)) return;
     postedRef.current.add(chapter.id);
+    const unitId = covers.module_unit_id;
+    const settled = () =>
+      setPosting((prev) => {
+        const next = new Set(prev);
+        next.delete(unitId);
+        return next;
+      });
+    setPosting((prev) => new Set(prev).add(unitId));
     completeLessonUnit(moduleId, covers.unit_number, { online: isOnline() })
       .then(() => {
-        markServerCompleted([covers.module_unit_id]);
-        setRecorded((prev) => new Set(prev).add(covers.module_unit_id));
+        markServerCompleted([unitId]);
+        setRecorded((prev) => new Set(prev).add(unitId));
       })
       .catch((err) => {
         console.error('Could not record the lesson from the module story:', err);
-      });
+      })
+      .finally(settled);
   };
 
   const chapter = selected >= 0 ? chapters[selected] : undefined;
@@ -521,10 +539,17 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
     `/modules/${moduleId}/units/${encodeURIComponent(covers.unit_number)}`;
 
   // Still to do once the story is over: units the story cannot complete
-  // (quizzes, case studies, lessons it could not tell) not done on the server.
-  const stillToDo = chapters.filter(
-    (c) => sendsToUnit(c.covers) && !serverCompleted.has(c.covers.module_unit_id),
-  );
+  // (quizzes, case studies, lessons it could not tell) not done on the
+  // server and, once the server's list is read, any lesson it does not have
+  // completed (a chapter finished here whose completion never reached it).
+  const stillToDo = chapters.filter((c) => {
+    const covers = c.covers;
+    if (!covers || serverCompleted.has(covers.module_unit_id)) return false;
+    if (covers.completes_unit) return serverRead && !posting.has(covers.module_unit_id);
+    return sendsToUnit(covers);
+  });
+  // "Every unit is done" is the server's word, never this browser's alone.
+  const allDone = serverRead && stillToDo.length === 0;
   const moduleStars = starsFor(totalMax ? totalPoints / totalMax : 0, story.rewards?.stars);
 
   return (
@@ -734,12 +759,12 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
                 )}
               </ul>
             </div>
-          ) : (
+          ) : allDone ? (
             <p className="mt-4 flex items-center justify-center gap-2 text-sm text-teal-800">
               <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
               {t('allDone')}
             </p>
-          )}
+          ) : null}
         </div>
       )}
     </section>
