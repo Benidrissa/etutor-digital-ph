@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
@@ -393,34 +393,30 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
   const chapterLineRef = useRef<HTMLParagraphElement | null>(null);
   const doneRef = useRef<HTMLDivElement | null>(null);
 
-  const markServerCompleted = (unitIds: Iterable<string>) => {
+  const markServerCompleted = useCallback((unitIds: Iterable<string>) => {
     const next = new Set(serverCompletedRef.current);
     for (const id of unitIds) next.add(id);
     serverCompletedRef.current = next;
     setServerCompleted(next);
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     getModuleDetailWithProgress(moduleId)
       .then((detail) => {
         if (cancelled) return;
-        const done = (detail.units ?? [])
-          .filter((unit) => unit.status === 'completed')
-          .map((unit) => unit.id);
-        const next = new Set(serverCompletedRef.current);
-        for (const id of done) next.add(id);
-        serverCompletedRef.current = next;
-        setServerCompleted(next);
+        markServerCompleted(
+          (detail.units ?? []).filter((unit) => unit.status === 'completed').map((unit) => unit.id),
+        );
       })
       .catch(() => {
-        // Offline or refused: completions are still posted, and the server
-        // ignores a unit it already has.
+        // Offline or refused: completions are still posted, and a unit the
+        // server already has completed is simply recorded again.
       });
     return () => {
       cancelled = true;
     };
-  }, [moduleId]);
+  }, [moduleId, markServerCompleted]);
 
   const completedUnits = useMemo(() => new Set(progress.completedUnits), [progress]);
   const totalMax = useMemo(() => {
