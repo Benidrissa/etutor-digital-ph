@@ -129,7 +129,9 @@ async def test_lesson_and_quiz_give_a_story_with_zero_errors_and_zero_warnings(r
     # Every stored MCQ became a question, asked once.
     doc = generation.doc
     derived = [q for q in doc["questions"] if q.get("derived_from")]
-    assert [q["derived_from"] for q in derived] == ["q1", "q2", "q3", "q4"]
+    assert [q["derived_from"]["question_id"] for q in derived] == ["q1", "q2", "q3", "q4"]
+    # The lesson unit's own quiz: the quiz unit is the lesson unit itself.
+    assert {q["derived_from"]["quiz_unit"] for q in derived} == {"1.2"}
 
 
 @pytest.mark.parametrize("language", ["en", "fr"])
@@ -1028,9 +1030,10 @@ async def test_story_derives_verbatim_from_a_sibling_quiz_unit(raw, language):
     stored = raw[language]["quiz"]["questions"]
     derived = [q for q in doc["questions"] if q.get("derived_from")]
     # The four relevant MCQs, in quiz order, under their candidate ids.
-    assert [q["derived_from"] for q in derived] == [m["id"] for m in stored]
+    assert [q["derived_from"]["question_id"] for q in derived] == [m["id"] for m in stored]
+    assert {q["derived_from"]["quiz_unit"] for q in derived} == {"1.3"}
     assert [q["id"] for q in derived] == ["q2", "q3", "q4", "q5"]
-    by_source = {q["derived_from"]: q for q in derived}
+    by_source = {q["derived_from"]["question_id"]: q for q in derived}
     for mcq in stored:
         question = by_source[mcq["id"]]
         assert [c[language] for c in question["choices"]] == mcq["options"]
@@ -1041,7 +1044,9 @@ async def test_story_derives_verbatim_from_a_sibling_quiz_unit(raw, language):
     text = json.dumps(doc, ensure_ascii=False)
     for other in OTHER_LESSON_MCQS[language]:
         assert other["question"] not in text
-        assert other["id"] not in {q.get("derived_from") for q in doc["questions"]}
+        assert other["id"] not in {
+            q["derived_from"]["question_id"] for q in doc["questions"] if q.get("derived_from")
+        }
     assert not {"q1", "q6", "q99", "zz"} & {q["id"] for q in doc["questions"]}
     assert {"kind": "test", "ref": "Unit 1.3 quiz", "used_for": "questions, derived verbatim"} in (
         doc["sources"]
@@ -1100,7 +1105,8 @@ async def test_a_unit_story_is_built_from_its_covering_quiz_unit(raw):
     assert record.source_quiz_content_id == quiz.id and record.source_quiz_revision == 3
     assert record.source_quiz_digest == content_digest(quiz.content)
     derived = [q["derived_from"] for q in record.content["questions"] if q.get("derived_from")]
-    assert derived == [m["id"] for m in raw["en"]["quiz"]["questions"]]
+    assert [d["question_id"] for d in derived] == [m["id"] for m in raw["en"]["quiz"]["questions"]]
+    assert {d["quiz_unit"] for d in derived} == {"1.3"}
     assert "CANDIDATE QUIZ QUESTIONS from the quiz of unit 1.3" in model.messages[0]
     # The quiz of the covering unit was read from the cache, not generated.
     assert QUIZ_UNIT_ID in session.statements[6].compile().params.values()

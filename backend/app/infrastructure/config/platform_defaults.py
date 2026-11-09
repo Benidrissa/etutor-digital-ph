@@ -2022,17 +2022,18 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         "ISO country code used when pre-generating content at publish time (no learner context).",
     ),
     # ── Story mode ─────────────────────────────────────────
-    # Every lesson gets a story tab, generated from the lesson and its quiz the
-    # first time a learner opens it, then cached in story_courses.
+    # Every module gets one story, a chapter per unit, generated from its
+    # lessons and quizzes the first time a learner opens it, then cached in
+    # story_courses (each lesson chapter, and the assembled module story).
     SettingDef(
         "story-mode-feature-enabled",
         "ai",
         True,
         "boolean",
-        "Lesson story mode enabled",
+        "Module story mode enabled",
         (
-            "Master switch for the per-lesson story tab. When false the story endpoint"
-            " answers 404 and no story is generated."
+            "Master switch for module story mode. When false the story endpoints"
+            " answer 404 and no story is generated."
         ),
     ),
     # ── Video Summaries (HeyGen) ───────────────────────────
