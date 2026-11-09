@@ -101,7 +101,7 @@ docker compose exec -T -e PYTHONPATH=/app backend uv run alembic downgrade <olde
 # then pull and start the older image as above
 ```
 
-**Module stories (`107_story_module_binding`).** Before running any image older than the module story release (its head is `106_add_story_unit_binding`), run:
+**Module stories (`107_story_module_binding`).** Before running any image whose Alembic head is older than `107_story_module_binding` (the per-lesson story release is at `106_add_story_unit_binding`; go further down if the older image needs it), run at least:
 
 ```bash
 docker compose exec -T -e PYTHONPATH=/app backend uv run alembic downgrade 106_add_story_unit_binding
