@@ -1,10 +1,12 @@
 /**
- * The story player (format Appendix A.4).
+ * The story player (format Appendix A.4): a cartoon stage (#2673).
  *
- * One week reads as a continuous story. Steps are revealed one at a time so a
- * question stays on screen while she answers it and nothing below spoils the
- * answer — A.4 asks for a question right after each concept, and that only
- * works if the page does not show everything at once.
+ * A painted place, the cast standing on the ground, and one step at a time:
+ * a speech bubble over whoever speaks, a caption bar for the narrator, a
+ * chalkboard for a concept, a card on the stage for a question or a game.
+ * Steps are revealed one at a time so a question stays in front of the
+ * learner while they answer it and nothing after it spoils the answer — A.4
+ * asks for a question right after each concept.
  *
  * Bilingual mode shows the language of instruction first and the home
  * language beneath it, which is how the printed booklet reads. It starts on
@@ -16,54 +18,71 @@
  * object, whatever `languages.target` says. So the player reads
  * `step[target]` first and `step[home]` beneath — for a French-target story
  * that is the `fr` field first.
+ *
+ * The stage itself lives in `./stage`: the cast and their placeholder
+ * figures, the backdrops, the panels, sound and read-aloud.
  */
 
 "use client";
 
+import { Volume2, VolumeX } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 import { starsFor, text } from "@/lib/story-course/answer";
+import {
+  NAME_FALLBACKS,
+  asksFriendName,
+  castFriendName,
+  personalizeStory,
+  type StoryLanguage,
+} from "@/lib/story-course/personalize";
 import { chapterLocalId } from "@/lib/story-course/progress";
-import type {
-  CastMember,
-  Exercise,
-  Minigame,
-  Question,
-  Step,
-  StoryCourse,
-  Video,
-} from "@/lib/story-course/types";
+import type { Step, StoryCourse } from "@/lib/story-course/types";
 
 import { ConceptVisual } from "./concept-visual";
 import { MinigameView } from "./minigame";
 import { QuestionCard } from "./question-card";
-
-interface FlatStep {
-  step: Step;
-  chapterId: string;
-  chapterTitle: Record<string, string>;
-  sceneId: string;
-  place: string;
-  /** First step of its chapter, so the player can print a chapter heading. */
-  startsChapter: boolean;
-}
+import { Backdrop } from "./stage/backdrop";
+import { artFor, buildActors, heroVariants, poseFor, safeArtUrl, slotsFor, type Pose } from "./stage/cast";
+import { Confetti, StarRow } from "./stage/confetti";
+import { CaptionBar, Chalkboard, SpeechBubble, StageCard, VisualPanel, type SkipHandle } from "./stage/panels";
+import { PaperExercise } from "./stage/paper-exercise";
+import { placeLook, placeTheme, placeTitle } from "./stage/places";
+import {
+  readChoices,
+  readSoundOn,
+  useReducedMotion,
+  writeChoices,
+  writeSoundOn,
+  type StoryChoices,
+} from "./stage/prefs";
+import { planSteps, presenterOf, reactorOf, type PlannedStep } from "./stage/scene-plan";
+import { playSfx, unlockAudio, type Sfx } from "./stage/sound";
+import { speak, stopSpeaking, type SpeechVoice } from "./stage/speech";
+import { StageCharacter, type Gesture } from "./stage/stage-character";
+import styles from "./stage/stage.module.css";
+import { PlaceRibbon, PlayIcon, StartCard, TitleCard } from "./stage/title-card";
+import type { TypedHandle } from "./stage/typed-text";
 
 /** A step the learner must deal with before the story moves on. */
 const BLOCKING: ReadonlySet<string> = new Set(["ask", "game", "photo"]);
 
-/**
- * Moods stand in for the character art the player does not draw yet. An emoji
- * reads the same in every language, where the raw mood id ("think") did not.
- */
-const MOOD_EMOJI: Record<string, string> = {
-  talk: "💬",
-  happy: "😊",
-  think: "🤔",
-  sad: "😟",
-  surprised: "😮",
-  walk: "🚶",
-};
+/** Steps whose panel a tap on the stage may carry past. */
+const TAP_THROUGH: ReadonlySet<string> = new Set(["say", "narrate", "concept", "show", "video"]);
+
+/** Steps that put a panel on the stage with a pop. */
+const POP_STEPS: ReadonlySet<string> = new Set(["concept", "show", "ask", "game", "photo", "video"]);
+
+const NARRATOR: SpeechVoice = { pitch: 1, rate: 0.95 };
 
 /** Where the embedded player (the module story panel) keeps the bilingual toggle, per browser. */
 export const EMBEDDED_BILINGUAL_KEY = "sira.story.bilingual";
@@ -103,12 +122,37 @@ function stepText(step: Step, lang: string): string | string[] | undefined {
   return undefined;
 }
 
+function lineOf(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value.join("\n") : (value ?? "");
+}
+
+function rowsOf(step: Step, lang: string): string[] {
+  const value = stepText(step, lang);
+  return Array.isArray(value) ? value : [];
+}
+
+/** How long a line takes to say, in seconds: read aloud, or typed out. */
+function lineSeconds(line: string, sound: boolean): number {
+  return Math.min(16, Math.max(1, line.length / (sound ? 14 : 38)));
+}
+
+/** When each chalkboard row comes up: after the title and the rows before it are read. */
+function rowDelays(rows: string[], title: string | undefined, sound: boolean): number[] {
+  const pace = sound ? 18 : 32;
+  let at = 0.35 + (title ? Math.min(1.5, title.length / pace) : 0);
+  return rows.map((row) => {
+    const delay = at;
+    at += Math.min(3.5, Math.max(0.7, row.length / pace));
+    return delay;
+  });
+}
+
 export interface StoryPlayerProps {
   course: StoryCourse;
   /**
-   * `page` (default) is the standalone week: a sticky header and a Continue
-   * bar fixed to the bottom of the screen. `embedded` sits inside another
-   * page's card — the module story panel — so everything stays in the flow and
+   * `page` (default) is the standalone week: a sticky header and a Next bar
+   * fixed to the bottom of the screen. `embedded` sits inside another page's
+   * card — the module story panel — so everything stays in the flow and
    * nothing covers the page's own controls or the mobile bottom navigation.
    */
   variant?: "page" | "embedded";
@@ -121,7 +165,7 @@ export interface StoryPlayerProps {
   /**
    * False while the player is out of sight but still mounted (a host that
    * keeps hidden panes on the page, as tabs do). A running mini-game pauses
-   * its clock and stops listening to the keyboard until it is back.
+   * its clock and stops listening to the keyboard, and read-aloud stops.
    */
   active?: boolean;
   /**
@@ -137,7 +181,7 @@ export interface StoryPlayerProps {
   maxPoints?: number;
   /**
    * No "Story complete" block with stars and score at the end: the parent
-   * shows its own. `onComplete` still fires once.
+   * shows its own. `onComplete` still fires once, and the stage still cheers.
    */
   hideFinishSummary?: boolean;
 }
@@ -155,118 +199,135 @@ export function StoryPlayer({
   const target = course.languages?.target ?? "en";
   const home = course.languages?.home ?? "fr";
   const embedded = variant === "embedded";
+  const reducedMotion = useReducedMotion();
   // Embedded, the lesson page already owns the h1.
   const TitleTag = embedded ? "h2" : "h1";
   const ChapterTag = embedded ? "h3" : "h2";
+  const storyLang: StoryLanguage = target === "fr" || target === "en" ? target : home === "fr" ? "fr" : "en";
 
   // Standalone weeks open bilingual, like the booklet. In a lesson the
   // learner already picked her language, so the second line starts off.
-  const [bilingual, setBilingual] = useState(() =>
-    embedded ? readEmbeddedBilingual() : true,
-  );
+  const [bilingual, setBilingual] = useState(() => (embedded ? readEmbeddedBilingual() : true));
   const toggleBilingual = () => {
     const next = !bilingual;
     setBilingual(next);
     if (embedded) writeEmbeddedBilingual(next);
   };
-  const [revealed, setRevealed] = useState(0);
-  const [points, setPoints] = useState(0);
-  const [settledSteps, setSettledSteps] = useState<Set<number>>(new Set());
-  const endRef = useRef<HTMLDivElement | null>(null);
-  // Mirrors settledSteps synchronously so a step can only ever score once,
-  // even if a child reports twice before React re-renders.
-  const settledRef = useRef<Set<number>>(new Set());
+
+  // One switch for read-aloud and sound effects, remembered per browser.
+  const [soundOn, setSoundOn] = useState(readSoundOn);
+  const soundRef = useRef(soundOn);
+  useEffect(() => {
+    soundRef.current = soundOn;
+  }, [soundOn]);
+  const sfx = useCallback((name: Sfx) => {
+    if (soundRef.current) playSfx(name);
+  }, []);
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    writeSoundOn(next);
+    if (next) unlockAudio();
+    else stopSpeaking();
+  };
+
+  // The learner's choices at the start of a course's story (#2672): the
+  // friend's name and which hero they are. Asked once per course and browser.
+  const courseKey = course.course || course.id;
+  const variants = useMemo(() => heroVariants(course), [course]);
+  const asksFriend = useMemo(() => asksFriendName(course), [course]);
+  const [choices, setChoices] = useState<StoryChoices | null>(() =>
+    asksFriend || variants.length ? readChoices(courseKey) : {},
+  );
+  const introOpen = choices === null;
+  // The look being tried on in the start card, worn on stage right away.
+  const [preview, setPreview] = useState<string | undefined>(undefined);
+  const wanted = introOpen ? preview : choices?.variant;
+  const variantId = variants.length ? (wanted && variants.includes(wanted) ? wanted : variants[0]) : undefined;
+
+  // `{friend}` is filled here (the host fills `{child}`), on a copy.
+  const story = useMemo(
+    () => personalizeStory(course, { friend: choices?.friend, language: storyLang, keep: ["child"] }),
+    [course, choices?.friend, storyLang],
+  );
+  const actors = useMemo(() => buildActors(story, variantId), [story, variantId]);
 
   // One chapter, or the whole week.
   const chapters = useMemo(
     () =>
       chapterId === undefined
-        ? (course.chapters ?? [])
-        : (course.chapters ?? []).filter((chapter) => chapter.id === chapterId),
-    [course.chapters, chapterId],
+        ? (story.chapters ?? [])
+        : (story.chapters ?? []).filter((chapter) => chapter.id === chapterId),
+    [story.chapters, chapterId],
   );
   const singleChapter = chapterId !== undefined ? chapters[0] : undefined;
+  const flat = useMemo<PlannedStep[]>(
+    () => planSteps(chapters, story.chapters ?? [], actors),
+    [chapters, story.chapters, actors],
+  );
 
-  const flat = useMemo<FlatStep[]>(() => {
-    const out: FlatStep[] = [];
-    for (const chapter of chapters) {
-      let first = true;
-      for (const scene of chapter.scenes ?? []) {
-        for (const step of scene.steps ?? []) {
-          out.push({
-            step,
-            chapterId: chapter.id,
-            chapterTitle: chapter.title,
-            sceneId: scene.id,
-            place: scene.place,
-            startsChapter: first,
-          });
-          first = false;
-        }
-      }
-    }
-    return out;
-  }, [chapters]);
-
-  const questions = useMemo(
-    () => new Map((course.questions ?? []).map((q) => [q.id, q])),
-    [course.questions],
-  );
-  const exercises = useMemo(
-    () => new Map((course.exercises ?? []).map((e) => [e.id, e])),
-    [course.exercises],
-  );
-  const games = useMemo(
-    () => new Map((course.minigames ?? []).map((g) => [g.id, g])),
-    [course.minigames],
-  );
-  const videos = useMemo(
-    () => new Map((course.videos ?? []).map((v) => [v.id, v])),
-    [course.videos],
-  );
-  const cast = useMemo(
-    () => new Map((course.cast ?? []).map((c) => [c.id, c])),
-    [course.cast],
-  );
+  const questions = useMemo(() => new Map((story.questions ?? []).map((q) => [q.id, q])), [story.questions]);
+  const exercises = useMemo(() => new Map((story.exercises ?? []).map((e) => [e.id, e])), [story.exercises]);
+  const games = useMemo(() => new Map((story.minigames ?? []).map((g) => [g.id, g])), [story.minigames]);
+  const videos = useMemo(() => new Map((story.videos ?? []).map((v) => [v.id, v])), [story.videos]);
 
   const maxPoints =
     maxPointsOverride !== undefined
       ? Math.max(0, Number(maxPointsOverride) || 0)
-      : Number(course.checks?.max_points ?? 0);
-  const unitLabel = text(course.rewards?.unit, target, home) || t("pointsUnit");
+      : Number(story.checks?.max_points ?? 0);
+  const unitLabel = text(story.rewards?.unit, target, home) || t("pointsUnit");
+
+  const [index, setIndex] = useState(0);
+  const [points, setPoints] = useState(0);
+  const [settledSteps, setSettledSteps] = useState<Set<number>>(new Set());
+  // Mirrors settledSteps synchronously so a step can only ever score once,
+  // even if a child reports twice before React re-renders.
+  const settledRef = useRef<Set<number>>(new Set());
+  // The hero's reaction to the latest answer on the current step.
+  const [reaction, setReaction] = useState<{ index: number; correct: boolean; n: number } | null>(null);
+  const [bursts, setBursts] = useState(0);
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const typedRef = useRef<TypedHandle | null>(null);
+  const boardRef = useRef<SkipHandle | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const advance = useCallback(() => {
-    setRevealed((index) => Math.min(index + 1, flat.length - 1));
+    setIndex((current) => Math.min(current + 1, flat.length - 1));
     requestAnimationFrame(() =>
-      // Embedded, the page carries on below the story, so scroll only as far
-      // as needed to show the new step; standalone, scroll to the bottom.
-      // (Optional call: jsdom and some old WebViews lack scrollIntoView.)
-      endRef.current?.scrollIntoView?.({
-        behavior: "smooth",
-        block: embedded ? "nearest" : "start",
+      // Keep the stage and the Next button in view on a phone. (Optional
+      // call: jsdom and some old WebViews lack scrollIntoView.)
+      (embedded ? controlsRef : frameRef).current?.scrollIntoView?.({
+        behavior: reducedMotion ? "auto" : "smooth",
+        block: "nearest",
       }),
     );
-  }, [flat.length, embedded]);
+  }, [flat.length, embedded, reducedMotion]);
 
-  const settle = useCallback((index: number, earned: number) => {
-    if (settledRef.current.has(index)) return;
-    settledRef.current.add(index);
+  const settle = useCallback((stepIndex: number, earned: number) => {
+    if (settledRef.current.has(stepIndex)) return;
+    settledRef.current.add(stepIndex);
     setPoints((total) => total + earned);
     setSettledSteps(new Set(settledRef.current));
   }, []);
 
-  const current = flat[revealed];
+  const current = flat[index];
   const currentIsBlocking = current ? BLOCKING.has(current.step.type) : false;
-  const currentSettled = settledSteps.has(revealed);
+  const currentSettled = settledSteps.has(index);
   const lastIndex = flat.length - 1;
-  const atEnd = revealed >= lastIndex;
-  const canContinue = !atEnd && (!currentIsBlocking || currentSettled);
+  const atEnd = index >= lastIndex;
+  const canContinue = !introOpen && !atEnd && (!currentIsBlocking || currentSettled);
   // The end is reached once the last step is on screen and, if it asks
   // something of the learner, answered.
   const finished =
     flat.length > 0 &&
     atEnd &&
     (!BLOCKING.has(flat[lastIndex].step.type) || settledSteps.has(lastIndex));
+  // A chapter that was actually played through gets a cheer; one that is
+  // complete the moment it opens (a one-line checkpoint) does not.
+  const celebrating = finished && !introOpen && (index > 0 || settledSteps.size > 0);
 
   // Report completion exactly once. The callback is read through a ref so a
   // parent re-rendering with a new function cannot re-fire it.
@@ -281,482 +342,560 @@ export function StoryPlayer({
     onCompleteRef.current?.({ points, maxPoints });
   }, [finished, points, maxPoints]);
 
-  const stars = starsFor(maxPoints ? points / maxPoints : 0, course.rewards?.stars);
-  const finishSummary = hideFinishSummary ? null : (
-    <div className="text-center" role="status">
-      <p className="font-semibold text-gray-900">{t("finished")}</p>
-      {stars > 0 ? (
-        <p className="font-bold text-gray-900" aria-hidden="true">
-          {"⭐".repeat(stars)}
+  const cheeredRef = useRef(false);
+  useEffect(() => {
+    if (!celebrating || cheeredRef.current) return;
+    cheeredRef.current = true;
+    sfx("fanfare");
+  }, [celebrating, sfx]);
+
+  // A whoosh for a new place, a pop for a card.
+  const lastPlaceRun = useRef<number | null>(null);
+  useEffect(() => {
+    if (!current || introOpen) return;
+    if (lastPlaceRun.current !== null && lastPlaceRun.current !== current.placeRun) sfx("whoosh");
+    else if (POP_STEPS.has(current.step.type)) sfx("pop");
+    lastPlaceRun.current = current.placeRun;
+  }, [current, introOpen, sfx]);
+
+  // Who is on stage now, and who does what.
+  const cast = current?.cast ?? [];
+  const slots = slotsFor(cast.length);
+  const reactor = reactorOf(cast, actors);
+  const presenter = presenterOf(cast, actors);
+  const step = current?.step;
+  const speakerId = step?.type === "say" ? step.who : step?.type === "concept" ? presenter : undefined;
+
+  // Read-aloud: the step's target-language text, in its speaker's voice.
+  const speech = useMemo(() => {
+    if (!step) return null;
+    const targetLine = lineOf(stepText(step, target));
+    const homeLine = lineOf(stepText(step, home));
+    const lang = targetLine ? target : home;
+    const voiceOf = (id: string | undefined) => (id ? actors.get(id)?.voice : undefined) ?? NARRATOR;
+    switch (step.type) {
+      case "say":
+        return { lines: [targetLine || homeLine], lang, voice: voiceOf(step.who) };
+      case "narrate":
+        return { lines: [targetLine || homeLine], lang, voice: NARRATOR };
+      case "concept": {
+        const rows = rowsOf(step, target).length ? rowsOf(step, target) : rowsOf(step, home);
+        const title = step.title ? text(step.title, target, home) : "";
+        return { lines: [title, ...rows], lang, voice: voiceOf(presenter) };
+      }
+      case "show":
+        return step.caption ? { lines: [text(step.caption, target, home)], lang: target, voice: NARRATOR } : null;
+      case "ask": {
+        const question = step.ref ? questions.get(step.ref) : undefined;
+        return question ? { lines: [text(question.prompt, target, home)], lang: target, voice: NARRATOR } : null;
+      }
+      case "game": {
+        const game = step.ref ? games.get(step.ref) : undefined;
+        return game
+          ? { lines: [text(game.title, target, home), text(game.instruction, target, home)], lang: target, voice: NARRATOR }
+          : null;
+      }
+      default:
+        return null;
+    }
+  }, [step, target, home, actors, presenter, questions, games]);
+
+  useEffect(() => {
+    if (!soundOn || !active || introOpen || !speech) return;
+    speak(speech.lines, speech.lang, speech.voice);
+    return () => stopSpeaking();
+  }, [speech, soundOn, active, introOpen]);
+
+  // Space and → move on, like the Next button, when the story has the focus
+  // (or nothing does) and the key is not meant for a field or a button.
+  const tryAdvanceRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    tryAdvanceRef.current = () => {
+      if (canContinue) advance();
+    };
+  }, [canContinue, advance]);
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
+      if (event.key !== " " && event.key !== "ArrowRight") return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      // A focused button already answers Space itself.
+      if (event.key === " " && target?.closest("button, a, summary, [role=button]")) return;
+      if (target && target !== document.body && !rootRef.current?.contains(target)) return;
+      event.preventDefault();
+      tryAdvanceRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active]);
+
+  // A tap on the stage finishes the line being typed, then moves on. Never
+  // while a question, a game or a paper exercise is waiting.
+  const onStageTap = (event: MouseEvent) => {
+    if (introOpen || finished || !current || !TAP_THROUGH.has(current.step.type)) return;
+    if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, label")) return;
+    if (typedRef.current?.skip() || boardRef.current?.skip()) return;
+    if (canContinue) advance();
+  };
+
+  const startStory = (picked: StoryChoices) => {
+    unlockAudio();
+    const next: StoryChoices = {
+      friend: picked.friend,
+      variant: picked.variant,
+    };
+    writeChoices(courseKey, next);
+    setChoices(next);
+    sfx("whoosh");
+  };
+
+  const onAttempt = (stepIndex: number) => (outcome: { correct: boolean }) => {
+    setReaction((previous) => ({ index: stepIndex, correct: outcome.correct, n: (previous?.n ?? 0) + 1 }));
+    // The hint or the explanation lands at the bottom of the card: bring it
+    // into view inside a card that scrolls on the stage.
+    requestAnimationFrame(() => {
+      const card = cardRef.current;
+      card?.scrollTo?.({ top: card.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
+    });
+    if (outcome.correct) {
+      sfx("correct");
+      setBursts((n) => n + 1);
+    } else {
+      sfx("oops");
+    }
+  };
+
+  const stars = starsFor(maxPoints ? points / maxPoints : 0, story.rewards?.stars);
+
+  /* ---- The stage ------------------------------------------------------- */
+
+  const firstStep = flat[0];
+  const placeId = (current ?? firstStep)?.place ?? "";
+  const theme = placeTheme(placeId, placeLook(story, placeId));
+  const backdropUrl = safeArtUrl(story.art?.places?.[placeId]);
+  const stageCast = introOpen ? (firstStep?.cast ?? []) : cast;
+  const stageSlots = introOpen ? slotsFor(stageCast.length) : slots;
+  const showTitle = introOpen || !!current?.startsChapter;
+  const titleCard = (() => {
+    const chapterItem = current ?? firstStep;
+    if (!showTitle || !chapterItem) return null;
+    const wholeStoryStart = introOpen || (!singleChapter && index === 0);
+    const titleObject = wholeStoryStart && !singleChapter ? story.title : chapterItem.chapterTitle;
+    const primary = text(titleObject, target, home);
+    const secondary = text(titleObject, home, target);
+    const eyebrow = wholeStoryStart && !singleChapter
+      ? [story.course, story.unit].filter(Boolean).join(" · ")
+      : t("chapterNumber", { number: chapterItem.chapterNumber });
+    const footer =
+      wholeStoryStart && !singleChapter && chapters.length > 1 && !introOpen
+        ? `${t("chapterNumber", { number: chapterItem.chapterNumber })} · ${text(chapterItem.chapterTitle, target, home)}`
+        : undefined;
+    return (
+      <TitleCard
+        eyebrow={eyebrow || undefined}
+        title={primary}
+        titleLang={target}
+        subtitle={bilingual && secondary && secondary !== primary ? secondary : undefined}
+        subtitleLang={home}
+        footer={footer}
+      />
+    );
+  })();
+  // "Where are we": on a scene's first line, when no card covers that corner.
+  const ribbonTitle =
+    !showTitle && current?.startsScene && (step?.type === "say" || step?.type === "narrate")
+      ? placeTitle(story, current.place)
+      : undefined;
+
+  const poseOf = (id: string): Pose => {
+    if (celebrating) return "happy";
+    if (introOpen || !step) return "idle";
+    if (reaction && reaction.index === index && id === reactor) return reaction.correct ? "happy" : "think";
+    if (step.type === "say" && step.who === id) return poseFor(step.mood, true);
+    if (step.type === "concept" && id === presenter) return "talk";
+    if ((step.type === "ask" || step.type === "game" || step.type === "photo") && id === reactor) return "think";
+    return "idle";
+  };
+
+  const speakingLine = step && speakerId ? lineOf(stepText(step, target)) || lineOf(stepText(step, home)) : "";
+  const speakBeats = Math.max(2, Math.min(40, Math.round(lineSeconds(speakingLine, soundOn) / 0.42)));
+
+  const characters = stageCast.map((id, slot) => {
+    const actor = actors.get(id);
+    if (!actor) return null;
+    const pose = poseOf(id);
+    const speaking = !introOpen && !celebrating && id === speakerId;
+    const reacting = reaction && reaction.index === index && id === reactor && !celebrating;
+    const gesture: Gesture = celebrating
+      ? "jump"
+      : reacting
+        ? reaction.correct
+          ? "jump"
+          : "shake"
+        : speaking
+          ? "speak"
+          : null;
+    return (
+      <StageCharacter
+        key={id}
+        actor={actor}
+        x={stageSlots[slot]}
+        pose={pose}
+        artUrl={artFor(story.art, actor.artKey, pose)}
+        gesture={gesture}
+        // A new key restarts the gesture's animation; standing still keeps one.
+        gestureKey={gesture ? `${gesture}-${index}-${reacting ? reaction.n : 0}` : "still"}
+        beats={speaking ? speakBeats : 0}
+        enterDelay={0.25 + slot * 0.3}
+        speaking={speaking && step?.type === "say"}
+      />
+    );
+  });
+
+  /* ---- The step's panel ------------------------------------------------ */
+
+  const panel = (() => {
+    if (!current || !step) return null;
+    const targetLine = lineOf(stepText(step, target));
+    const homeLine = lineOf(stepText(step, home));
+    const primary = targetLine || homeLine;
+    const primaryLang = targetLine ? target : home;
+    const secondary = bilingual && !!targetLine && !!homeLine && homeLine !== targetLine ? homeLine : undefined;
+    const animate = !reducedMotion;
+    switch (step.type) {
+      case "narrate":
+        return (
+          <CaptionBar
+            key={index}
+            primary={primary}
+            primaryLang={primaryLang}
+            secondary={secondary}
+            secondaryLang={home}
+            animate={animate}
+            typedRef={typedRef}
+          />
+        );
+      case "say": {
+        const actor = step.who ? actors.get(step.who) : undefined;
+        const slot = step.who ? cast.indexOf(step.who) : -1;
+        return (
+          <SpeechBubble
+            key={index}
+            name={actor?.name ?? step.who ?? ""}
+            aiLabel={actor?.isTutor ? t("aiLabel") : undefined}
+            actor={actor}
+            x={slot >= 0 ? slots[slot] : undefined}
+            primary={primary}
+            primaryLang={primaryLang}
+            secondary={secondary}
+            secondaryLang={home}
+            animate={animate}
+            typedRef={typedRef}
+          />
+        );
+      }
+      case "concept": {
+        const targetRows = rowsOf(step, target);
+        const homeRows = rowsOf(step, home);
+        const rows = targetRows.length ? targetRows : homeRows;
+        const title = step.title ? text(step.title, target, home) : undefined;
+        return (
+          <Chalkboard
+            key={index}
+            ref={boardRef}
+            title={title}
+            headingLevel={embedded ? 4 : 3}
+            rows={rows}
+            rowsLang={targetRows.length ? target : home}
+            homeRows={bilingual && targetRows.length ? homeRows : []}
+            homeLang={home}
+            rowDelays={reducedMotion ? rows.map(() => 0) : rowDelays(rows, title, soundOn)}
+          />
+        );
+      }
+      case "show":
+        return (
+          <VisualPanel key={index}>
+            <ConceptVisual
+              visual={step.visual ?? "unknown"}
+              params={step.params}
+              caption={step.caption ? text(step.caption, target, home) : undefined}
+              language={figureLanguage(target, home)}
+            />
+          </VisualPanel>
+        );
+      case "ask": {
+        const question = step.ref ? questions.get(step.ref) : undefined;
+        if (!question) return <MissingRef key={index} kind="question" refId={step.ref} />;
+        return (
+          <StageCard key={index} ref={cardRef} kind="ask" banner={t("questionBanner")} paper>
+            <QuestionCard
+              question={question}
+              target={target}
+              home={home}
+              bilingual={bilingual}
+              rewards={story.rewards}
+              className="pt-2"
+              onAnswered={({ points: earned }) => settle(index, earned)}
+              onAttempt={onAttempt(index)}
+            />
+          </StageCard>
+        );
+      }
+      case "game": {
+        const game = step.ref ? games.get(step.ref) : undefined;
+        if (!game) return <MissingRef key={index} kind="mini-game" refId={step.ref} />;
+        return (
+          <StageCard key={index} kind="game" banner={t("gameBanner")} bannerColor="#c2410c">
+            <MinigameView
+              game={game}
+              target={target}
+              home={home}
+              bilingual={bilingual}
+              active={active && !introOpen}
+              className="pt-2"
+              onTap={(correct) => sfx(correct ? "coin" : "oops")}
+              onFinished={({ points: earned }) => {
+                settle(index, earned);
+                if (earned > 0) {
+                  sfx("correct");
+                  setBursts((n) => n + 1);
+                }
+              }}
+            />
+          </StageCard>
+        );
+      }
+      case "photo": {
+        const exercise = step.ref ? exercises.get(step.ref) : undefined;
+        if (!exercise) return <MissingRef key={index} kind="exercise" refId={step.ref} />;
+        return (
+          <StageCard key={index} kind="photo">
+            <PaperExercise
+              exercise={exercise}
+              label={story.module_story ? chapterLocalId(exercise.id) : exercise.id}
+              target={target}
+              home={home}
+              bilingual={bilingual}
+              settled={currentSettled}
+              onMarked={(earned) => {
+                settle(index, earned);
+                if (earned > 0) sfx("coin");
+              }}
+            />
+          </StageCard>
+        );
+      }
+      case "video": {
+        const video = step.ref ? videos.get(step.ref) : undefined;
+        if (!video) return <MissingRef key={index} kind="video" refId={step.ref} />;
+        return (
+          <StageCard key={index} kind="video" banner={t("videoBanner")} bannerColor="#7c3aed">
+            <a
+              href={video.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex min-h-11 items-center gap-3 rounded-xl border-2 border-gray-200 bg-white p-3 hover:border-[#1d6fb8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d6fb8]"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1d2b4f] text-[#ffd23f]"
+              >
+                {"▶"}
+              </span>
+              <span>
+                <span className="block font-semibold text-gray-900">{video.title}</span>
+                <span className="block text-xs text-gray-600">
+                  {`${video.provider} · ${video.lang.toUpperCase()}`}
+                </span>
+              </span>
+            </a>
+          </StageCard>
+        );
+      }
+      default:
+        return null;
+    }
+  })();
+
+  /* ---- Start card, controls, summary ------------------------------------ */
+
+  const heroActorId = [...actors.values()].find((actor) => actor.isHero)?.id;
+  const startCard = introOpen ? (
+    <StartCard
+      askFriend={asksFriend}
+      defaultFriend={castFriendName(course) ?? NAME_FALLBACKS.friend[storyLang]}
+      variants={variants.flatMap((id) => {
+        const actor = heroActorId ? buildActors(story, id).get(heroActorId) : undefined;
+        return actor ? [{ id, actor, artUrl: artFor(story.art, `hero:${id}`, "idle") }] : [];
+      })}
+      initialVariant={variantId}
+      onPreview={setPreview}
+      onStart={startStory}
+    />
+  ) : null;
+
+  const finishSummary =
+    finished && !hideFinishSummary ? (
+      <div
+        role="status"
+        className={`${styles.rise} mt-4 rounded-2xl border-[3px] border-[#ffd23f] px-4 py-4 text-center text-white shadow-[0_6px_0_rgba(29,43,79,0.25)]`}
+        style={{ background: "radial-gradient(circle at 20% 10%, #2c3f73, #1d2b4f 70%)" }}
+      >
+        <p className={`${styles.titleText} text-2xl font-black`}>{t("finished")}</p>
+        {stars > 0 ? (
+          <p className="mt-2">
+            <StarRow stars={stars} max={3} />
+            <span className="sr-only">{t("starsLabel", { stars, max: 3 })}</span>
+          </p>
+        ) : null}
+        <p className="mt-1 text-sm font-semibold text-sky-100">
+          {maxPoints
+            ? t("scoreOf", { points, max: maxPoints, unit: unitLabel })
+            : t("score", { points, unit: unitLabel })}
         </p>
-      ) : null}
-      <p className="text-sm text-gray-600">
-        {maxPoints
-          ? t("scoreOf", { points, max: maxPoints, unit: unitLabel })
-          : t("score", { points, unit: unitLabel })}
-      </p>
-    </div>
-  );
-  const controls = finished ? (
-    finishSummary
-  ) : (
-    <button
-      type="button"
-      onClick={advance}
-      disabled={!canContinue}
-      className="min-h-11 w-full rounded-lg bg-teal-600 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-    >
-      {currentIsBlocking && !currentSettled ? t("answerToContinue") : t("continueLabel")}
-    </button>
-  );
+      </div>
+    ) : null;
+
+  const nextButton =
+    finished || introOpen ? null : (
+      <button
+        type="button"
+        onClick={advance}
+        disabled={!canContinue}
+        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-6 text-lg font-extrabold text-white shadow-[0_5px_0_rgba(0,0,0,0.25)] transition hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffd23f]/60 disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-700 disabled:shadow-none"
+      >
+        {currentIsBlocking && !currentSettled ? (
+          t("answerToContinue")
+        ) : (
+          <>
+            {t("next")}
+            <PlayIcon />
+          </>
+        )}
+      </button>
+    );
+
+  const chapterHeading =
+    !singleChapter && current ? text(current.chapterTitle, target, home) : undefined;
 
   return (
-    <div className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-2xl px-4 pb-24"}>
-      {/* Header: title and running score. */}
+    <div ref={rootRef} className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-2xl px-4 pb-32"}>
+      {/* Header: title, chapter, running score and the two switches. */}
       <header
         className={
           embedded
-            ? "mb-4 border-b border-teal-100 pb-3"
-            : "sticky top-0 z-10 -mx-4 mb-4 border-b border-teal-100 bg-white/95 px-4 py-3 backdrop-blur"
+            ? "mb-3"
+            : "sticky top-0 z-10 -mx-4 mb-3 border-b border-[#1d2b4f]/10 bg-white/95 px-4 py-3 backdrop-blur"
         }
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             {/* Standalone weeks say where they sit; the lesson page already does. */}
             {!embedded ? (
-              <p className="truncate text-xs uppercase tracking-wide text-gray-500">
-                {[course.course, course.unit, t("week", { week: course.week })]
-                  .filter(Boolean)
-                  .join(" · ")}
+              <p className="truncate text-xs uppercase tracking-wide text-gray-600">
+                {[course.course, course.unit, t("week", { week: course.week })].filter(Boolean).join(" · ")}
               </p>
             ) : null}
-            <TitleTag
-              className={`font-bold text-gray-900 ${embedded ? "text-base" : "truncate text-lg"}`}
-            >
-              {text(singleChapter ? singleChapter.title : course.title, target, home)}
+            <TitleTag className={`font-bold text-gray-900 ${embedded ? "text-base" : "truncate text-lg"}`}>
+              {text(singleChapter ? singleChapter.title : story.title, target, home)}
             </TitleTag>
+            {chapterHeading ? (
+              <ChapterTag className="truncate text-sm font-bold text-amber-800">{chapterHeading}</ChapterTag>
+            ) : null}
           </div>
-          <div className="shrink-0 text-right">
-            <p className="font-bold text-teal-700" aria-live="polite">
+          <div className="shrink-0 rounded-2xl border-2 border-[#ffd23f] bg-[#fff8db] px-3 py-1 text-right">
+            <p className="font-extrabold text-[#1d2b4f]" aria-live="polite">
               {points}
-              {maxPoints ? <span className="text-gray-400">/{maxPoints}</span> : null}
+              {maxPoints ? <span className="text-gray-600">/{maxPoints}</span> : null}
             </p>
-            <p className="text-xs text-gray-500">{unitLabel}</p>
+            <p className="text-xs text-gray-700">{unitLabel}</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={toggleBilingual}
-          aria-pressed={bilingual}
-          title={t("bilingualToggle")}
-          className="mt-2 min-h-11 min-w-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-        >
-          <span className="sr-only">{t("bilingualToggle")}: </span>
-          {bilingual
-            ? `${target.toUpperCase()} + ${home.toUpperCase()}`
-            : target.toUpperCase()}
-        </button>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={toggleBilingual}
+            aria-pressed={bilingual}
+            title={t("bilingualToggle")}
+            className="min-h-11 min-w-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+          >
+            <span className="sr-only">{t("bilingualToggle")}: </span>
+            {bilingual ? `${target.toUpperCase()} + ${home.toUpperCase()}` : target.toUpperCase()}
+          </button>
+          <button
+            type="button"
+            onClick={toggleSound}
+            aria-pressed={soundOn}
+            aria-label={t("soundToggle")}
+            title={t("soundToggle")}
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gray-300 px-3 text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+          >
+            {soundOn ? <Volume2 className="h-5 w-5" aria-hidden="true" /> : <VolumeX className="h-5 w-5" aria-hidden="true" />}
+          </button>
+        </div>
       </header>
 
-      <ol className="space-y-1">
-        {flat.slice(0, revealed + 1).map((item, index) => (
-          <li key={`${item.sceneId}-${index}`}>
-            {/* One chapter: its title is already the heading above. */}
-            {item.startsChapter && !singleChapter ? (
-              <ChapterTag className="mt-6 mb-2 border-l-4 border-amber-400 pl-3 text-base font-bold text-gray-900">
-                {text(item.chapterTitle, target, home)}
-              </ChapterTag>
-            ) : null}
-            <StepView
-              step={item.step}
-              place={item.place}
-              target={target}
-              home={home}
-              bilingual={bilingual}
-              cast={cast}
-              question={item.step.ref ? questions.get(item.step.ref) : undefined}
-              exercise={item.step.ref ? exercises.get(item.step.ref) : undefined}
-              moduleStory={!!course.module_story}
-              game={item.step.ref ? games.get(item.step.ref) : undefined}
-              video={item.step.ref ? videos.get(item.step.ref) : undefined}
-              rewards={course.rewards}
-              active={active}
-              settled={settledSteps.has(index)}
-              onSettled={(earned) => settle(index, earned)}
-            />
-          </li>
-        ))}
-      </ol>
+      {/* The stage, and under it (or on it, when there is room) the step. */}
+      <div ref={frameRef} className={styles.frame} data-testid="story-stage">
+        <div className={`${styles.box} shadow-[0_6px_0_rgba(29,43,79,0.18)]`} onClick={onStageTap}>
+          <div key={`${current?.chapterId ?? ""}:${current?.placeRun ?? 0}`} className={`${styles.scene} ${styles.iris}`}>
+            <Backdrop placeId={placeId} theme={theme} url={backdropUrl} />
+            {titleCard}
+            {ribbonTitle ? <PlaceRibbon label={text(ribbonTitle, target, home)} lang={target} /> : null}
+            <div className={styles.layer}>{characters}</div>
+          </div>
+          {celebrating && maxPoints > 0 ? (
+            <div
+              className={`${styles.popIn} absolute left-1/2 top-[5%] z-[25] -translate-x-1/2 rounded-2xl border-[3px] border-[#ffd23f] px-5 py-2 text-center`}
+              style={{ background: "rgb(29 43 79 / 0.92)" }}
+              aria-hidden="true"
+            >
+              <p className={`${styles.titleText} ${styles.subtitleSize} font-black`}>{t("bravo")}</p>
+              <StarRow stars={stars} max={3} size={30} />
+            </div>
+          ) : null}
+          {celebrating ? <Confetti seed={7} pieces={60} /> : null}
+          {bursts > 0 && !celebrating ? <Confetti key={bursts} seed={bursts} /> : null}
+          {story.art?.status === "pending" ? (
+            <p className="absolute bottom-[2%] right-[2%] z-[26] rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-semibold text-gray-800">
+              {t("artPending")}
+            </p>
+          ) : null}
+        </div>
+        <div className={styles.dialogue} aria-live="polite" onClick={onStageTap}>
+          {startCard ?? panel}
+        </div>
+      </div>
+
+      {finishSummary}
 
       {embedded ? (
-        <>
-          {/* Continue / finish, in the flow right under the newest step. */}
-          <div className="mt-6">{controls}</div>
-          <div ref={endRef} />
-        </>
-      ) : (
-        <>
-          <div ref={endRef} />
-          {/* Continue / finish. On phones it sits above the bottom navigation
-              (h-16, z-50), which would otherwise cover it. */}
-          <div
-            data-testid="story-controls-bar"
-            className="fixed inset-x-0 bottom-16 z-40 border-t border-gray-200 bg-white/95 p-3 backdrop-blur md:bottom-0"
-          >
-            <div className="mx-auto max-w-2xl">{controls}</div>
+        <div ref={controlsRef} className={nextButton ? "mt-4" : ""}>
+          {nextButton}
+        </div>
+      ) : nextButton ? (
+        // On phones the bar sits above the bottom navigation (h-16, z-50),
+        // which would otherwise cover it.
+        <div
+          data-testid="story-controls-bar"
+          className="fixed inset-x-0 bottom-16 z-40 border-t border-gray-200 bg-white/95 p-3 backdrop-blur md:bottom-0"
+        >
+          <div className="mx-auto max-w-2xl" ref={controlsRef}>
+            {nextButton}
           </div>
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-
-interface StepViewProps {
-  step: Step;
-  place: string;
-  target: string;
-  home: string;
-  bilingual: boolean;
-  cast: Map<string, CastMember>;
-  question?: Question;
-  exercise?: Exercise;
-  /** A module story: its ids are namespaced per chapter (C-2). */
-  moduleStory?: boolean;
-  game?: Minigame;
-  video?: Video;
-  rewards?: StoryCourse["rewards"];
-  active: boolean;
-  settled: boolean;
-  onSettled: (earned: number) => void;
-}
-
-function StepView({
-  step,
-  target,
-  home,
-  bilingual,
-  cast,
-  question,
-  exercise,
-  moduleStory = false,
-  game,
-  video,
-  rewards,
-  active,
-  settled,
-  onSettled,
-}: StepViewProps) {
-  const t = useTranslations("Story");
-  const line = (value: string | string[] | undefined): string =>
-    Array.isArray(value) ? value.join("\n") : (value ?? "");
-
-  // Language-keyed (C1): the target language's field first, the home
-  // language's beneath. Falls back to the home text when a step only has that.
-  const targetLine = line(stepText(step, target));
-  const homeLine = line(stepText(step, home));
-  const primaryLine = targetLine || homeLine;
-  const primaryLang = targetLine ? target : home;
-  const showHomeLine = bilingual && !!targetLine && !!homeLine && homeLine !== targetLine;
-
-  switch (step.type) {
-    case "narrate":
-      return (
-        <div className="my-3 border-l-2 border-gray-200 pl-3">
-          <p className="text-gray-700" lang={primaryLang}>
-            {primaryLine}
-          </p>
-          {showHomeLine ? (
-            <p className="mt-1 text-sm italic text-gray-500" lang={home}>
-              {homeLine}
-            </p>
-          ) : null}
-        </div>
-      );
-
-    case "say": {
-      const speaker = step.who ? cast.get(step.who) : undefined;
-      const isTutor = speaker?.kind === "ai_tutor";
-      const mood = step.mood ? MOOD_EMOJI[step.mood] : undefined;
-      return (
-        <div className="my-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">
-            {speaker?.name ?? step.who}
-            {isTutor ? ` (${t("aiLabel")})` : ""}
-            {mood ? (
-              <span className="ml-2 font-normal" aria-hidden="true">
-                {mood}
-              </span>
-            ) : null}
-          </p>
-          <div
-            className={`mt-1 rounded-2xl px-4 py-2 ${
-              isTutor ? "bg-amber-100" : "bg-teal-50"
-            }`}
-          >
-            <p className="text-gray-900" lang={primaryLang}>
-              {primaryLine}
-            </p>
-            {showHomeLine ? (
-              <p className="mt-1 text-sm italic text-gray-600" lang={home}>
-                {homeLine}
-              </p>
-            ) : null}
-          </div>
-        </div>
-      );
-    }
-
-    case "show":
-      return (
-        <ConceptVisual
-          visual={step.visual ?? "unknown"}
-          params={step.params}
-          caption={step.caption ? text(step.caption, target, home) : undefined}
-          language={figureLanguage(target, home)}
-        />
-      );
-
-    case "concept": {
-      // Rows are language-keyed too (C1): `fr` holds the French rows.
-      const rowsIn = (lang: string): string[] => {
-        const value = stepText(step, lang);
-        return Array.isArray(value) ? value : [];
-      };
-      const targetRows = rowsIn(target);
-      const homeRows = rowsIn(home);
-      const rows = targetRows.length ? targetRows : homeRows;
-      return (
-        <section className="my-4 rounded-xl border border-teal-200 bg-white p-4">
-          {step.title ? (
-            <h3 className="font-bold text-gray-900">{text(step.title, target, home)}</h3>
-          ) : null}
-          <ul className="mt-2 space-y-2">
-            {rows.map((row, index) => (
-              <li key={index} className="text-sm">
-                <p className="text-gray-800" lang={targetRows.length ? target : home}>
-                  {row}
-                </p>
-                {bilingual && targetRows.length > 0 && homeRows[index] && homeRows[index] !== row ? (
-                  <p className="italic text-gray-500" lang={home}>
-                    {homeRows[index]}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      );
-    }
-
-    case "ask":
-      if (!question) return <MissingRef kind="question" refId={step.ref} />;
-      return (
-        <QuestionCard
-          question={question}
-          target={target}
-          home={home}
-          bilingual={bilingual}
-          rewards={rewards}
-          onAnswered={({ points }) => onSettled(points)}
-        />
-      );
-
-    case "game":
-      if (!game) return <MissingRef kind="mini-game" refId={step.ref} />;
-      return (
-        <MinigameView
-          game={game}
-          target={target}
-          home={home}
-          bilingual={bilingual}
-          active={active}
-          onFinished={({ points }) => onSettled(points)}
-        />
-      );
-
-    case "photo":
-      if (!exercise) return <MissingRef kind="exercise" refId={step.ref} />;
-      return (
-        <PaperExercise
-          exercise={exercise}
-          label={moduleStory ? chapterLocalId(exercise.id) : exercise.id}
-          target={target}
-          home={home}
-          bilingual={bilingual}
-          settled={settled}
-          onMarked={onSettled}
-        />
-      );
-
-    case "video":
-      if (!video) return <MissingRef kind="video" refId={step.ref} />;
-      return (
-        <a
-          href={video.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="my-3 flex min-h-11 items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 hover:border-teal-400"
-        >
-          <span aria-hidden="true">{"▶"}</span>
-          <span>
-            <span className="block font-semibold text-gray-900">{video.title}</span>
-            <span className="block text-xs text-gray-500">
-              {`${video.provider} · ${video.lang.toUpperCase()}`}
-            </span>
-          </span>
-        </a>
-      );
-
-    default:
-      return null;
-  }
-}
-
-/**
- * A paper-and-pen exercise (A.6).
- *
- * Photo checking needs a camera and the AI relay, which this slice does not
- * wire up. Until then the exercise is done on paper and the learner marks it
- * herself: "Done on paper" opens the worked answer and its mark scheme, then
- * "I got it" awards the exercise's marks and "Not yet" awards none. The
- * validator counts every exercise's marks into `checks.max_points` (contract
- * X6), so without the self-mark no story with an exercise could reach a full
- * score. All of it works offline.
- */
-function PaperExercise({
-  exercise,
-  label,
-  target,
-  home,
-  bilingual,
-  settled,
-  onMarked,
-}: {
-  exercise: Exercise;
-  /** The exercise's name for the learner (its id, without a module namespace). */
-  label: string;
-  target: string;
-  home: string;
-  bilingual: boolean;
-  settled: boolean;
-  onMarked: (points: number) => void;
-}) {
-  const t = useTranslations("Story");
-  // "Done on paper" pressed: the worked answer is open and can be marked.
-  const [opened, setOpened] = useState(false);
-  const [showWorking, setShowWorking] = useState(true);
-  const [awarded, setAwarded] = useState<number | null>(null);
-  const promptId = useId();
-  const working = exercise.working ?? {};
-  const marks = Math.max(0, Number(exercise.marks) || 0);
-  const open = opened || settled;
-
-  const mark = (points: number) => {
-    if (settled || awarded !== null) return;
-    setAwarded(points);
-    onMarked(points);
-  };
-
-  return (
-    <section className="my-5 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {[
-          t("onPaper"),
-          label,
-          t("part", { part: exercise.part }),
-          exercise.marks ? `[${exercise.marks}]` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-      <p className="mt-2 font-medium text-gray-900">{text(exercise.prompt, target, home)}</p>
-      {bilingual ? (
-        <p className="mt-1 text-sm italic text-gray-500" lang={home}>
-          {text(exercise.prompt, home, target)}
-        </p>
-      ) : null}
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {!open ? (
-          <button
-            type="button"
-            onClick={() => setOpened(true)}
-            className="min-h-11 rounded-lg bg-gray-800 px-4 font-semibold text-white hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-700"
-          >
-            {t("doneOnPaper")}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowWorking((on) => !on)}
-            aria-expanded={showWorking}
-            className="min-h-11 rounded-lg border border-gray-400 px-4 font-semibold text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-700"
-          >
-            {showWorking ? t("hideWorking") : t("showWorking")}
-          </button>
-        )}
-      </div>
-
-      {open && showWorking ? (
-        <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
-          <ol className="space-y-1 font-mono text-sm text-gray-800">
-            {(working[target] ?? working[home] ?? []).map((row, index) => (
-              <li key={index}>{row}</li>
-            ))}
-          </ol>
-          {exercise.mark_scheme?.length ? (
-            <ul className="mt-3 space-y-1 text-sm">
-              {exercise.mark_scheme.map((row, index) => (
-                <li key={index}>
-                  <span className="mr-2 font-mono font-semibold text-teal-700">{row.code}</span>
-                  {text({ en: row.en, fr: row.fr }, target, home)}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-
-      {open && !settled ? (
-        <div className="mt-3" role="group" aria-labelledby={promptId}>
-          <p id={promptId} className="text-sm font-medium text-gray-800">
-            {t("selfMarkPrompt")}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => mark(marks)}
-              className="min-h-11 rounded-lg bg-teal-600 px-4 font-semibold text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-            >
-              {t("selfMarkGotIt")}
-              {marks ? <span className="font-normal">{` (+${marks})`}</span> : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => mark(0)}
-              className="min-h-11 rounded-lg border border-gray-400 bg-white px-4 font-semibold text-gray-800 hover:border-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-700"
-            >
-              {t("selfMarkNotYet")}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {settled && awarded !== null && marks > 0 ? (
-        <p className="mt-3 text-sm font-semibold text-teal-700" role="status">
-          {t("selfMarked", { points: awarded, marks })}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-function MissingRef({ kind, refId }: { kind: string; refId?: string }) {
+function MissingRef({ kind, refId }: { kind: string; refId?: string }): ReactNode {
   const t = useTranslations("Story");
   return (
-    <p className="my-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+    <p className={`${styles.panel} ${styles.card} rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800`}>
       {t("missingRef", { kind, ref: refId ?? "?" })}
     </p>
   );

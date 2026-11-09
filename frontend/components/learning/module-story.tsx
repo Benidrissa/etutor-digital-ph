@@ -262,11 +262,15 @@ export function ModuleStory({ moduleId, language }: ModuleStoryProps) {
   }, [isHydrated, moduleId, language, attempt]);
 
   // One cached story serves every learner: their first name goes in at
-  // display time, on a copy, so the cached document stays name-free.
+  // display time, on a copy, so the cached document stays name-free. The
+  // friend's name is the learner's own choice, asked by the player itself.
   const firstName = firstNameOf(user?.name);
   const story = state.kind === 'ready' ? state.story : null;
   const personalized = useMemo(
-    () => (story ? personalizeStory(story, { child: firstName, language }) : null),
+    () =>
+      story
+        ? personalizeStory(story, { child: firstName, language, keep: ['friend'] })
+        : null,
     [story, firstName, language],
   );
 

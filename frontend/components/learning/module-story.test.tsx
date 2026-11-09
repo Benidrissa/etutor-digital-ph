@@ -8,7 +8,7 @@
  * lesson chapter completes that lesson once — never a quiz or a case study.
  */
 
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
@@ -29,6 +29,11 @@ import {
   POLL_MAX_CONSECUTIVE_ERRORS,
   POLL_TIMEOUT_MS,
 } from "./module-story";
+
+// The story player draws a cartoon stage per chapter: give the first render
+// and long click-throughs headroom on a busy CI runner.
+configure({ asyncUtilTimeout: 4000 });
+vi.setConfig({ testTimeout: 20_000 });
 
 vi.mock("@/lib/story-course/load", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/story-course/load")>();
@@ -576,7 +581,7 @@ describe("ModuleStory — reading", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("QuotaExceededError");
     });
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
     await user.click(screen.getByRole("button", { name: "Chapitre suivant" }));
     expect(screen.getByText(CH2_LINE)).toBeInTheDocument();
@@ -594,7 +599,7 @@ describe("ModuleStory — completion", () => {
     await waitFor(() => expect(detailMock).toHaveBeenCalledWith(MODULE_ID));
 
     // Chapter 1, lesson 1.1: answer the question right first time.
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
     expect(completeMock).toHaveBeenCalledTimes(1);
     expect(completeMock).toHaveBeenCalledWith(MODULE_ID, "1.1", { online: true });
@@ -612,7 +617,7 @@ describe("ModuleStory — completion", () => {
     expect(screen.getByText("Chapitre 2 sur 4")).toBeInTheDocument();
     // Focus moves to the start of the new chapter.
     await waitFor(() => expect(screen.getByText("Chapitre 2 sur 4")).toHaveFocus());
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     expect(screen.getByText("Chapitre terminé !")).toBeInTheDocument();
 
     // Chapter 3, the quiz checkpoint: sends to the quiz, completes nothing.
@@ -645,7 +650,7 @@ describe("ModuleStory — completion", () => {
     // Replaying the first lesson does not post it again.
     const index = screen.getByRole("navigation", { name: "Chapitres" });
     await user.click(within(index).getByRole("button", { name: /Des mains propres/ }));
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
     expect(completeMock).toHaveBeenCalledTimes(1);
   });
@@ -658,14 +663,14 @@ describe("ModuleStory — completion", () => {
     renderPanel();
     await screen.findByText(CH1_LINE);
 
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
     await waitFor(() => expect(completeMock).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/est marquée comme terminée/)).not.toBeInTheDocument();
 
     const index = screen.getByRole("navigation", { name: "Chapitres" });
     await user.click(within(index).getByRole("button", { name: /Des mains propres/ }));
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
     expect(completeMock).toHaveBeenCalledTimes(1);
   });
@@ -680,7 +685,7 @@ describe("ModuleStory — completion", () => {
       renderPanel();
       await screen.findByText(CH1_LINE);
 
-      await user.click(screen.getByRole("button", { name: "Continuer" }));
+      await user.click(screen.getByRole("button", { name: "Suite" }));
       await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
       expect(completeMock).toHaveBeenCalledWith(MODULE_ID, "1.1", { online: false });
     } finally {

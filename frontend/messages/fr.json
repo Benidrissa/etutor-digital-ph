@@ -2693,7 +2693,7 @@
     "week": "Semaine {week}",
     "counts": "{questions} questions · {exercises} sur papier · {points} points",
     "check": "Vérifier",
-    "continueLabel": "Continuer",
+    "next": "Suite",
     "answerToContinue": "Réponds pour continuer",
     "hint": "Indice",
     "howItWorks": "Voici comment ça marche",
@@ -2726,6 +2726,24 @@
     "scoreOf": "{points} sur {max} {unit}",
     "aiLabel": "IA",
     "part": "Partie {part}",
-    "bilingualToggle": "Afficher les deux langues"
+    "bilingualToggle": "Afficher les deux langues",
+    "soundToggle": "Lecture à voix haute et effets sonores",
+    "chapterNumber": "Chapitre {number}",
+    "questionBanner": "Question",
+    "gameBanner": "Mini-jeu",
+    "videoBanner": "À regarder",
+    "bravo": "Bravo !",
+    "starsLabel": "{stars} étoiles sur {max}",
+    "artPending": "Illustrations en cours…",
+    "play": "Jouer",
+    "pickHero": "Qui es-tu dans l'histoire ?",
+    "friendPrompt": "Comment s'appelle ton meilleur ami ou ta meilleure amie ?",
+    "friendHint": "Laisse vide et ton ami·e s'appellera {name}.",
+    "variant": {
+      "girl": "Une fille",
+      "boy": "Un garçon",
+      "woman": "Une femme",
+      "man": "Un homme"
+    }
   }
 }

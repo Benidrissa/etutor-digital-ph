@@ -143,7 +143,7 @@ describe("StoryPlayer — image step", () => {
         <StoryPlayer course={story} variant="embedded" />
       </NextIntlClientProvider>,
     );
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
 
     const img = screen.getByRole("img", { name: "Des mains sous l'eau courante" });
     expect(img.getAttribute("src")).toContain("data?lang=fr");

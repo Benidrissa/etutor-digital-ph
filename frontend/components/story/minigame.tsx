@@ -53,6 +53,10 @@ interface MinigameViewProps {
   /** False while out of sight: the countdown pauses and keys are ignored. */
   active?: boolean;
   onFinished: (outcome: { gameId: string; points: number }) => void;
+  /** Each tap on an item, right or wrong: the cartoon stage plays a sound. */
+  onTap?: (correct: boolean) => void;
+  /** Replaces the game's own frame, for a host that draws one around it. */
+  className?: string;
 }
 
 /** Rule predicates the player can evaluate locally, for list rounds. */
@@ -206,6 +210,8 @@ export function MinigameView({
   bilingual,
   active = true,
   onFinished,
+  onTap,
+  className,
 }: MinigameViewProps) {
   const t = useTranslations("Story");
   const rounds = useMemo(() => playableRounds(game), [game]);
@@ -274,6 +280,10 @@ export function MinigameView({
     reportedRef.current = true;
     onFinishedRef.current({ gameId: game.id, points: score });
   }, [phase, game.id, score]);
+  const onTapRef = useRef(onTap);
+  useEffect(() => {
+    onTapRef.current = onTap;
+  }, [onTap]);
 
   // Keys 1-6 mirror the touch targets (A.9), only while the game is in sight
   // and the key is not meant for something else.
@@ -285,6 +295,7 @@ export function MinigameView({
       if (!Number.isInteger(slot) || slot < 0 || slot >= KEYED_SLOTS) return;
       const item = current.items[slot];
       if (!item) return;
+      onTapRef.current?.(item.correct);
       dispatch({ type: "tap", round, slot, correct: item.correct, points: perCorrect });
     };
     window.addEventListener("keydown", onKey);
@@ -321,7 +332,7 @@ export function MinigameView({
   const caughtWord = game.engine === "pop" ? t("popped") : t("caught");
 
   return (
-    <section className="my-5 rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4">
+    <section className={className ?? "my-5 rounded-xl border-2 border-amber-300 bg-amber-50/60 p-4"}>
       <h3 className="font-bold text-gray-900">{text(game.title, target, home)}</h3>
       <p className="mt-1 text-sm text-gray-700">{text(game.instruction, target, home)}</p>
       {bilingual && text(game.instruction, home, target) !== text(game.instruction, target, home) ? (
@@ -371,9 +382,10 @@ export function MinigameView({
                 <li key={`${round}-${slot}`}>
                   <button
                     type="button"
-                    onClick={() =>
-                      dispatch({ type: "tap", round, slot, correct: item.correct, points: perCorrect })
-                    }
+                    onClick={() => {
+                      onTap?.(item.correct);
+                      dispatch({ type: "tap", round, slot, correct: item.correct, points: perCorrect });
+                    }}
                     disabled={isCaught || isWrong}
                     aria-label={`${primary}${status}`}
                     className={`flex w-full items-center gap-3 rounded-xl border-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 ${
