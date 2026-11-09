@@ -1,28 +1,36 @@
 #!/usr/bin/env python3
-"""List or generate the story mode of a course's first lesson, from the server.
+"""List or generate the story of chosen modules, from the server.
 
-Story mode is normally generated the first time a learner opens a lesson's
-Story tab. This script lets an operator do it ahead of time for chosen
-courses, through the very same path: it dispatches ``generate_story_task``
-with the API's dedup key (so it joins a generation a learner already
-started rather than paying for a second one), waits for the worker, then
-prints what was stored.
+Story mode tells each module as one story, one chapter per unit. It is
+normally generated the first time a learner opens it from the module page.
+This script lets an operator do it ahead of time for chosen courses, through
+the very same path: it dispatches ``generate_module_story_task`` through the
+API's own dispatch (``dispatch_module_story_generation``, with its dedup key,
+so it joins a generation a learner already started rather than paying for a
+second one), waits for the worker, then prints what was stored.
 
 Usage (inside the backend container)::
 
-    # Which courses match, which lesson is "lesson 1", what is cached
+    # Which courses match; for module 1 of each: its units and their roles,
+    # the cached lessons, quizzes and case studies, the lesson chapters and
+    # the module story
     python scripts/generate_lesson_stories.py list --query biolog --query math
 
-    # Generate lesson 1 of module 1 of each course, in French and English
+    # Generate the story of module 1 of each course, in French and English
     python scripts/generate_lesson_stories.py generate \
         --course <slug-or-uuid> --course <slug-or-uuid> --language fr --language en
 
     # Generate what a request file asks for (run after every deploy)
     python scripts/generate_lesson_stories.py requests scripts/story_requests.json
 
-``generate`` and ``requests`` exit non-zero unless every story ended up valid
-and published. Re-running them is cheap: a story that is already cached and
-fresh is returned as it is, with no model call.
+``generate`` and ``requests`` exit non-zero unless every module story ended up
+valid and published. Re-running them is cheap: a module story that is already
+cached and fresh is returned as it is, with no model call, and a stale one
+pays only for the chapters whose lesson or quiz changed. A first run also
+generates the module's missing lessons and quizzes, so it can take a while.
+
+The file keeps its old name (it once made one lesson's story): the deploy
+workflow runs from ``main`` while this script runs from the deployed image.
 """
 
 from __future__ import annotations
@@ -45,27 +53,37 @@ from app.ai.prompts.audience import detect_audience  # noqa: E402
 from app.domain.models.content import GeneratedContent  # noqa: E402
 from app.domain.models.course import Course  # noqa: E402
 from app.domain.models.module import Module  # noqa: E402
-from app.domain.models.module_unit import ModuleUnit  # noqa: E402
 from app.domain.models.story_course import StoryCourseRecord  # noqa: E402
-from app.domain.services.story_from_lesson_service import (  # noqa: E402
-    _unit_order,
-    covering_quiz_unit,
-    find_unit_story,
-    is_lesson_unit,
+from app.domain.services.story_from_lesson_service import chapters_are_fresh  # noqa: E402
+from app.domain.services.story_module_assembly import StoryUnit  # noqa: E402
+from app.domain.services.story_module_service import (  # noqa: E402
+    find_module_story,
+    load_story_units,
+    module_story_is_fresh,
 )
 
 LANGUAGES = ("fr", "en")
 _FINISHED_STATES = frozenset({"SUCCESS", "FAILURE", "REVOKED"})
+#: Long enough for a first run that also generates the module's lessons and quizzes.
+DEFAULT_TIMEOUT_S = 1800
+LESSON_INDEX_IGNORED = "lesson_index is ignored; a story covers a whole module"
+
+
+def warn(message: str) -> None:
+    print(f"warning: {message}", file=sys.stderr)
 
 
 @dataclass(frozen=True)
-class LessonTarget:
-    """One course's chosen lesson: the unit whose story is generated."""
+class ModuleTarget:
+    """One course's chosen module and its units in teaching order, with their roles."""
 
     course: Course
     module: Module
-    unit: ModuleUnit
-    quiz_unit: ModuleUnit | None
+    units: tuple[StoryUnit, ...]
+
+    @property
+    def lessons(self) -> list[StoryUnit]:
+        return [unit for unit in self.units if unit.role == "lesson"]
 
 
 # -- lookups -----------------------------------------------------------------
@@ -101,16 +119,15 @@ async def resolve_course(session, ref: str) -> Course | None:
     return rows.scalar_one_or_none()
 
 
-async def lesson_target(
+async def module_target(
     session,
     course: Course,
     module_index: int,
-    lesson_index: int,
     module_id: uuid.UUID | None = None,
-) -> tuple[LessonTarget | None, str]:
-    """The ``lesson_index``-th lesson of the ``module_index``-th module (or of
-    the module ``module_id``), in teaching order: modules by number, units by
-    order then unit number."""
+) -> tuple[ModuleTarget | None, str]:
+    """The ``module_index``-th module of the course by number (or the module
+    ``module_id``), with its units in teaching order and their story roles
+    (:func:`load_story_units`)."""
     modules = list(
         (
             await session.execute(
@@ -128,17 +145,8 @@ async def lesson_target(
         return None, f"the course has {len(modules)} module(s)"
     else:
         module = modules[module_index - 1]
-    units = sorted(
-        (await session.execute(select(ModuleUnit).where(ModuleUnit.module_id == module.id)))
-        .scalars()
-        .all(),
-        key=_unit_order,
-    )
-    lessons = [u for u in units if is_lesson_unit(u.unit_type)]
-    if len(lessons) < lesson_index:
-        return None, f"module {module.module_number} has {len(lessons)} lesson unit(s)"
-    unit = lessons[lesson_index - 1]
-    return LessonTarget(course, module, unit, covering_quiz_unit(units, unit.id)), ""
+    units = await load_story_units(session, module.id)
+    return ModuleTarget(course, module, tuple(units)), ""
 
 
 async def cached_rows(session, unit_ids: list[uuid.UUID]) -> dict[tuple, int]:
@@ -162,11 +170,21 @@ async def cached_rows(session, unit_ids: list[uuid.UUID]) -> dict[tuple, int]:
     return {(r[0], r[1], r[2]): r[3] for r in rows.all()}
 
 
+async def chapter_rows(session, unit_ids: list[uuid.UUID]) -> dict[tuple, StoryCourseRecord]:
+    """``{(module_unit_id, language): chapter row}`` of the given lesson units."""
+    if not unit_ids:
+        return {}
+    rows = await session.execute(
+        select(StoryCourseRecord).where(StoryCourseRecord.module_unit_id.in_(unit_ids))
+    )
+    return {(r.module_unit_id, r.language): r for r in rows.scalars().all()}
+
+
 # -- reporting ---------------------------------------------------------------
 
 
 def story_summary(record: StoryCourseRecord | None) -> dict[str, Any]:
-    """What an operator needs to judge one stored story."""
+    """What an operator needs to judge one stored lesson chapter."""
     if record is None:
         return {"stored": False}
     report = record.validation_report or {}
@@ -192,10 +210,49 @@ def story_summary(record: StoryCourseRecord | None) -> dict[str, Any]:
     }
 
 
-def story_excerpt(content: dict[str, Any] | None, limit: int = 8) -> list[str]:
-    """A few lines to judge a story by from a log: its title, chapter titles
-    and question prompts, in the language it teaches in. The learner's name is
-    still the ``{child}`` placeholder in a stored story."""
+def module_story_summary(record: StoryCourseRecord | None) -> dict[str, Any]:
+    """What an operator needs to judge one stored module story.
+
+    The chapter counts come from its manifest (``source_rows``): one entry per
+    unit, ``ready`` (a lesson's chapter), ``unavailable`` (a lesson whose
+    chapter could not be made valid: a "read it on its page" placeholder) or
+    ``checkpoint`` (a quiz or case-study unit).
+    """
+    if record is None:
+        return {"stored": False}
+    report = record.validation_report or {}
+    content = record.content or {}
+    manifest = record.source_rows if isinstance(record.source_rows, dict) else {}
+    entries = [e for e in manifest.get("units") or [] if isinstance(e, dict)]
+    statuses = [e.get("status") for e in entries]
+    module_story = content.get("module_story") if isinstance(content, dict) else None
+    return {
+        "stored": True,
+        "slug": record.slug,
+        "status": record.status,
+        "is_valid": bool(record.is_valid),
+        "max_points": record.max_points,
+        "chapters": len(content.get("chapters") or []),
+        "ready": statuses.count("ready"),
+        "unavailable": statuses.count("unavailable"),
+        "checkpoint": statuses.count("checkpoint"),
+        "unavailable_units": [
+            e.get("unit_number") for e in entries if e.get("status") == "unavailable"
+        ],
+        "questions": len(content.get("questions") or []),
+        "exercises": len(content.get("exercises") or []),
+        "revision": module_story.get("revision") if isinstance(module_story, dict) else None,
+        "errors": [i.get("code") for i in report.get("errors") or []],
+        "warnings": [i.get("code") for i in report.get("warnings") or []],
+        "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+def story_excerpt(content: dict[str, Any] | None, limit: int = 12) -> list[str]:
+    """A few lines to judge a module story by from a log: its title, each
+    chapter with the unit it covers, and question prompts, in the language it
+    teaches in. The learner's name is still the ``{child}`` placeholder in a
+    stored story."""
     if not isinstance(content, dict):
         return []
     language = (content.get("languages") or {}).get("target") or "fr"
@@ -207,24 +264,44 @@ def story_excerpt(content: dict[str, Any] | None, limit: int = 8) -> list[str]:
 
     lines = [f"title: {text(content.get('title'))}"]
     for chapter in (content.get("chapters") or [])[:limit]:
-        if isinstance(chapter, dict):
-            lines.append(f"chapter: {text(chapter.get('title'))}")
+        if not isinstance(chapter, dict):
+            continue
+        covers = chapter.get("covers") if isinstance(chapter.get("covers"), dict) else {}
+        unit = " ".join(
+            str(covers[key]) for key in ("unit_number", "role", "status") if covers.get(key)
+        )
+        lines.append(f"chapter {unit or '?'}: {text(chapter.get('title'))}")
     for question in (content.get("questions") or [])[:limit]:
         if isinstance(question, dict):
             lines.append(f"{question.get('id', '?')}: {text(question.get('prompt'))}")
     return lines
 
 
-def print_summary(prefix: str, summary: dict[str, Any]) -> None:
+def print_chapter(prefix: str, summary: dict[str, Any], fresh: bool | None) -> None:
     if not summary.get("stored"):
-        print(f"{prefix}story: none")
+        print(f"{prefix}chapter: none")
         return
     print(
-        f"{prefix}story: {summary['slug']} status={summary['status']} "
-        f"valid={summary['is_valid']} max_points={summary['max_points']} "
-        f"questions={summary['questions']} exercises={summary['exercises']} "
+        f"{prefix}chapter: {summary['slug']} status={summary['status']} "
+        f"valid={summary['is_valid']} fresh={fresh} questions={summary['questions']} "
         f"from_quiz={summary['questions_from_quiz']}"
     )
+
+
+def print_module_summary(prefix: str, summary: dict[str, Any], fresh: bool | None = None) -> None:
+    if not summary.get("stored"):
+        print(f"{prefix}module story: none")
+        return
+    freshness = "" if fresh is None else f" fresh={fresh}"
+    print(
+        f"{prefix}module story: {summary['slug']} status={summary['status']} "
+        f"valid={summary['is_valid']}{freshness} chapters={summary['chapters']} "
+        f"(ready={summary['ready']} unavailable={summary['unavailable']} "
+        f"checkpoint={summary['checkpoint']}) questions={summary['questions']} "
+        f"max_points={summary['max_points']} revision={summary['revision']}"
+    )
+    if summary["unavailable_units"]:
+        print(f"{prefix}  unavailable units={summary['unavailable_units']}")
     print(f"{prefix}  errors={summary['errors'] or 'none'}")
     print(f"{prefix}  warnings={summary['warnings'] or 'none'}")
 
@@ -232,7 +309,7 @@ def print_summary(prefix: str, summary: dict[str, Any]) -> None:
 # -- commands ----------------------------------------------------------------
 
 
-async def cmd_list(session_factory, queries: list[str], module_index: int, lesson_index: int):
+async def cmd_list(session_factory, queries: list[str], module_index: int) -> int:
     async with session_factory() as session:
         courses = await find_courses(session, queries)
         if not courses:
@@ -246,30 +323,50 @@ async def cmd_list(session_factory, queries: list[str], module_index: int, lesso
                 f"  id={course.id} slug={course.slug} status={course.status} "
                 f"kids={audience.is_kids}"
             )
-            target, why = await lesson_target(session, course, module_index, lesson_index)
+            target, why = await module_target(session, course, module_index)
             if target is None:
-                print(f"  no lesson {lesson_index} in module {module_index}: {why}")
+                print(f"  no module {module_index}: {why}")
                 continue
-            unit_ids = [target.unit.id] + ([target.quiz_unit.id] if target.quiz_unit else [])
-            counts = await cached_rows(session, unit_ids)
             print(
                 f"  module {target.module.module_number}: {target.module.title_fr} "
-                f"(id={target.module.id})"
+                f"(id={target.module.id}) units={len(target.units)} "
+                f"lessons={len(target.lessons)}"
             )
-            print(
-                f"  lesson unit {target.unit.unit_number}: {target.unit.title_fr} "
-                f"(type={target.unit.unit_type}, id={target.unit.id})"
+            counts = await cached_rows(session, [u.module_unit_id for u in target.units])
+            chapters = await chapter_rows(session, [u.module_unit_id for u in target.lessons])
+            records = list(chapters.values())
+            fresh = dict(
+                zip(
+                    chapters.keys(),
+                    await chapters_are_fresh(session, records) if records else [],
+                    strict=True,
+                )
             )
-            if target.quiz_unit is not None:
-                print(f"  covering quiz unit: {target.quiz_unit.unit_number}")
-            else:
-                print("  covering quiz unit: none")
+            for unit in target.units:
+                print(
+                    f"    {unit.unit_number} {unit.role} (type={unit.unit_type}) {unit.title['fr']}"
+                )
+                for language in LANGUAGES:
+                    cached = " ".join(
+                        f"{kind}={counts.get((unit.module_unit_id, kind, language), 0)}"
+                        for kind in ("lesson", "quiz", "case")
+                    )
+                    print(f"      [{language}] cached {cached}")
+                    if unit.role == "lesson":
+                        key = (unit.module_unit_id, language)
+                        print_chapter(
+                            f"      [{language}] ",
+                            story_summary(chapters.get(key)),
+                            fresh.get(key),
+                        )
             for language in LANGUAGES:
-                lessons = counts.get((target.unit.id, "lesson", language), 0)
-                quizzes = sum(counts.get((uid, "quiz", language), 0) for uid in unit_ids)
-                print(f"  [{language}] cached lessons={lessons} quizzes={quizzes}")
-                record = await find_unit_story(session, target.unit.id, language)
-                print_summary(f"  [{language}] ", story_summary(record))
+                record = await find_module_story(session, target.module.id, language)
+                is_fresh = (
+                    await module_story_is_fresh(session, record, units=target.units)
+                    if record is not None
+                    else None
+                )
+                print_module_summary(f"  [{language}] ", module_story_summary(record), is_fresh)
     return 0
 
 
@@ -291,12 +388,10 @@ async def wait_for_task(task_id: str, timeout_s: int, poll_s: float = 5.0) -> tu
 
 @dataclass(frozen=True)
 class GenerationSpec:
-    """One course whose ``lesson_index``-th lesson of module ``module_index``
-    gets a story in each of ``languages``."""
+    """One course whose module ``module_index`` gets a story in each of ``languages``."""
 
     course: Course
     module_index: int
-    lesson_index: int
     languages: tuple[str, ...]
     #: Set when a request names the module itself; ``module_index`` is unused then.
     module_id: uuid.UUID | None = None
@@ -311,38 +406,40 @@ async def run_generation(
     country: str,
     timeout_s: int,
 ) -> int:
-    """Dispatch every story, wait for all of them, report each; 0 if all are
-    valid and published."""
-    from app.api.v1.story_courses import _dispatch_story_generation
+    """Dispatch every module story, wait for all of them, report each; 0 if
+    all of them completed and are valid and published."""
+    from app.api.v1.story_courses import dispatch_module_story_generation
 
-    jobs: list[tuple[LessonTarget, str, str]] = []
+    jobs: list[tuple[ModuleTarget, str, str]] = []
     failed = False
     async with session_factory() as session:
         for spec in specs:
             course = spec.course
-            target, why = await lesson_target(
-                session, course, spec.module_index, spec.lesson_index, spec.module_id
-            )
+            target, why = await module_target(session, course, spec.module_index, spec.module_id)
             if target is None:
                 print(
-                    f"Course {course.slug}: no lesson {spec.lesson_index} in module "
-                    f"{spec.module_id or spec.module_index}: {why}"
+                    f"Course {course.slug}: no module {spec.module_id or spec.module_index}: {why}"
+                )
+                failed = True
+                continue
+            if not target.lessons:
+                print(
+                    f"Course {course.slug}: module {target.module.module_number} has no "
+                    "lesson unit, so it has no story"
                 )
                 failed = True
                 continue
             for language in spec.languages:
-                task_id = await _dispatch_story_generation(
+                task_id = await dispatch_module_story_generation(
                     module_id=target.module.id,
-                    unit_id=target.unit.unit_number,
-                    module_unit_id=target.unit.id,
                     language=language,
                     country=country,
                     level=level,
                     force_regenerate=force,
                 )
                 print(
-                    f"Dispatched {course.slug} unit {target.unit.unit_number} [{language}] "
-                    f"task={task_id}"
+                    f"Dispatched {course.slug} module {target.module.module_number} "
+                    f"[{language}] task={task_id}"
                 )
                 jobs.append((target, language, task_id))
 
@@ -352,20 +449,24 @@ async def run_generation(
         for (target, language, task_id), (state, result) in zip(jobs, outcomes, strict=True):
             print("=" * 72)
             print(
-                f"{target.course.title_fr} — module {target.module.module_number}, "
-                f"unit {target.unit.unit_number} «{target.unit.title_fr}» [{language}]"
+                f"{target.course.title_fr} — module {target.module.module_number} "
+                f"«{target.module.title_fr}» [{language}]: {len(target.units)} unit(s), "
+                f"{len(target.lessons)} lesson(s)"
             )
-            print(f"  task {task_id}: {state} {result if state != 'SUCCESS' else ''}".rstrip())
-            record = await find_unit_story(session, target.unit.id, language)
-            summary = story_summary(record)
-            print_summary("  ", summary)
+            completed = (
+                state == "SUCCESS"
+                and isinstance(result, dict)
+                and result.get("status") == "complete"
+            )
+            print(f"  task {task_id}: {state} {'' if completed else result}".rstrip())
+            if isinstance(result, dict) and result.get("failed_units"):
+                print(f"  failed units={result['failed_units']}")
+            record = await find_module_story(session, target.module.id, language)
+            summary = module_story_summary(record)
+            print_module_summary("  ", summary)
             for line in story_excerpt(record.content if record is not None else None):
                 print(f"    {line}")
-            ok = (
-                state == "SUCCESS"
-                and summary.get("is_valid")
-                and summary.get("status") == "published"
-            )
+            ok = completed and summary.get("is_valid") and summary.get("status") == "published"
             failed = failed or not ok
     return 1 if failed or not jobs else 0
 
@@ -377,7 +478,6 @@ async def cmd_generate(
     *,
     force: bool,
     module_index: int,
-    lesson_index: int,
     level: int,
     country: str,
     timeout_s: int,
@@ -391,7 +491,7 @@ async def cmd_generate(
                 print(f"Course {ref!r}: not found")
                 missing = True
                 continue
-            specs.append(GenerationSpec(course, module_index, lesson_index, tuple(languages)))
+            specs.append(GenerationSpec(course, module_index, tuple(languages)))
     code = await run_generation(
         session_factory, specs, force=force, level=level, country=country, timeout_s=timeout_s
     )
@@ -401,12 +501,14 @@ async def cmd_generate(
 def load_requests(path: str) -> list[dict[str, Any]]:
     """The ``requests`` list of a story request file, each entry checked.
 
-    An entry names courses by ``query`` (a title or slug fragment) and may set
-    ``kids_only`` (default false), ``include_drafts`` (default false),
-    ``max_courses`` (default 1: a query matching more courses is refused, so a
-    vague query never pays for stories nobody asked for), ``module_index`` and
-    ``lesson_index`` (default 1) and ``languages`` (default fr and en). Or it
-    names one module by ``module_id`` (a UUID), whatever its course's status.
+    Each entry asks for one module's story. It names courses by ``query`` (a
+    title or slug fragment) and may set ``kids_only`` (default false),
+    ``include_drafts`` (default false), ``max_courses`` (default 1: a query
+    matching more courses is refused, so a vague query never pays for stories
+    nobody asked for), ``module_index`` (default 1: the course's first module
+    by number) and ``languages`` (default fr and en). Or it names one module
+    by ``module_id`` (a UUID), whatever its course's status. A
+    ``lesson_index`` (from the per-lesson stories) is ignored with a warning.
     """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     requests = data.get("requests") if isinstance(data, dict) else None
@@ -427,6 +529,11 @@ def load_requests(path: str) -> list[dict[str, Any]]:
         languages = entry.get("languages") or list(LANGUAGES)
         if not set(languages) <= set(LANGUAGES):
             raise ValueError(f"{path}: requests[{index}] has unknown languages {languages}")
+        module_index = int(entry.get("module_index", 1))
+        if module_index < 1:
+            raise ValueError(f"{path}: requests[{index}] has module_index {module_index} (< 1)")
+        if "lesson_index" in entry:
+            warn(f"{path}: requests[{index}].{LESSON_INDEX_IGNORED}")
         checked.append(
             {
                 "query": str(entry.get("query") or "").strip(),
@@ -434,8 +541,7 @@ def load_requests(path: str) -> list[dict[str, Any]]:
                 "kids_only": bool(entry.get("kids_only", False)),
                 "include_drafts": bool(entry.get("include_drafts", False)),
                 "max_courses": int(entry.get("max_courses", 1)),
-                "module_index": int(entry.get("module_index", 1)),
-                "lesson_index": int(entry.get("lesson_index", 1)),
+                "module_index": module_index,
                 "languages": tuple(languages),
             }
         )
@@ -445,7 +551,7 @@ def load_requests(path: str) -> list[dict[str, Any]]:
 async def cmd_requests(
     session_factory, path: str, *, force: bool, level: int, country: str, timeout_s: int
 ) -> int:
-    """Generate the stories a request file asks for (see :func:`load_requests`).
+    """Generate the module stories a request file asks for (see :func:`load_requests`).
 
     The same file runs after every deploy, on staging and on production, where
     different courses exist: a request that matches nothing there is skipped
@@ -473,7 +579,6 @@ async def cmd_requests(
                     GenerationSpec(
                         module.course,
                         request["module_index"],
-                        request["lesson_index"],
                         request["languages"],
                         module_id=module.id,
                     )
@@ -506,14 +611,7 @@ async def cmd_requests(
                 continue
             for course in courses:
                 print(f"{label}: {course.slug} ({course.title_fr})")
-                specs.append(
-                    GenerationSpec(
-                        course,
-                        request["module_index"],
-                        request["lesson_index"],
-                        request["languages"],
-                    )
-                )
+                specs.append(GenerationSpec(course, request["module_index"], request["languages"]))
     if not specs:
         print("Nothing to generate on this server.")
         return 1 if refused else 0
@@ -529,28 +627,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     def common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--module-index", type=int, default=1, help="1 = the first module")
-        p.add_argument("--lesson-index", type=int, default=1, help="1 = its first lesson")
+        p.add_argument(
+            "--lesson-index",
+            type=int,
+            default=None,
+            help="ignored: a story covers a whole module (kept for old callers)",
+        )
 
-    listing = sub.add_parser("list", help="show matching courses and their lesson 1")
+    listing = sub.add_parser(
+        "list", help="show matching courses, their module's units, chapters and story"
+    )
     listing.add_argument("--query", action="append", required=True)
     common(listing)
 
-    generate = sub.add_parser("generate", help="generate (or reuse) the stories")
+    generate = sub.add_parser("generate", help="generate (or reuse) the module stories")
     generate.add_argument("--course", action="append", required=True, help="slug or UUID")
     generate.add_argument("--language", action="append", choices=LANGUAGES)
-    generate.add_argument("--force", action="store_true", help="regenerate even if fresh")
+    generate.add_argument(
+        "--force", action="store_true", help="remake every chapter even if fresh (paid)"
+    )
     generate.add_argument("--level", type=int, default=1, help="preferred source lesson level")
     generate.add_argument("--country", default="CI", help="preferred source lesson country")
-    generate.add_argument("--timeout", type=int, default=1200, help="seconds to wait")
+    generate.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="seconds to wait")
     common(generate)
 
     requests = sub.add_parser("requests", help="generate what a request file asks for")
     requests.add_argument("file", help="JSON request file (see load_requests)")
-    requests.add_argument("--force", action="store_true", help="regenerate even if fresh")
+    requests.add_argument(
+        "--force", action="store_true", help="remake every chapter even if fresh (paid)"
+    )
     requests.add_argument("--level", type=int, default=1, help="preferred source lesson level")
     requests.add_argument("--country", default="CI", help="preferred source lesson country")
-    requests.add_argument("--timeout", type=int, default=1200, help="seconds to wait")
-    return parser.parse_args(argv)
+    requests.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="seconds to wait")
+    args = parser.parse_args(argv)
+    if getattr(args, "module_index", 1) < 1:
+        parser.error("--module-index must be 1 or more")
+    if getattr(args, "lesson_index", None) is not None:
+        warn(f"--{LESSON_INDEX_IGNORED.replace('_', '-')}")
+    return args
 
 
 async def main(argv: list[str] | None = None, session_factory=None) -> int:
@@ -560,7 +674,7 @@ async def main(argv: list[str] | None = None, session_factory=None) -> int:
 
         session_factory = async_session_factory
     if args.command == "list":
-        return await cmd_list(session_factory, args.query, args.module_index, args.lesson_index)
+        return await cmd_list(session_factory, args.query, args.module_index)
     if args.command == "requests":
         return await cmd_requests(
             session_factory,
@@ -576,7 +690,6 @@ async def main(argv: list[str] | None = None, session_factory=None) -> int:
         args.language or list(LANGUAGES),
         force=args.force,
         module_index=args.module_index,
-        lesson_index=args.lesson_index,
         level=args.level,
         country=args.country,
         timeout_s=args.timeout,
