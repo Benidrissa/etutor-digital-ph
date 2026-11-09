@@ -203,7 +203,8 @@ export interface UnitProgressDetail {
   description_en?: string;
   estimated_minutes: number;
   order_index: number;
-  unit_type?: "lesson" | "quiz" | "case-study" | "scenario";
+  /** Null for a unit with no declared type, which is a lesson. */
+  unit_type?: "lesson" | "quiz" | "case-study" | "scenario" | null;
   status: "pending" | "in_progress" | "completed";
 }
 

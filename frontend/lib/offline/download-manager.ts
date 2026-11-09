@@ -6,20 +6,22 @@ import {
   deleteOfflineModule,
   type ContentType,
 } from "./db";
+import { prewarmPage } from "./prewarm";
 import { apiFetch } from "@/lib/api";
 import type { ModuleUnitsResponse } from "@/lib/api";
-import { isStoryDocument, unitStoryPath } from "@/lib/story-course/api";
+import { isStoryDocument, moduleStoryPath } from "@/lib/story-course/api";
 
 const MAX_OFFLINE_MODULES = 3;
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
 // Average bytes per content type (for size estimation).
-// ~80KB per unit: lesson + quiz + case study (~50KB) plus a lesson story when
-// one is already cached, which is one whole story-course/1 document (~20-30KB
-// of JSON). An upper bound: uncached stories are skipped.
-const SIZE_ESTIMATE_PER_UNIT = 80_000;
+const SIZE_ESTIMATE_PER_UNIT = 50_000; // ~50KB per unit (lesson + quiz + case study)
 const SIZE_ESTIMATE_FLASHCARDS = 30_000; // ~30KB for module flashcards
+// One module story when it is already written: a story-course/1 document with
+// a chapter per unit, 100-200KB of JSON (25-40KB gzipped on the wire). An
+// upper bound: a story nobody has opened yet is skipped.
+const SIZE_ESTIMATE_MODULE_STORY = 150_000;
 
 export type DownloadPhase = "fetching_structure" | "downloading_content" | "complete" | "error" | "cancelled";
 
@@ -44,7 +46,7 @@ interface ContentStatusResponse {
  * Estimate download size in bytes for a module based on unit count.
  */
 export function estimateModuleSize(unitCount: number): number {
-  return unitCount * SIZE_ESTIMATE_PER_UNIT + SIZE_ESTIMATE_FLASHCARDS;
+  return unitCount * SIZE_ESTIMATE_PER_UNIT + SIZE_ESTIMATE_FLASHCARDS + SIZE_ESTIMATE_MODULE_STORY;
 }
 
 /**
@@ -147,10 +149,10 @@ async function fetchContentItem<T>(
 /**
  * Download a module for offline use.
  *
- * Fetches all units' lessons, quizzes, case studies and lesson stories using
- * existing API endpoints and stores them in IndexedDB. Each unit becomes
- * usable as soon as its content is downloaded (partial downloads are
- * functional).
+ * Fetches all units' lessons, quizzes and case studies, then the module's
+ * flashcards and its story when one is already written, using existing API
+ * endpoints, and stores them in IndexedDB. Each unit becomes usable as soon
+ * as its content is downloaded (partial downloads are functional).
  */
 export async function downloadModule(
   moduleId: string,
@@ -263,25 +265,6 @@ export async function downloadModule(
         locale, signal
       );
 
-      // Save the lesson's story if one is already written. Story mode is a
-      // tab on lesson units only, so quiz and case-study units are not asked
-      // for a story they never show. Stories are written on demand, when a
-      // learner opens the tab, so the download only reads the cache: it never
-      // pays for a story nobody asked for, nor waits minutes for one.
-      if (hasStoryMode(unit.unit_type)) {
-        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-
-        emit({
-          phase: "downloading_content",
-          totalUnits,
-          downloadedUnits,
-          currentUnit: unitId,
-          currentContentType: "story",
-        });
-
-        await downloadUnitStory(moduleId, unitId, locale, signal);
-      }
-
       downloadedUnits++;
 
       // Update progress in IndexedDB
@@ -323,7 +306,25 @@ export async function downloadModule(
       // Flashcard download failure is non-fatal
     }
 
-    // Step 4: Mark module as downloaded
+    // Step 4: Save the module story if one is already written. A module has
+    // one story covering all its units, written on demand when a learner
+    // first opens it, so the download only reads the cache: it never pays
+    // for a story nobody asked for, nor waits minutes for one.
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+    emit({
+      phase: "downloading_content",
+      totalUnits,
+      downloadedUnits,
+      currentContentType: "story",
+    });
+
+    if (await downloadModuleStory(moduleId, locale, signal)) {
+      // So the story page itself opens offline; it then plays this copy.
+      await prewarmPage(`/${locale}/modules/${moduleId}/story`);
+    }
+
+    // Step 5: Mark module as downloaded
     await upsertOfflineModule({
       moduleId,
       status: "downloaded",
@@ -390,60 +391,54 @@ export async function removeOfflineModule(moduleId: string): Promise<void> {
 // --- Internal helpers ---
 
 /**
- * Unit types the unit page renders with a viewer other than the lesson viewer
- * (app/[locale]/(app)/modules/[moduleId]/units/[unit]/page.tsx). Every other
- * unit — `lesson` or untyped — is a lesson and carries a Story tab.
- */
-const NON_LESSON_UNIT_TYPES: ReadonlySet<string> = new Set(["quiz", "case-study", "scenario"]);
-
-function hasStoryMode(unitType: string | undefined): boolean {
-  return !unitType || !NON_LESSON_UNIT_TYPES.has(unitType);
-}
-
-/**
- * Store a lesson's story when the server already has one cached.
+ * Store the module's story when the server already has one written.
  *
- * Asks with `generate=false` (contract X1): a story nobody has opened answers
- * 404 `story_not_cached` and nothing is dispatched. A 202 "generating" (a
- * learner opened the tab moments ago, or an older backend ignored the flag)
- * is skipped too, never polled, so one module download cannot sit for minutes
- * per lesson. Any other failure is non-fatal, like a missing case study.
+ * Asks with `generate=false` (contract C-4): a story nobody has opened yet
+ * answers 404 `story_not_cached` and nothing is dispatched. A 202
+ * "generating" (a learner opened it moments ago) is skipped too, never
+ * polled, so a download cannot sit for the minutes a first story takes.
+ * 403 (subscribers only), the other 404s (story mode off, no lesson in the
+ * module) and 409 (no valid story) are expected skips. Any other failure is
+ * non-fatal, like a missing case study.
+ *
+ * Stored under the module's pseudo-unit key, the one module flashcards use
+ * and loadModuleStory reads. Returns whether a story was stored.
  */
-async function downloadUnitStory(
+async function downloadModuleStory(
   moduleId: string,
-  unitId: string,
   locale: "fr" | "en",
   signal: AbortSignal
-): Promise<void> {
+): Promise<boolean> {
   let data: unknown;
   try {
     data = await apiFetch<unknown>(
-      unitStoryPath(moduleId, unitId, locale, { generate: false }),
+      moduleStoryPath(moduleId, locale, { generate: false }),
       { signal }
     );
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     const status =
       err && typeof err === "object" ? (err as { status?: unknown }).status : undefined;
-    // 404 not cached / disabled / not a lesson, 409 no valid story: expected.
-    if (status === 404 || status === 409) return;
-    console.warn(`Failed to download story for ${unitId}:`, err);
-    return;
+    if (status === 403 || status === 404 || status === 409) return false;
+    console.warn(`Failed to download the story of module ${moduleId}:`, err);
+    return false;
   }
   // Only a real story document is stored, never an envelope.
-  if (!isStoryDocument(data)) return;
+  if (!isStoryDocument(data)) return false;
   try {
     await upsertOfflineContent({
-      unitId,
+      unitId: `__module_${moduleId}__`,
       moduleId,
       contentType: "story",
       locale,
       content: data,
       cachedAt: Date.now(),
     });
+    return true;
   } catch (err: unknown) {
-    // Non-fatal, like any other unit content that could not be stored.
-    console.warn(`Failed to store story for ${unitId}:`, err);
+    // Non-fatal, like any other content that could not be stored.
+    console.warn(`Failed to store the story of module ${moduleId}:`, err);
+    return false;
   }
 }
 
@@ -537,29 +532,5 @@ async function downloadUnitQuiz(
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     console.warn(`Failed to download quiz for ${unitId}:`, err);
-  }
-}
-
-// Cache name MUST stay aligned with `pages-${CACHE_VERSION}` in frontend/sw.ts.
-// Bump both together when changing.
-const PAGES_CACHE_NAME = "pages-v9-api-keys-tab";
-
-/**
- * Pre-fetch a same-origin page and stash it in the SW page cache so an offline
- * navigation hits cache instead of falling through to /offline.html.
- *
- * Failures are swallowed — pre-warm is best-effort and must never fail a
- * download.
- */
-export async function prewarmPage(url: string): Promise<void> {
-  try {
-    if (typeof caches === "undefined") return;
-    const cache = await caches.open(PAGES_CACHE_NAME);
-    const res = await fetch(url, { credentials: "include" });
-    if (res.ok) {
-      await cache.put(url, res.clone());
-    }
-  } catch {
-    // best-effort
   }
 }

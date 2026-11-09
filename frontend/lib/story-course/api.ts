@@ -7,6 +7,7 @@
 
 import { apiFetch } from "../api";
 import type {
+  ModuleStoryStatus,
   StoryCourse,
   StoryCourseListItem,
   StoryCourseListResponse,
@@ -52,7 +53,7 @@ export async function getStoryCourse(slug: string): Promise<StoryCourse> {
 }
 
 /**
- * The 202 envelope a lesson story answers with while it is being written.
+ * The 202 envelope a story answers with while it is being written.
  *
  * Same shape as lessons and quizzes, so the client polls the shared
  * `GET /api/v1/content/status/{task_id}` exactly as it does for them.
@@ -87,6 +88,52 @@ export function unitStoryPath(
     `/api/v1/story-courses/unit/${encodeURIComponent(moduleId)}` +
     `/${encodeURIComponent(unitId)}?language=${language}${generate}`
   );
+}
+
+/**
+ * The path of one module's story (contract C-5, served per C-4). A GET is
+ * gated (subscribers and admins, or a module whose units are all free) and
+ * generates the story on first access: 200 with the document, 202 with
+ * {@link StoryGenerating} while its chapters are written, 409
+ * `story_unavailable` when no valid story could be assembled, 403
+ * `subscription_required` behind the paywall.
+ *
+ * `generate: false` only reads the cache: a story nobody has opened yet
+ * answers 404 `story_not_cached` and nothing is dispatched. The module
+ * downloader uses it so a download never pays for a story.
+ *
+ * Kept here so the story page (through loadModuleStory) and the module
+ * downloader request the very same URL.
+ */
+export function moduleStoryPath(
+  moduleId: string,
+  language: "fr" | "en",
+  options: { generate?: boolean } = {},
+): string {
+  return (
+    `/api/v1/story-courses/module/${encodeURIComponent(moduleId)}?language=${language}` +
+    (options.generate === false ? "&generate=false" : "")
+  );
+}
+
+/**
+ * The path of a module story's status (contract C-4). It never dispatches,
+ * so the module page can show the story card's state without downloading
+ * the story.
+ */
+export function moduleStoryStatusPath(moduleId: string, language: "fr" | "en"): string {
+  return (
+    `/api/v1/story-courses/module/${encodeURIComponent(moduleId)}/status` +
+    `?language=${language}`
+  );
+}
+
+/** A module story's state, for the story card on the module page. */
+export async function getModuleStoryStatus(
+  moduleId: string,
+  language: "fr" | "en",
+): Promise<ModuleStoryStatus> {
+  return apiFetch<ModuleStoryStatus>(moduleStoryStatusPath(moduleId, language));
 }
 
 /**
@@ -126,7 +173,7 @@ export function isStoryDocument(value: unknown): value is StoryCourse {
   );
 }
 
-/** The 409 the unit endpoint sends when no valid story could be generated. */
+/** The 409 a story endpoint sends when no valid story could be generated. */
 export function isStoryUnavailableError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   if ((err as { status?: unknown }).status !== 409) return false;
@@ -146,4 +193,4 @@ export async function validateStoryCourse(
   });
 }
 
-export type { StoryCourse, StoryCourseListItem };
+export type { ModuleStoryStatus, StoryCourse, StoryCourseListItem };

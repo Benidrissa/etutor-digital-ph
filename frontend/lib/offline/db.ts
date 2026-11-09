@@ -6,10 +6,14 @@ export type ModuleDownloadStatus =
   | "downloaded"
   | "error";
 
-// "story" is a lesson's story mode (one story-course/1 document per unit and
-// locale). Adding a value needs no IndexedDB upgrade: contentType is a plain
-// string inside the [moduleId, unitId, contentType, locale] key and the
-// by_content_type index, so DB_VERSION stays 4.
+// "story" is a module's story mode: one story-course/1 document per module
+// and locale, stored under the module's pseudo-unit `__module_<id>__` (the
+// key module flashcards use). Rows a device saved for the earlier per-lesson
+// stories sit under real unit ids; nothing reads them any more, and they go
+// when the module download is removed. Adding a value needs no IndexedDB
+// upgrade: contentType is a plain string inside the
+// [moduleId, unitId, contentType, locale] key and the by_content_type index,
+// so DB_VERSION stays 4.
 export type ContentType = "lesson" | "quiz" | "case_study" | "flashcard" | "story";
 
 export type ActionType =

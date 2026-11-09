@@ -2,6 +2,9 @@
  * FR and EN messages stay in lockstep, and the labels story mode added exist
  * in both: a missing key shows the raw key (or, on the admin AI-cost
  * dashboard, the raw feature id `story_generation`) instead of a label.
+ *
+ * The module story's ICU selects must name the same branches in both
+ * languages, or one language would fall back to `other` for a quiz.
  */
 
 import { describe, expect, it } from "vitest";
@@ -42,6 +45,46 @@ describe("messages", () => {
 
   it.each([
     "Offline.downloadingStory",
+    "Offline.downloadingModuleStory",
+    "ModuleOverview.storyCard.title",
+    "ModuleOverview.storyCard.start",
+    "ModuleOverview.storyCard.resume",
+    "ModuleOverview.storyCard.done",
+    "ModuleOverview.storyCard.generating",
+    "ModuleOverview.storyCard.subscribersOnly",
+    "ModuleOverview.storyCard.unavailable",
+    "ModuleStory.pageTitle",
+    "ModuleStory.regionLabel",
+    "ModuleStory.eyebrow",
+    "ModuleStory.backToModule",
+    "ModuleStory.loading",
+    "ModuleStory.generating",
+    "ModuleStory.generatingDescription",
+    "ModuleStory.leaveHint",
+    "ModuleStory.timeout",
+    "ModuleStory.unavailable",
+    "ModuleStory.unavailableHint",
+    "ModuleStory.disabled",
+    "ModuleStory.offline",
+    "ModuleStory.failed",
+    "ModuleStory.retry",
+    "ModuleStory.chapters",
+    "ModuleStory.chapterOf",
+    "ModuleStory.chapterDone",
+    "ModuleStory.chapterCurrent",
+    "ModuleStory.chapterUpcoming",
+    "ModuleStory.kind",
+    "ModuleStory.chapterComplete",
+    "ModuleStory.score",
+    "ModuleStory.points",
+    "ModuleStory.lessonRecorded",
+    "ModuleStory.nextChapter",
+    "ModuleStory.seeSummary",
+    "ModuleStory.moduleComplete",
+    "ModuleStory.stillToDo",
+    "ModuleStory.stillToDoHint",
+    "ModuleStory.allDone",
+    "ModuleStory.openUnit",
     "Story.selfMarkPrompt",
     "Story.selfMarkGotIt",
     "Story.selfMarkNotYet",
@@ -51,4 +94,17 @@ describe("messages", () => {
     expect(typeof at(en as Tree, key)).toBe("string");
     expect(typeof at(fr as Tree, key)).toBe("string");
   });
+
+  it.each(["ModuleStory.kind", "ModuleStory.openUnit"])(
+    "%s has the quiz, case and other branches in both languages",
+    (key) => {
+      for (const tree of [en, fr]) {
+        const message = at(tree as Tree, key);
+        expect(typeof message).toBe("string");
+        for (const branch of ["quiz {", "case {", "other {"]) {
+          expect(message).toContain(branch);
+        }
+      }
+    },
+  );
 });

@@ -366,10 +366,10 @@ export function LessonViewer({
     setForceRegenerate(true);
   };
 
-  // One completion at a time: the story's end and a tap on the button can
-  // land together, and the unit must be recorded (or queued) once. The ref
-  // guards against both in the same tick; the state shows the button busy
-  // while the POST is in flight (up to its deadline on a stalled 2G link).
+  // One completion at a time: a double tap must record (or queue) the unit
+  // once. The ref catches two taps in the same tick, before the busy state
+  // has disabled the button; the state shows the button busy while the POST
+  // is in flight (up to its deadline on a stalled 2G link).
   const completingRef = useRef(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
@@ -392,15 +392,6 @@ export function LessonViewer({
       completingRef.current = false;
       setIsCompleting(false);
     }
-  };
-
-  // Finishing the lesson's story completes this lesson unit: story mode is a
-  // tab on the lesson, not a unit of its own. It goes through the same handler
-  // as the button below — online POST or the offline queue — so the button,
-  // the module progress and the sync queue all agree.
-  const handleStoryComplete = () => {
-    if (isCompleted) return;
-    void handleMarkComplete();
   };
 
   const mdClass = "prose prose-gray max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-table:text-sm";
@@ -642,11 +633,8 @@ export function LessonViewer({
 
       <LessonMediaTabs
         lessonId={lessonData.id}
-        moduleId={moduleId}
-        unitId={unitId}
         language={lessonData.language}
         onActiveTabChange={setActiveMediaTab}
-        onStoryComplete={handleStoryComplete}
         readPane={
           <div className="p-6 md:p-8">
             {/* Lesson Illustration */}

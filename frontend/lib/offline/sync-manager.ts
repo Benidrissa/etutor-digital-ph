@@ -23,7 +23,7 @@ import {
   type QuizAnswerSubmission,
   type QuizAttemptRequest,
 } from '@/lib/api';
-import { prewarmPage } from './download-manager';
+import { prewarmPage } from './prewarm';
 import type { QueuedQuizAnswerPayload } from './offline-quiz-scorer';
 
 const PREWARM_V6_DONE_KEY = 'offline_prewarm_v6_done';

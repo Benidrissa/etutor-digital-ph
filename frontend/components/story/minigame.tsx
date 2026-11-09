@@ -18,10 +18,10 @@
  * but never while the learner is typing somewhere else on the page (the AI
  * tutor's chat box, say) or holding a shortcut modifier.
  *
- * While `active` is false (the lesson's Story tab is hidden but kept mounted)
- * the round's clock stands still and the keys are not listened to, so a
- * learner who looks at the lesson text mid-game does not come back to rounds
- * that ran out unseen.
+ * While `active` is false (the player is hidden but kept mounted, as in a
+ * tab) the round's clock stands still and the keys are not listened to, so a
+ * learner who looks elsewhere mid-game does not come back to rounds that ran
+ * out unseen.
  *
  * Points follow the validator's arithmetic (`per_correct` per right item, a
  * missing or zero `per_correct` counting as 1) so the score a learner sees can
