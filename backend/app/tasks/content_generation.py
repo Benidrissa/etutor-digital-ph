@@ -25,6 +25,26 @@ POLL_HARD_LIMIT = 320
 STORY_SOFT_LIMIT = 900
 STORY_HARD_LIMIT = 960
 
+#: A module story's worst case. Its lesson chapters are made concurrently, at
+#: most ``ModuleStoryService``'s cap (6) at a time, so one run takes about as
+#: long as its slowest chapter: the unit's lesson generated first (the lesson
+#: task's POLL_SOFT_LIMIT, 300 s), the covering quiz generated first when it is
+#: missing (shared by the chapters it covers; the quiz task's 300 s), then up
+#: to 3 spine calls of ~150 s each (1 + MAX_REPAIR_CALLS; each ONE provider
+#: call). 300 + 300 + 450 = 1050 s, rounded up with slack; the hard limit
+#: follows by 60 s, as for the other long content tasks. A module with more
+#: lessons than the cap can still run out on its first open; every chapter
+#: finished is cached, so the next open makes only the rest and converges.
+#: HARD + 60 (the API's dedup TTL) stays well under the broker's 3600 s
+#: visibility timeout and the result backend's expiry.
+MODULE_STORY_SOFT_LIMIT = 1200
+MODULE_STORY_HARD_LIMIT = 1260
+
+#: Connections for a module story: one session per concurrent chapter (6)
+#: plus the setup and merge sessions, which are never open during the fan-out.
+MODULE_STORY_POOL_SIZE = 8
+MODULE_STORY_MAX_OVERFLOW = 2
+
 
 def _safe_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
     """Parse task-arg ids (strings over the wire) for ledger attribution."""
@@ -483,6 +503,10 @@ def generate_story_task(
 ) -> dict:
     """Generate a lesson unit's story mode and cache it in ``story_courses``.
 
+    Deprecated: the per-unit story route that dispatches it is replaced by the
+    module story (:func:`generate_module_story_task`) and goes with it, with
+    this task and ``STORY_SOFT_LIMIT``/``STORY_HARD_LIMIT``.
+
     Dispatched by ``GET /story-courses/unit/{module_id}/{unit_id}`` the first
     time a learner opens the Story tab. ``country``/``level`` only choose which
     cached lesson seeds the story (one story serves every learner of the unit
@@ -580,6 +604,149 @@ def generate_story_task(
             task_id=self.request.id,
         )
         return {"status": "failed", "error": str(exc)}
+    finally:
+        _release_story_dispatch(dedup_key, self.request.id)
+
+
+@celery_app.task(
+    bind=True,
+    base=CallbackTask,
+    soft_time_limit=MODULE_STORY_SOFT_LIMIT,
+    time_limit=MODULE_STORY_HARD_LIMIT,
+    rate_limit="5/m",
+)
+def generate_module_story_task(
+    self,
+    module_id: str,
+    language: str,
+    country: str = "CI",
+    level: int = 1,
+    force_regenerate: bool = False,
+    dedup_key: str | None = None,
+) -> dict:
+    """Generate a module's story and cache it in ``story_courses`` (contract C-3).
+
+    Dispatched by ``GET /story-courses/module/{module_id}`` the first time a
+    learner opens the module's story, or when it is stale. Every lesson
+    chapter that is missing or stale is made (generating the unit's lesson
+    and its covering quiz first when they are missing), concurrently, each in
+    its own session, then the module story is assembled from the cached
+    chapters (:class:`~app.domain.services.story_module_service.ModuleStoryService`).
+    ``country``/``level`` only choose which missing content is generated and
+    which cached rows are preferred: one story serves every learner of the
+    module in that language.
+
+    Returns ``{"status": "complete", "content_id": <story_courses id>,
+    "is_valid": bool}``; a story that does not validate is stored as a draft
+    and still reports ``complete`` (the client's re-fetch gets 409). Otherwise
+    ``{"status": "failed", "content_id": None, "is_valid": False, "error":
+    ...}``, with ``"failed_units"`` when chapters failed: the module row is
+    then not written, and the chapters that were made stay cached for the
+    next open. On the soft time limit the chapters in flight are cancelled
+    (their sessions roll back) and the task reports ``time_limit_exceeded``.
+
+    ``dedup_key`` is the API's Redis key for this (module, language); it is
+    released when the task ends, however it ends. Never retried
+    (``autoretry_for`` is unset): a retry would pay for the chapters again.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from app.ai.claude_service import ClaudeService
+    from app.ai.rag.embeddings import EmbeddingService
+    from app.ai.rag.retriever import SemanticRetriever
+    from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
+    from app.domain.services.lesson_service import LessonGenerationService
+    from app.domain.services.quiz_service import QuizService
+    from app.domain.services.story_module_service import (
+        ChapterGenerationFailed,
+        ModuleStoryService,
+    )
+    from app.infrastructure.config.settings import settings
+
+    logger.info(
+        "Starting async module story generation",
+        module_id=module_id,
+        language=language,
+        force_regenerate=force_regenerate,
+        task_id=self.request.id,
+    )
+
+    async def _run() -> dict:
+        set_ai_context(FEATURE_STORY_GENERATION, module_id=_safe_uuid(module_id))  # ledger
+        engine = create_async_engine(
+            settings.database_url,
+            echo=False,
+            pool_size=MODULE_STORY_POOL_SIZE,
+            max_overflow=MODULE_STORY_MAX_OVERFLOW,
+        )
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            claude = ClaudeService()
+            # Shared by every chapter: both hold configuration only, and the
+            # embedding client is safe to use concurrently on one loop.
+            retriever = SemanticRetriever(
+                EmbeddingService(api_key=settings.openai_api_key, model=settings.embedding_model)
+            )
+            service = ModuleStoryService(
+                claude,
+                LessonGenerationService(claude, retriever),
+                QuizService(claude, retriever),
+            )
+            record = await service.get_or_generate_module_story(
+                uuid.UUID(module_id),
+                language,
+                session_factory,
+                level=level,
+                country=country,
+                force_regenerate=force_regenerate,
+            )
+            return {
+                "status": "complete",
+                "content_id": str(record.id),
+                "is_valid": bool(record.is_valid),
+            }
+        finally:
+            await engine.dispose()
+
+    failed: dict = {"status": "failed", "content_id": None, "is_valid": False}
+    try:
+        result = asyncio.run(_run())
+        logger.info(
+            "Async module story generation completed",
+            module_id=module_id,
+            language=language,
+            result=result,
+            task_id=self.request.id,
+        )
+        return result
+    except SoftTimeLimitExceeded:
+        logger.warning(
+            "Module story generation hit its soft time limit; the module story was not written",
+            module_id=module_id,
+            language=language,
+            task_id=self.request.id,
+        )
+        return {**failed, "error": "time_limit_exceeded"}
+    except ChapterGenerationFailed as exc:
+        logger.warning(
+            "Module story generation failed: chapters could not be made",
+            module_id=module_id,
+            language=language,
+            failed_units=exc.failed_units,
+            task_id=self.request.id,
+        )
+        return {**failed, "error": "chapter_generation_failed", "failed_units": exc.failed_units}
+    except Exception as exc:
+        logger.error(
+            "Async module story generation failed",
+            module_id=module_id,
+            language=language,
+            exception=str(exc),
+            task_id=self.request.id,
+        )
+        return {**failed, "error": str(exc)}
     finally:
         _release_story_dispatch(dedup_key, self.request.id)
 
