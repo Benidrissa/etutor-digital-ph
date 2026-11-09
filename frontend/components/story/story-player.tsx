@@ -64,7 +64,7 @@ const MOOD_EMOJI: Record<string, string> = {
   walk: "🚶",
 };
 
-/** Where the lesson's Story tab remembers the bilingual toggle (per browser). */
+/** Where the embedded player (the module story panel) keeps the bilingual toggle, per browser. */
 export const EMBEDDED_BILINGUAL_KEY = "sira.story.bilingual";
 
 /**
@@ -107,20 +107,20 @@ export interface StoryPlayerProps {
   /**
    * `page` (default) is the standalone week: a sticky header and a Continue
    * bar fixed to the bottom of the screen. `embedded` sits inside another
-   * page's card — the lesson's Story tab — so everything stays in the flow and
-   * nothing covers the lesson's own controls or the mobile bottom navigation.
+   * page's card — the module story panel — so everything stays in the flow and
+   * nothing covers the page's own controls or the mobile bottom navigation.
    */
   variant?: "page" | "embedded";
   /**
    * Fires once, when the learner reaches the last step and has settled it (a
-   * question at the very end must be answered first). The lesson's Story tab
-   * uses it to complete the lesson unit.
+   * question at the very end must be answered first). The module story panel
+   * uses it to finish a chapter, which can complete that chapter's lesson unit.
    */
   onComplete?: (outcome: { points: number; maxPoints: number }) => void;
   /**
-   * False while the player is out of sight: the lesson keeps every tab
-   * mounted, so a hidden Story tab is still on the page. A running mini-game
-   * pauses its clock and stops listening to the keyboard until it is back.
+   * False while the player is out of sight but still mounted (a host that
+   * keeps hidden panes on the page, as tabs do). A running mini-game pauses
+   * its clock and stops listening to the keyboard until it is back.
    */
   active?: boolean;
   /**
