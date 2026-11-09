@@ -19,7 +19,9 @@ NULL``. Hand-authored weeks (``module_id`` null) are untouched.
 
 The upgrade is additive. The downgrade deletes the module stories first: at
 106, a row with ``module_unit_id`` null is a hand-authored week, so the
-catalog and the slug route would serve them publicly. An image rollback runs
+catalog and the slug route would serve them publicly. It locks the table
+before that DELETE, so a module story a running merge commits meanwhile is
+deleted too, never left behind. An image rollback runs
 no downgrade, so DEPLOY.md ("Rolling back below a migration") says to run
 this one before an older image starts.
 
@@ -53,6 +55,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # The current image may still be serving (DEPLOY.md): a module story merge
+    # can be between its first read and the commit of the row it inserts. Wait
+    # for it, and keep any other out, so the DELETE sees every module story.
+    op.execute("LOCK TABLE story_courses IN ACCESS EXCLUSIVE MODE")
     op.execute(f"DELETE FROM story_courses WHERE {MODULE_ROWS}")
     op.drop_index("uq_story_courses_module_story", table_name="story_courses")
     op.drop_column("story_courses", "source_units_digest")

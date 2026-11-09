@@ -243,6 +243,7 @@ def test_107_creates_the_partial_unique_index_of_the_model(recorded_107):
 def test_107_downgrade_deletes_the_module_stories_first(downgraded_107):
     """At 106 a row with no unit is a public hand-authored week: delete them first."""
     assert downgraded_107.calls == [
+        ("execute", "LOCK TABLE story_courses IN ACCESS EXCLUSIVE MODE"),
         ("execute", MODULE_ROWS_DELETE),
         ("drop_index", MODULE_STORY_INDEX),
         ("drop_column", "source_units_digest"),
@@ -549,5 +550,102 @@ def test_107_on_postgres_upgrades_enforces_and_downgrades(monkeypatch):
             assert columns >= MODULE_COLUMNS
             assert MODULE_STORY_INDEX in {i["name"] for i in inspector.get_indexes("story_courses")}
             assert slugs() == set(before) - module_slugs
+        finally:
+            engine.dispose()
+
+
+def test_107_downgrade_deletes_a_module_story_a_merge_commits_meanwhile(monkeypatch):
+    """The downgrade runs with the current image still serving (DEPLOY.md).
+
+    A module story merge holds its transaction open from its first read of
+    the chapter rows to the commit of the module row it inserts. A DELETE that
+    took its snapshot before that commit would miss the row, and the
+    downgrade would still succeed: at 106 the row is a public hand-authored
+    week. The downgrade must wait for the merge, then delete.
+    """
+    import threading
+    import time
+
+    from alembic import command
+
+    from app.infrastructure.config.settings import settings
+
+    with scratch_database("story_mig_race") as url:
+        create_tables(url, story_tables(without={"story_courses"}))
+        monkeypatch.setattr(settings, "database_url", url)
+        config = _alembic_config()
+        command.stamp(config, "104_add_ai_usage_events")
+        command.upgrade(config, "head")
+
+        database = url.rsplit("/", 1)[1]
+        engine = sync_engine(url)
+        tables = Base.metadata.tables
+        story = tables["story_courses"]
+        module_id = uuid.uuid4()
+        failures: list[BaseException] = []
+
+        def downgrade() -> None:
+            try:
+                command.downgrade(config, "106_add_story_unit_binding")
+            except BaseException as exc:  # reported by the test, not the thread
+                failures.append(exc)
+
+        rollback = threading.Thread(target=downgrade, daemon=True)
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    tables["modules"]
+                    .insert()
+                    .values(id=module_id, module_number=903, level=1, title_fr="M", title_en="M")
+                )
+            with engine.connect() as merge, engine.connect() as monitor:
+                transaction = merge.begin()
+                # The merge reads the chapter rows first (its table lock is held
+                # until it commits)...
+                merge.execute(sa.text("SELECT count(*) FROM story_courses")).scalar_one()
+                rollback.start()
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    waiting = monitor.execute(
+                        sa.text(
+                            "SELECT count(*) FROM pg_stat_activity"
+                            " WHERE datname = :name AND wait_event_type = 'Lock'"
+                        ),
+                        {"name": database},
+                    ).scalar_one()
+                    monitor.commit()
+                    if waiting:
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("the downgrade never waited on the merge")
+                # ...then, with the downgrade under way, stores the module story.
+                merge.execute(
+                    story.insert().values(
+                        **_story_row(
+                            slug=f"module-{module_id.hex}-en",
+                            module_id=module_id,
+                            language="en",
+                            status="published",
+                            is_valid=True,
+                            source_rows={"assembler": 1, "units": []},
+                            source_units_digest="0" * 64,
+                        )
+                    )
+                )
+                transaction.commit()
+            rollback.join(timeout=30)
+            assert not rollback.is_alive() and failures == []
+
+            with engine.connect() as conn:
+                version = conn.execute(sa.text("SELECT version_num FROM alembic_version"))
+                assert version.scalar_one() == "106_add_story_unit_binding"
+                leaked = conn.execute(
+                    sa.text(
+                        "SELECT slug FROM story_courses"
+                        " WHERE module_id IS NOT NULL AND module_unit_id IS NULL"
+                    )
+                ).all()
+            assert leaked == []
         finally:
             engine.dispose()
