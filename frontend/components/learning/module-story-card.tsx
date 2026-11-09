@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { BookOpenText, ChevronRight, Loader2, Lock } from 'lucide-react';
+import { BookOpen, ChevronRight, Loader2, Lock } from 'lucide-react';
 
 import { Link } from '@/i18n/routing';
 import { ApiError } from '@/lib/api';
@@ -90,7 +90,7 @@ export function ModuleStoryCard({ moduleId, language }: ModuleStoryCardProps) {
       ? t('resume', { current: state.current, total: state.total })
       : t(state.kind);
   const Icon =
-    state.kind === 'subscribersOnly' ? Lock : state.kind === 'generating' ? Loader2 : BookOpenText;
+    state.kind === 'subscribersOnly' ? Lock : state.kind === 'generating' ? Loader2 : BookOpen;
 
   return (
     <div className="mb-8">
