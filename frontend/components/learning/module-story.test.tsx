@@ -37,7 +37,15 @@ vi.mock("@/lib/story-course/load", async (importOriginal) => {
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, apiFetch: vi.fn(), getModuleDetailWithProgress: vi.fn() };
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+    // mockReset() falls back to this implementation (Vitest 3). A reader left
+    // mounted by the previous test can run its mount effect between that
+    // test's teardown and this file's beforeEach, and a bare vi.fn() would
+    // hand it undefined instead of a promise (a flaky "reading 'then'").
+    getModuleDetailWithProgress: vi.fn(() => Promise.resolve({ units: [] })),
+  };
 });
 
 vi.mock("@/lib/learning/complete-lesson", () => ({ completeLessonUnit: vi.fn() }));
