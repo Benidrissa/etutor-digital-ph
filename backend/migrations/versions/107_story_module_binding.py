@@ -19,7 +19,9 @@ NULL``. Hand-authored weeks (``module_id`` null) are untouched.
 
 The upgrade is additive. The downgrade deletes the module stories first: at
 106, a row with ``module_unit_id`` null is a hand-authored week, so the
-catalog and the slug route would serve them publicly.
+catalog and the slug route would serve them publicly. An image rollback runs
+no downgrade, so DEPLOY.md ("Rolling back below a migration") says to run
+this one before an older image starts.
 
 Revision ID: 107_story_module_binding
 Revises: 106_add_story_unit_binding

@@ -250,6 +250,27 @@ def test_107_downgrade_deletes_the_module_stories_first(downgraded_107):
     ]
 
 
+def test_the_rollback_runbook_downgrades_107_before_an_older_image_runs():
+    """An image rollback runs no downgrade: the runbook must, or module stories leak.
+
+    Before 107, a row with ``module_id`` set and no unit is a hand-authored
+    week, listed and served publicly. The documented rollback is an image
+    swap, so ``DEPLOY.md`` must say to downgrade (or delete those rows) first.
+    """
+    deploy = BACKEND.parent / "DEPLOY.md"
+    if not deploy.exists():
+        pytest.skip("DEPLOY.md is not in this checkout")
+    text = deploy.read_text(encoding="utf-8")
+    start = text.index("\n## Rollback")
+    end = text.index("\n## ", start + 1)
+    rollback = text[start:end]
+    downgrade = "uv run alembic downgrade 106_add_story_unit_binding"
+    assert downgrade in rollback
+    assert MODULE_ROWS_DELETE.removeprefix("DELETE FROM story_courses WHERE ") in rollback
+    # With the current image, before the older one starts.
+    assert "before the swap" in rollback and "before the older image starts" in rollback
+
+
 def test_nullability_matches_the_model(recorded):
     migration = {c.name: bool(c.nullable) for c in recorded.columns("story_courses")}
     model = {c.name: bool(c.nullable) for c in StoryCourseRecord.__table__.columns}
