@@ -317,7 +317,12 @@ def _module_story_matches(
     return True
 
 
-async def module_story_is_fresh(session: AsyncSession, record: StoryCourseRecord) -> bool:
+async def module_story_is_fresh(
+    session: AsyncSession,
+    record: StoryCourseRecord,
+    *,
+    units: Sequence[StoryUnit] | None = None,
+) -> bool:
     """Whether a module story row can be served as it is — three queries, no model.
 
     Stale when it is not a module row, was built by another assembler
@@ -325,6 +330,9 @@ async def module_story_is_fresh(session: AsyncSession, record: StoryCourseRecord
     chapter row is not the one (id and ``updated_at``) its manifest records,
     or any of those chapters is stale (:func:`chapters_are_fresh`, one batched
     query for all of them).
+
+    ``units`` is the module's current roster (:func:`load_story_units`) when
+    the caller has just read it; it saves the first query.
     """
     if not _is_module_row(record) or not isinstance(record.source_rows, dict):
         return False
@@ -333,7 +341,8 @@ async def module_story_is_fresh(session: AsyncSession, record: StoryCourseRecord
         return False
     if record.source_rows.get("assembler") != MODULE_ASSEMBLER_VERSION:
         return False
-    units = await load_story_units(session, module_id)
+    if units is None:
+        units = await load_story_units(session, module_id)
     if record.source_units_digest != roster_digest(units):
         return False
     states = await _chapter_states(session, units, language)

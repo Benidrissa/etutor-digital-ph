@@ -21,7 +21,7 @@ import json
 import re
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -827,6 +827,21 @@ async def test_module_story_freshness_is_three_queries_however_many_chapters(raw
     # The roster, the four chapter rows, and one query of all their sources.
     assert len(statements) == 3, statements
     assert "generated_content" in statements[2]
+
+    # A caller that has just read the roster (the API) passes it: two queries.
+    statements.clear()
+    async with sessions.maker() as session:
+        units = await load_story_units(session, seed_.module_id)
+    sa.event.listen(engine.sync_engine, "before_cursor_execute", count)
+    try:
+        async with sessions.maker() as session:
+            assert await module_story_is_fresh(session, record, units=units)
+            renamed = [replace(units[0], title={"en": "Renamed", "fr": "Renommé"}), *units[1:]]
+            assert not await module_story_is_fresh(session, record, units=renamed)
+    finally:
+        sa.event.remove(engine.sync_engine, "before_cursor_execute", count)
+    assert len(statements) == 2, statements
+    assert not any("FROM module_units" in statement for statement in statements)
 
 
 async def test_only_module_rows_are_judged_by_module_freshness(raw, sessions):
