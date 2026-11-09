@@ -65,7 +65,7 @@ from app.domain.services.story_module_service import (
 from app.domain.services.story_module_service import (
     story_dispatch_key as module_story_dispatch_key,
 )
-from app.tasks.content_generation import MODULE_STORY_HARD_LIMIT, generate_module_story_task
+from app.tasks.content_generation import MODULE_STORY_DISPATCH_TTL_S, generate_module_story_task
 
 logger = get_logger(__name__)
 
@@ -209,9 +209,11 @@ _PRIVATE_NO_STORE = "private, no-store"
 
 #: How long a dispatched module story generation is remembered for a (module,
 #: language), so concurrent first views share one task: the task's hard limit
-#: plus slack (1320 s). It stays under the broker's 3600 s visibility timeout
-#: and the result backend's expiry, so a key never outlives what it names.
-_MODULE_STORY_DISPATCH_TTL_S = MODULE_STORY_HARD_LIMIT + 60
+#: plus slack (1320 s), from the dispatch and again from the moment the task
+#: starts (it re-arms the key), so a long queue wait never shortens its run's
+#: cover. It stays under the broker's 3600 s visibility timeout and the
+#: result backend's expiry, so a key never outlives what it names.
+_MODULE_STORY_DISPATCH_TTL_S = MODULE_STORY_DISPATCH_TTL_S
 
 
 async def _release_dispatch_key(key: str, task_id: str) -> None:

@@ -28,6 +28,8 @@ from app.tasks.content_generation import (
 MODULE_ID = uuid.UUID("7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d")
 #: The real compare-and-delete, taken before any test replaces it.
 _REAL_RELEASE = content_generation._release_story_dispatch
+#: The real re-arm of the key as the task starts, likewise.
+_REAL_HOLD = content_generation._hold_story_dispatch
 STORY_ID = uuid.UUID(int=99)
 TASK_ID = "task-42"
 
@@ -58,6 +60,8 @@ class FakeModuleStoryService:
 
     instances: list[FakeModuleStoryService] = []
     outcome: Any = None
+    #: Called while the "generation" runs, to look at the world from inside it.
+    during: Any = None
 
     def __init__(self, claude_service, lesson_service, quiz_service, **kwargs) -> None:
         self.args = (claude_service, lesson_service, quiz_service)
@@ -79,6 +83,8 @@ class FakeModuleStoryService:
                 "feature": current_ai_context().feature,
             }
         )
+        if FakeModuleStoryService.during is not None:
+            FakeModuleStoryService.during()
         outcome = FakeModuleStoryService.outcome
         if isinstance(outcome, BaseException):
             raise outcome
@@ -90,6 +96,7 @@ def wiring():
     """Every collaborator the task builds, replaced; yields what the test inspects."""
     FakeModuleStoryService.instances = []
     FakeModuleStoryService.outcome = SimpleNamespace(id=STORY_ID, is_valid=True)
+    FakeModuleStoryService.during = None
     engine = MagicMock()
     engine.dispose = AsyncMock()
     with (
@@ -104,6 +111,7 @@ def wiring():
             FakeModuleStoryService,
         ),
         patch.object(content_generation, "_release_story_dispatch") as release,
+        patch.object(content_generation, "_hold_story_dispatch") as hold,
     ):
         yield SimpleNamespace(
             create=create,
@@ -114,6 +122,7 @@ def wiring():
             lessons=lessons,
             quizzes=quizzes,
             release=release,
+            hold=hold,
         )
 
 
@@ -149,6 +158,8 @@ def test_a_complete_run_builds_the_services_and_reports_the_story(wiring):
     assert (call["level"], call["country"], call["force_regenerate"]) == (2, "SN", True)
     assert call["feature"] == "story_generation"  # the ledger's default for the run
     assert callable(call["session_factory"])
+    # The key is armed again as the task starts, then released as it ends.
+    wiring.hold.assert_called_once_with(key, TASK_ID, MODULE_STORY_HARD_LIMIT + 60)
     wiring.release.assert_called_once_with(key, TASK_ID)
 
 
@@ -225,6 +236,65 @@ def test_the_soft_time_limit_releases_the_real_dedup_key_it_owns(wiring):
     finally:
         client.delete(owned, other)
         client.close()
+
+
+@pytest.mark.parametrize("left_at_start", ["seconds", "none"])
+def test_the_key_covers_the_whole_run_however_long_the_task_was_queued(wiring, left_at_start):
+    """Against a real Redis: a queue wait must not come off the run's cover.
+
+    The API claims the key for HARD + 60 s when it dispatches. A task that
+    waited in a worker's prefetch buffer behind long tasks finds seconds of
+    that left, or none. While it runs the key must name it for longer than its
+    hard limit, so a view in the meantime joins it instead of dispatching a
+    second, paid, generation of the same chapters.
+    """
+    client = _redis_or_skip()
+    key = story_dispatch_key(MODULE_ID, "en")
+    seen: dict[str, Any] = {}
+
+    def look() -> None:
+        seen.update(holder=client.get(key), ttl=client.ttl(key))
+
+    FakeModuleStoryService.during = look
+    wiring.hold.side_effect = _REAL_HOLD
+    wiring.release.side_effect = _REAL_RELEASE
+    try:
+        if left_at_start == "seconds":
+            client.set(key, TASK_ID, ex=2)
+        else:
+            client.delete(key)  # expired while the task was queued; nobody claimed it
+        result = run_task(str(MODULE_ID), "en", dedup_key=key)
+        assert result["status"] == "complete"
+        assert seen["holder"] == TASK_ID
+        assert seen["ttl"] > MODULE_STORY_HARD_LIMIT
+        assert client.get(key) is None  # released as the task ended
+    finally:
+        client.delete(key)
+        client.close()
+
+
+def test_a_key_another_dispatch_holds_is_never_re_armed(wiring):
+    """Against a real Redis: the task re-arms only its own key, or a free one."""
+    client = _redis_or_skip()
+    key = story_dispatch_key(MODULE_ID, "en")
+    seen: dict[str, Any] = {}
+    FakeModuleStoryService.during = lambda: seen.update(holder=client.get(key), ttl=client.ttl(key))
+    wiring.hold.side_effect = _REAL_HOLD
+    wiring.release.side_effect = _REAL_RELEASE
+    try:
+        client.set(key, "another-task", ex=30)
+        run_task(str(MODULE_ID), "en", dedup_key=key)
+        assert seen["holder"] == "another-task" and 0 < seen["ttl"] <= 30
+        assert client.get(key) == "another-task"
+    finally:
+        client.delete(key)
+        client.close()
+
+
+def test_re_arming_the_key_never_raises():
+    with patch("redis.Redis.from_url", side_effect=ConnectionError("redis down")):
+        _REAL_HOLD("k", TASK_ID, 60)
+    _REAL_HOLD(None, TASK_ID, 60)  # nothing claimed
 
 
 # --------------------------------------------------------------------------

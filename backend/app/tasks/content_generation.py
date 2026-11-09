@@ -29,6 +29,11 @@ POLL_HARD_LIMIT = 320
 MODULE_STORY_SOFT_LIMIT = 1200
 MODULE_STORY_HARD_LIMIT = 1260
 
+#: The API's dedup key for a module story lives this long: claimed for it at
+#: dispatch (covering the queue wait), and armed again for it when the task
+#: starts (covering the run, which the queue wait must not eat into).
+MODULE_STORY_DISPATCH_TTL_S = MODULE_STORY_HARD_LIMIT + 60
+
 #: Connections for a module story: one session per concurrent chapter (6)
 #: plus the setup and merge sessions, which are never open during the fan-out.
 MODULE_STORY_POOL_SIZE = 8
@@ -472,6 +477,44 @@ def generate_case_study_task(
         return {"status": "failed", "error": str(exc)}
 
 
+#: Re-arm the dedup key for the task that starts: when it still names the
+#: task, or when it expired while the task was queued and nobody has claimed
+#: it since. A key another dispatch now holds is left alone.
+_HOLD_IF_OWNER_OR_FREE_SCRIPT = """
+local holder = redis.call("get", KEYS[1])
+if holder == ARGV[1] or not holder then
+  redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2])
+  return 1
+end
+return 0
+"""
+
+
+def _hold_story_dispatch(dedup_key: str | None, task_id: str | None, ttl_s: int) -> None:
+    """Arm the API's dedup key for ``ttl_s`` from now, as the task starts (best effort).
+
+    The key was claimed at dispatch with the same TTL, so the time the task
+    waited in the queue (behind other long tasks, in a worker's prefetch
+    buffer) would otherwise come off its run: the key could expire while the
+    task still runs, and the next view would dispatch a second, paid,
+    generation of the same chapters.
+    """
+    if not dedup_key or not task_id:
+        return
+    try:
+        import redis
+
+        from app.infrastructure.config.settings import settings
+
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            client.eval(_HOLD_IF_OWNER_OR_FREE_SCRIPT, 1, dedup_key, task_id, ttl_s)
+        finally:
+            client.close()
+    except Exception as exc:
+        logger.warning("Story dispatch key not re-armed", key=dedup_key, error=str(exc))
+
+
 def _release_story_dispatch(dedup_key: str | None, task_id: str | None) -> None:
     """Release the API's dedup key if it still names this task (best effort).
 
@@ -604,6 +647,7 @@ def generate_module_story_task(
 
     failed: dict = {"status": "failed", "content_id": None, "is_valid": False}
     try:
+        _hold_story_dispatch(dedup_key, self.request.id, MODULE_STORY_DISPATCH_TTL_S)
         result = asyncio.run(_run())
         logger.info(
             "Async module story generation completed",
