@@ -863,7 +863,7 @@
     "chapterDone": "Done",
     "chapterCurrent": "Current chapter",
     "chapterUpcoming": "Coming up",
-    "kind": "{kind, select, quiz {Quiz} case {Case study} other {Lesson}}",
+    "kind": "{kind, select, quiz {Quiz} rally {Rally} case {Case study} other {Lesson}}",
     "chapterComplete": "Chapter complete!",
     "score": "{points} of {max} points",
     "points": "{points} points",
@@ -2693,7 +2693,7 @@
     "week": "Week {week}",
     "counts": "{questions} questions · {exercises} on paper · {points} points",
     "check": "Check",
-    "continueLabel": "Continue",
+    "next": "Next",
     "answerToContinue": "Answer to continue",
     "hint": "Hint",
     "howItWorks": "Here is how it works",
@@ -2726,6 +2726,25 @@
     "scoreOf": "{points} of {max} {unit}",
     "aiLabel": "AI",
     "part": "Part {part}",
-    "bilingualToggle": "Show both languages"
+    "bilingualToggle": "Show both languages",
+    "soundToggle": "Sound effects",
+    "readAloudToggle": "Read aloud",
+    "chapterNumber": "Chapter {number}",
+    "questionBanner": "Question",
+    "gameBanner": "Mini-game",
+    "videoBanner": "To watch",
+    "bravo": "Well done!",
+    "starsLabel": "{stars, plural, one {# star} other {# stars}} of {max}",
+    "artPending": "Pictures being painted…",
+    "play": "Play",
+    "pickHero": "Who are you in the story?",
+    "friendPrompt": "What is your best friend's name?",
+    "friendHint": "Leave it empty and your friend will be called {name}.",
+    "variant": {
+      "girl": "A girl",
+      "boy": "A boy",
+      "woman": "A woman",
+      "man": "A man"
+    }
   }
 }

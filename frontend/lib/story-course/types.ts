@@ -62,12 +62,52 @@ export interface Voice {
   rate?: number;
 }
 
+/** A cast member's part in the story (contract #2672). */
+export type CastRole = "hero" | "friend" | "mentor" | "family" | "tutor";
+
+/** One way the hero can look; the learner picks one at the start (#2672). */
+export interface CastVariant {
+  /** `girl`/`boy` for kids courses, `woman`/`man` for adult ones. */
+  id: string;
+  /** One English sentence for the image model. */
+  look?: string;
+}
+
 export interface CastMember {
   id: string;
   name: string;
   kind: "child" | "adult" | "animal" | "ai_tutor";
   art: string;
   voice?: Voice;
+  /** Absent on stories written before the cartoon stage (#2672). */
+  role?: CastRole;
+  /** One English sentence for the image model: age, build, skin, hair, clothes. */
+  look?: string;
+  /** Hero only: the looks the learner chooses between. */
+  variants?: CastVariant[];
+  /** Friend only: the name used when the learner types none. */
+  default_name?: string;
+}
+
+/** A place a scene is set in, one set per course (#2672). */
+export interface Place {
+  id: string;
+  title?: TextObject;
+  /** English backdrop description for the image model. */
+  look?: string;
+}
+
+/**
+ * Generated art, attached by the API when it serves a story and never written
+ * by the model (#2672). Any key or pose may be missing: the player draws a
+ * placeholder for it.
+ */
+export interface StoryArt {
+  status?: "ready" | "pending" | "partial" | "none";
+  /** Keyed by cast id, or `hero:<variant>` for the hero; then by pose. */
+  characters?: Record<string, Partial<Record<string, string>>>;
+  /** Backdrop URL per place id. */
+  places?: Record<string, string>;
 }
 
 export interface GlossaryEntry {
@@ -189,8 +229,11 @@ export type StepFrame = "opener" | "objectives" | "finished" | "ask_tutor";
 
 export interface Scene {
   id: string;
+  /** A `places` id, or a key of the older built-in catalog. */
   place: string;
   objective?: string;
+  /** Cast ids on stage, two or three (#2672). Absent on older stories. */
+  cast?: string[];
   steps: Step[];
 }
 
@@ -227,6 +270,13 @@ export interface ChapterCovers {
   completes_unit: boolean;
   /** The chapter's own `checks.max_points` (0 for checkpoints). */
   max_points: number;
+  /**
+   * The module's final "rally" chapter (#2674): questions from the module's
+   * quiz played as a story. It points at the quiz unit, is a checkpoint
+   * (`role: quiz_checkpoint`), scores like a lesson chapter, and never
+   * completes the quiz, which still needs its own attempt.
+   */
+  rally?: boolean;
 }
 
 /** The top-level `module_story` block of a module story (contract C-2). */
@@ -317,6 +367,10 @@ export interface StoryCourse {
   glossary?: GlossaryEntry[];
   misconceptions?: Misconception[];
   cast: CastMember[];
+  /** The course's places (#2672); older stories use catalog keys only. */
+  places?: Place[];
+  /** Generated art (#2672), attached by the API, never by the model. */
+  art?: StoryArt;
   facts?: { en: string; fr: string; source?: string; invented?: boolean }[];
   chapters: Chapter[];
   questions: Question[];

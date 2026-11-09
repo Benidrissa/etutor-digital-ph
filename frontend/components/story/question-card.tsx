@@ -26,6 +26,14 @@ interface QuestionCardProps {
   bilingual: boolean;
   rewards?: Rewards;
   onAnswered: (outcome: { questionId: string; points: number; attempts: number }) => void;
+  /**
+   * Every attempt, right or wrong, as it is checked: the cartoon stage cheers
+   * a right one and lets the hero think over a wrong one. `settled` is true
+   * when the question is over (right, or the last try used).
+   */
+  onAttempt?: (outcome: { correct: boolean; settled: boolean }) => void;
+  /** Replaces the card's own frame, for a host that draws one around it. */
+  className?: string;
 }
 
 const SUPERSCRIPT_KEYS = ["²", "³", "⁴"];
@@ -67,6 +75,8 @@ export function QuestionCard({
   bilingual,
   rewards,
   onAnswered,
+  onAttempt,
+  className,
 }: QuestionCardProps) {
   const t = useTranslations("Story");
   const [typed, setTyped] = useState("");
@@ -141,6 +151,7 @@ export function QuestionCard({
       setEarned(won);
       setHint(null);
       onAnswered({ questionId: question.id, points: won, attempts: nextAttempts });
+      onAttempt?.({ correct: true, settled: true });
       return;
     }
 
@@ -148,15 +159,17 @@ export function QuestionCard({
       setSettled(true);
       setHint(null);
       onAnswered({ questionId: question.id, points: 0, attempts: nextAttempts });
+      onAttempt?.({ correct: false, settled: true });
       return;
     }
 
     setHint(nextHint);
+    onAttempt?.({ correct: false, settled: false });
   };
 
   return (
     <section
-      className="my-5 rounded-xl border-2 border-teal-200 bg-teal-50/40 p-4"
+      className={className ?? "my-5 rounded-xl border-2 border-teal-200 bg-teal-50/40 p-4"}
       aria-live="polite"
     >
       <Bilingual

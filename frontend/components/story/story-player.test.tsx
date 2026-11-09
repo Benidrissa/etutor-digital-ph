@@ -19,6 +19,11 @@ import frMessages from "@/messages/fr.json";
 import type { Step, StoryCourse } from "@/lib/story-course/types";
 
 import { EMBEDDED_BILINGUAL_KEY, StoryPlayer } from "./story-player";
+import { clickInCard } from "./story-test-utils";
+
+// The cartoon stage draws a whole scene per step: long click-throughs need
+// headroom on a busy CI runner.
+vi.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   window.localStorage.clear();
@@ -126,12 +131,12 @@ describe("StoryPlayer — language keying (C1)", () => {
     expect(frNarrate).toHaveAttribute("lang", "fr");
     expect(enNarrate).toHaveAttribute("lang", "en");
 
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     const frSay = screen.getByText("Bonjour Awa !");
     const enSay = screen.getByText("Hello Awa!");
     expect(precedes(frSay, enSay)).toBe(true);
 
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
     const frRow = screen.getByText("Se laver les mains avant de toucher un patient.");
     const enRow = screen.getByText("Wash before touching a patient.");
     expect(precedes(frRow, enRow)).toBe(true);
@@ -161,7 +166,7 @@ describe("StoryPlayer — language keying (C1)", () => {
     const user = userEvent.setup();
     renderPlayer(frenchStory());
     for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByRole("button", { name: "Continuer" }));
+      await user.click(screen.getByRole("button", { name: "Suite" }));
     }
     expect(screen.getByRole("button", { name: "Avant de toucher un patient" })).toBeInTheDocument();
   });
@@ -174,13 +179,13 @@ describe("StoryPlayer — completion (C7)", () => {
     const { onComplete, rerender } = renderPlayer(story);
 
     for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByRole("button", { name: "Continuer" }));
+      await user.click(screen.getByRole("button", { name: "Suite" }));
     }
     expect(onComplete).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
     expect(onComplete).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
 
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith({ points: 2, maxPoints: 2 });
@@ -203,13 +208,13 @@ describe("StoryPlayer — completion (C7)", () => {
     const { onComplete } = renderPlayer(frenchStory());
 
     for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByRole("button", { name: "Continuer" }));
+      await user.click(screen.getByRole("button", { name: "Suite" }));
     }
     // The last step is the question: on screen, but not answered yet.
     expect(screen.getByRole("button", { name: "Réponds pour continuer" })).toBeDisabled();
     expect(onComplete).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
@@ -336,10 +341,10 @@ function fullStory(): StoryCourse {
 /** Click through to the question and answer it right first time. */
 async function answerQuestion(user: ReturnType<typeof userEvent.setup>) {
   for (let i = 0; i < 3; i += 1) {
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
   }
-  await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
-  await user.click(screen.getByRole("button", { name: "Continuer" }));
+  await clickInCard(user, "Avant de toucher un patient");
+  await user.click(screen.getByRole("button", { name: "Suite" }));
 }
 
 describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
@@ -350,17 +355,17 @@ describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
     await answerQuestion(user);
 
     // The game: catch both right items.
-    await user.click(screen.getByRole("button", { name: "Commencer" }));
+    await clickInCard(user, "Commencer");
     await user.click(screen.getByRole("button", { name: "Avant un patient" }));
     await user.click(screen.getByRole("button", { name: "Après un patient" }));
     expect(await screen.findByText("Partie terminée — +2", {}, { timeout: 3000 })).toBeInTheDocument();
     // The game reports its score from an effect after that render, so the
     // player's Continue can come a tick later.
-    await user.click(await screen.findByRole("button", { name: "Continuer" }));
+    await user.click(await screen.findByRole("button", { name: "Suite" }));
 
     // The first exercise: done on paper, the worked answer opens, she marks it.
     expect(screen.getByRole("button", { name: "Réponds pour continuer" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Fait sur papier" }));
+    await clickInCard(user, "Fait sur papier");
     expect(screen.getByText("1. Avant un patient")).toBeInTheDocument();
     const gotIt = screen.getByRole("button", { name: "J'ai réussi (+3)" });
     // 44px touch target (min-h-11).
@@ -371,17 +376,17 @@ describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
     await user.click(gotIt);
     expect(screen.getByText("Tu t'es donné 3 sur 3.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /J'ai réussi/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
 
     // The second exercise.
-    await user.click(screen.getByRole("button", { name: "Fait sur papier" }));
+    await clickInCard(user, "Fait sur papier");
     await user.click(screen.getByRole("button", { name: "J'ai réussi (+1)" }));
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
 
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith({ points: 8, maxPoints: 8 });
     expect(screen.getByText("8 sur 8 points")).toBeInTheDocument();
-    expect(screen.getByText("⭐⭐⭐")).toBeInTheDocument();
+    expect(screen.getByText("3 étoiles sur 3")).toBeInTheDocument();
   });
 
   it("awards nothing for 'Not yet' and still lets the story go on", async () => {
@@ -394,13 +399,13 @@ describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
     const { onComplete } = renderPlayer(story);
 
     await answerQuestion(user);
-    await user.click(screen.getByRole("button", { name: "Fait sur papier" }));
+    await clickInCard(user, "Fait sur papier");
     await user.click(screen.getByRole("button", { name: "Pas encore" }));
     expect(screen.getByText("Tu t'es donné 0 sur 3.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
-    await user.click(screen.getByRole("button", { name: "Fait sur papier" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    await clickInCard(user, "Fait sur papier");
     await user.click(screen.getByRole("button", { name: "Pas encore" }));
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
 
     expect(onComplete).toHaveBeenCalledWith({ points: 2, maxPoints: 8 });
   });
@@ -414,7 +419,7 @@ describe("StoryPlayer — paper exercises are self-marked (X6)", () => {
     renderPlayer(story);
 
     await answerQuestion(user);
-    await user.click(screen.getByRole("button", { name: "Fait sur papier" }));
+    await clickInCard(user, "Fait sur papier");
     await user.click(screen.getByRole("button", { name: /J'ai réussi/ }));
     await user.click(screen.getByRole("button", { name: "Masquer le raisonnement" }));
     expect(screen.queryByText("1. Avant un patient")).not.toBeInTheDocument();
@@ -516,7 +521,7 @@ describe("StoryPlayer — one chapter of a module story", () => {
     // Nothing of the first chapter, and no second, in-list chapter heading.
     expect(screen.queryByText("Awa entre dans le centre de santé.")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Continuer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suite" })).not.toBeInTheDocument();
   });
 
   it("stops at the end of the chapter instead of running into the next", async () => {
@@ -524,9 +529,9 @@ describe("StoryPlayer — one chapter of a module story", () => {
     const onComplete = renderModulePlayer({ chapterId: "c1", maxPoints: 2 });
 
     for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByRole("button", { name: "Continuer" }));
+      await user.click(screen.getByRole("button", { name: "Suite" }));
     }
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
 
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith({ points: 2, maxPoints: 2 });

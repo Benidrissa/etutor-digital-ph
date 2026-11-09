@@ -8,7 +8,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { NAME_FALLBACKS, firstNameOf, personalizeStory } from "./personalize";
+import {
+  NAME_FALLBACKS,
+  asksFriendName,
+  castFriendName,
+  firstNameOf,
+  personalizeStory,
+} from "./personalize";
 
 /** A cut-down lesson story touching every kind of place a name can sit. */
 function sampleStory() {
@@ -145,6 +151,46 @@ describe("personalizeStory", () => {
     const out = personalizeStory(sampleStory(), { child: "Aminata", language: "en" });
     expect(out.checks.max_points).toBe(3);
     expect(out.minigames[0].rounds[0].items[0].correct).toBe(true);
+  });
+});
+
+/** The contract's friend (#2672): named by the learner, else `default_name`. */
+function contractStory() {
+  const story = sampleStory();
+  story.cast = [
+    { id: "learner", name: "{child}", kind: "adult", art: "nandi" },
+    { id: "friend", name: "{friend}", kind: "child", art: "friend", role: "friend", default_name: "Awa" } as never,
+  ];
+  return story;
+}
+
+describe("personalizeStory — a later pass for the friend's name", () => {
+  it("keeps the placeholders it is told to keep", () => {
+    const out = personalizeStory(contractStory(), { child: "Aminata", language: "fr", keep: ["friend"] });
+    const concept = out.chapters[0].scenes[0].steps[2];
+    expect(concept.fr[0]).toBe("{friend} lit le relevé.");
+    expect(out.learner.first_name).toBe("Aminata");
+
+    // The player's own pass fills the friend and leaves the child alone.
+    const second = personalizeStory(contractStory(), { friend: "Fatou", language: "fr", keep: ["child"] });
+    expect(second.chapters[0].scenes[0].steps[2].fr[0]).toBe("Fatou lit le relevé.");
+    expect(second.learner.first_name).toBe("{child}");
+  });
+
+  it("falls back to the cast's default_name, not the generic word", () => {
+    const out = personalizeStory(contractStory(), { child: "Aminata", language: "en" });
+    expect(out.chapters[0].scenes[0].steps[2].en[0]).toBe("Awa reads the log.");
+    expect(castFriendName(contractStory())).toBe("Awa");
+  });
+
+  it("asks for the friend's name only when the story leaves it open", () => {
+    expect(asksFriendName(contractStory())).toBe(true);
+    // A classmate the cast names outright needs no question.
+    expect(asksFriendName(sampleStory())).toBe(false);
+    const noFriend = sampleStory();
+    noFriend.cast = noFriend.cast.filter((member) => member.id !== "friend");
+    noFriend.chapters[0].scenes[0].steps.pop();
+    expect(asksFriendName(noFriend)).toBe(false);
   });
 });
 

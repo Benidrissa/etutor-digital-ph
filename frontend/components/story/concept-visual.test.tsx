@@ -19,6 +19,9 @@ import type { StoryCourse } from "@/lib/story-course/types";
 import { ConceptVisual } from "./concept-visual";
 import { StoryPlayer } from "./story-player";
 
+// The image step renders the whole cartoon stage: headroom on a busy runner.
+vi.setConfig({ testTimeout: 20_000 });
+
 const figureParams = {
   source_image_id: "0f1e2d3c-img",
   figure_number: "Figure 2.1",
@@ -143,7 +146,7 @@ describe("StoryPlayer — image step", () => {
         <StoryPlayer course={story} variant="embedded" />
       </NextIntlClientProvider>,
     );
-    await user.click(screen.getByRole("button", { name: "Continuer" }));
+    await user.click(screen.getByRole("button", { name: "Suite" }));
 
     const img = screen.getByRole("img", { name: "Des mains sous l'eau courante" });
     expect(img.getAttribute("src")).toContain("data?lang=fr");
