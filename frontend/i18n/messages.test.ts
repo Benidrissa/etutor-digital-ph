@@ -99,6 +99,7 @@ describe("messages", () => {
     "Story.selfMarkNotYet",
     "Story.selfMarked",
     "Story.visualUnavailable",
+    "Navigation.story",
   ])("has %s in both languages", (key) => {
     expect(typeof at(en as Tree, key)).toBe("string");
     expect(typeof at(fr as Tree, key)).toBe("string");
