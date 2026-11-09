@@ -565,3 +565,34 @@ class TestRequests:
         bad.write_text(json.dumps({"requests": [{"module_id": "nope"}]}), encoding="utf-8")
         with pytest.raises(ValueError, match="module_id"):
             script.load_requests(str(bad))
+
+
+class TestWorkflow:
+    """.github/workflows/generate-lesson-story.yml runs this script on the server."""
+
+    @pytest.fixture(scope="class")
+    def step(self):
+        yaml = pytest.importorskip("yaml")
+        if not _WORKFLOW.exists():
+            pytest.skip("the workflow is not in this checkout")
+        workflow = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
+        steps = workflow["jobs"]["story"]["steps"]
+        return next(s for s in steps if "ssh-action" in s.get("uses", ""))
+
+    def test_a_first_run_of_module_stories_has_an_hour(self, step):
+        assert step["with"]["command_timeout"] == "60m"
+        # The SSH session outlives every wait the script does.
+        assert script.DEFAULT_TIMEOUT_S < 60 * 60
+
+    def test_it_runs_this_script_and_keeps_the_request_file_guard(self, step):
+        command = step["with"]["script"]
+        assert "scripts/generate_lesson_stories.py" in command
+        assert "test -f scripts/story_requests.json" in command
+        assert "run requests scripts/story_requests.json" in command
+
+    def test_its_copy_is_about_module_stories(self):
+        text = _WORKFLOW.read_text(encoding="utf-8") if _WORKFLOW.exists() else ""
+        if not text:
+            pytest.skip("the workflow is not in this checkout")
+        assert "module stories" in text.lower()
+        assert "Story tab" not in text and "lesson 1" not in text
