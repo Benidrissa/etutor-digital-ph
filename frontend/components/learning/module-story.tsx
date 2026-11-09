@@ -587,7 +587,7 @@ function ModuleStoryReader({ storyId, story, moduleId }: ReaderProps) {
                       {body}
                     </button>
                   ) : (
-                    <div className="flex min-h-11 items-center gap-3 px-3 py-2 text-sm opacity-70">
+                    <div className="flex min-h-11 items-center gap-3 px-3 py-2 text-sm">
                       {body}
                     </div>
                   )}
