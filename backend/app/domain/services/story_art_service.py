@@ -13,7 +13,8 @@ images are ready.
   the bible lacks from *published* hand-authored weeks (a course without a
   bible has only those). Drafts never feed the art. A story whose look of a
   bible key differs is served the bible's art; it never asks for its own.
-  A view reads no other story (:func:`serving_looks`).
+  A view judges exactly as a run plans (:func:`art_for_view`): a generated
+  story reads only the bible row, a hand-authored week the run's whole looks.
 * :func:`plan_art` is what a run must draw, and :func:`build_art_map` the
   ``art`` map the story routes attach to the document they serve (the
   contract in #2672; never stored). Both judge every image by the same rule
@@ -174,21 +175,50 @@ def look_digest(look: str) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _hero_prefix(member: Mapping[str, Any]) -> str | None:
-    """``hero`` for the learner's hero (the contract's key), else the cast id."""
+def _learner_first_name(document: Mapping[str, Any]) -> str | None:
+    """The learner's first name of a document, unless it is a ``{placeholder}``."""
+    learner = document.get("learner")
+    first = learner.get("first_name") if isinstance(learner, Mapping) else None
+    if not isinstance(first, str) or not first.strip() or "{" in first:
+        return None
+    return first.strip()
+
+
+def is_hero(member: Mapping[str, Any], first_name: str | None) -> bool:
+    """The learner's own character, by the player's rule (``cast.ts`` ``isHero``).
+
+    By role or id ``hero``, or, in a hand-authored week, the member named
+    like the learner (``learner.first_name``, when it is not a placeholder).
+    """
     if member.get("role") == "hero" or member.get("id") == "hero":
-        return "hero"
-    cast_id = member.get("id")
-    return cast_id if isinstance(cast_id, str) and cast_id.strip() else None
+        return True
+    name = member.get("name")
+    return bool(first_name) and isinstance(name, str) and name.strip() == first_name
+
+
+def _variants(member: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The member's variants that have an id."""
+    variants = member.get("variants")
+    return [
+        variant
+        for variant in (variants if isinstance(variants, list) else [])
+        if isinstance(variant, Mapping)
+        and isinstance(variant.get("id"), str)
+        and variant["id"].strip()
+    ]
 
 
 def collect_looks(documents: Iterable[Any]) -> list[ArtItem]:
     """The characters and places to draw, from story documents, deduplicated by key.
 
-    The first document that names a key wins, so pass the newest first. Only
-    the hero has ``variants``; it is drawn once per variant (``hero:girl``,
-    ``hero:boy``) and never as a bare ``hero``. Entries without a usable id or
-    look are skipped: an old story has no looks, and draws nothing.
+    Keys follow the player (``cast.ts``): the hero (:func:`is_hero`) with at
+    least two variants is drawn once per variant, ``hero:<variant id>``,
+    never as a bare id; with fewer, the player offers no choice and looks the
+    hero up by its cast id, so it is drawn once under that id, with its one
+    variant's look or its own. Every other member is drawn under its cast id
+    with its own look (``variants`` are the hero's only). The first document
+    that names a key wins, so pass the newest first. Entries without a usable
+    id or look are skipped: an old story has no looks, and draws nothing.
     """
     items: list[ArtItem] = []
     seen: set[tuple[str, str]] = set()
@@ -207,21 +237,20 @@ def collect_looks(documents: Iterable[Any]) -> list[ArtItem]:
     for document in documents:
         if not isinstance(document, Mapping):
             continue
+        first_name = _learner_first_name(document)
         cast = document.get("cast")
         for member in cast if isinstance(cast, list) else []:
             if not isinstance(member, Mapping):
                 continue
-            variants = member.get("variants")
-            if isinstance(variants, list) and variants:
-                prefix = _hero_prefix(member)
+            variants = _variants(member)
+            if is_hero(member, first_name) and len(variants) >= 2:
                 for variant in variants:
-                    if not isinstance(variant, Mapping) or prefix is None:
-                        continue
-                    variant_id = variant.get("id")
-                    if isinstance(variant_id, str) and variant_id.strip():
-                        add(KIND_CHARACTER, f"{prefix}:{variant_id.strip()}", variant.get("look"))
-            else:
-                add(KIND_CHARACTER, member.get("id"), member.get("look"))
+                    add(KIND_CHARACTER, f"hero:{variant['id'].strip()}", variant.get("look"))
+                continue
+            look = member.get("look")
+            if len(variants) == 1 and is_hero(member, first_name):
+                look = variants[0].get("look") or look
+            add(KIND_CHARACTER, member.get("id"), look)
         places = document.get("places")
         for place in places if isinstance(places, list) else []:
             if isinstance(place, Mapping):
@@ -316,9 +345,15 @@ async def load_published_week_looks(session: AsyncSession, course_id: uuid.UUID)
 
     Drafts never feed the art (an unpublished week must not change, or pay
     for, what learners see), and generated stories are told with the bible.
+    Reads each week's ``cast``, ``places`` and ``learner`` (its hero may be
+    the member named like the learner).
     """
     result = await session.execute(
-        select(StoryCourseRecord.content["cast"], StoryCourseRecord.content["places"])
+        select(
+            StoryCourseRecord.content["cast"],
+            StoryCourseRecord.content["places"],
+            StoryCourseRecord.content["learner"],
+        )
         .where(
             StoryCourseRecord.course_id == course_id,
             StoryCourseRecord.status == "published",
@@ -327,7 +362,10 @@ async def load_published_week_looks(session: AsyncSession, course_id: uuid.UUID)
         )
         .order_by(StoryCourseRecord.updated_at.desc())
     )
-    return collect_looks({"cast": cast, "places": places} for cast, places in result.all())
+    return collect_looks(
+        {"cast": cast, "places": places, "learner": learner}
+        for cast, places, learner in result.all()
+    )
 
 
 async def load_course_looks(session: AsyncSession, course_id: uuid.UUID) -> CourseLooks:
@@ -342,41 +380,51 @@ async def load_course_looks(session: AsyncSession, course_id: uuid.UUID) -> Cour
     return _merged(bible or CourseLooks(), weeks)
 
 
-@dataclass
-class ServingLooks:
-    """The looks a story view judges and dispatches with (see :func:`serving_looks`)."""
+async def load_bible_course_looks(session: AsyncSession, course_id: uuid.UUID) -> CourseLooks:
+    """:func:`load_course_looks` without the weeks: the bible's part of a run.
 
-    #: What each of the document's images is judged against.
-    accepted: dict[tuple[str, str], dict[str, str]]
-    #: What the view compares with the stored art to decide whether to dispatch:
-    #: exactly what the run would draw for these keys.
-    plan_items: list[ArtItem]
-
-
-def serving_looks(
-    document_items: list[ArtItem], bible: CourseLooks | None, *, feeds_art: bool
-) -> ServingLooks:
-    """The looks of one story view, without reading any other story.
-
-    A key of the bible is judged against the bible's look. Any other key is
-    judged against the document's own look. The view dispatches for the
-    bible's images (unless the bible is not final) and, for a published
-    hand-authored week (``feeds_art``), for its own extra keys, which is what
-    :func:`load_course_looks` gives a run.
+    For a generated story's view (a module story, a chapter): its keys are
+    the bible's, and this reads one small row, never another story.
     """
-    accepted: dict[tuple[str, str], dict[str, str]] = {}
-    plan_items: list[ArtItem] = []
-    if bible is not None:
-        accepted.update(bible.accepted)
-        if bible.final:
-            plan_items.extend(bible.items)
+    return _merged(await load_bible_looks(session, course_id) or CourseLooks(), [])
+
+
+@dataclass
+class ViewArt:
+    """What one story view shows, and the run it would start."""
+
+    art_map: ArtMap
+    #: What a run would draw now: :func:`plan_art` of the course's looks.
+    plan: list[ArtJob]
+
+
+def art_for_view(
+    document_items: list[ArtItem],
+    course: CourseLooks,
+    rows: Iterable[Any],
+    *,
+    now: datetime | None = None,
+) -> ViewArt:
+    """The art map of one story view, judged exactly as a run plans.
+
+    ``course`` is what a run draws (:func:`load_course_looks`, or its
+    bible part for a generated story). Each of the document's images is
+    judged against the course's look for its key; only a key the course
+    does not know (a draft's own) is judged against the document's look.
+    An image counts as outstanding only when the run's plan draws it: an
+    unscheduled one (a draft's own key, a bible of defaults awaiting its
+    retry) is missing, so the map never says ``pending`` for work nobody
+    will do.
+    """
+    now = now or datetime.now(UTC)
+    rows = list(rows)
+    plan = plan_art(course.items, rows, accepted=course.accepted, now=now)
+    scheduled = {(job.item.kind, job.item.key, pose) for job in plan for pose in job.poses}
+    accepted = {key: dict(looks) for key, looks in course.accepted.items()}
     for item in document_items:
-        if (item.kind, item.key) in accepted:
-            continue
-        accepted[(item.kind, item.key)] = {item.digest: item.look}
-        if feeds_art:
-            plan_items.append(item)
-    return ServingLooks(accepted=accepted, plan_items=plan_items)
+        accepted.setdefault((item.kind, item.key), {item.digest: item.look})
+    art_map = build_art_map(document_items, rows, accepted=accepted, now=now, scheduled=scheduled)
+    return ViewArt(art_map=art_map, plan=plan)
 
 
 async def load_art_rows(session: AsyncSession, course_id: uuid.UUID) -> list[StoryArt]:
@@ -463,18 +511,23 @@ def build_art_map(
     *,
     accepted: AcceptedLooks | None = None,
     now: datetime | None = None,
+    scheduled: set[tuple[str, str, str]] | None = None,
 ) -> ArtMap:
     """The contract's ``art`` map for a document whose looks are ``items``.
 
     Each image is judged by :func:`row_state` against ``accepted``, the
     course's current looks (:attr:`CourseLooks.accepted`), as :func:`plan_art`
     judges it; a key the course does not know is judged against the
-    document's own look.
+    document's own look. With ``scheduled`` (the ``(kind, key, pose)`` a run
+    would draw now), an image to draw that no run will draw counts as
+    missing, not outstanding (:func:`art_for_view`).
 
-    ``status`` is ``none`` when the document has no looks, ``ready`` when every
-    image is ready, ``pending`` when none is ready yet and some are still to be
-    drawn, and ``partial`` otherwise: some are ready, and the rest are still to
-    be drawn or failed. The player draws a placeholder for anything missing.
+    ``status`` is ``ready`` when every image is ready, ``pending`` when none is
+    ready yet and some are being drawn, ``partial`` when some are ready and the
+    rest are being drawn, failed or missing, and ``none`` when nothing is
+    ready nor being drawn (no looks, or nothing that will be drawn). The
+    player shows "being drawn" for ``pending`` only, and a placeholder for
+    anything missing.
     """
     now = now or datetime.now(UTC)
     by_item = _by_item(rows)
@@ -484,7 +537,9 @@ def build_art_map(
     for item in items:
         states = item_states(item, by_item, _accepted_for(item, accepted), now=now)
         for pose, state in states.items():
-            if state == "outstanding":
+            if state == "outstanding" and (
+                scheduled is None or (item.kind, item.key, pose) in scheduled
+            ):
                 outstanding += 1
             elif state == "ready":
                 ready += 1
@@ -495,16 +550,16 @@ def build_art_map(
                     places[item.key] = art_url(row.id)
             else:
                 failed += 1
-    total = ready + failed + outstanding
+    total = ready + failed + outstanding  # failed: failed, or not to be drawn
     status: ArtStatus
-    if total == 0:
-        status = "none"
-    elif ready == total:
+    if total and ready == total:
         status = "ready"
-    elif outstanding and not ready:
+    elif ready:
+        status = "partial"
+    elif outstanding:
         status = "pending"
     else:
-        status = "partial"
+        status = "none"
     return ArtMap(
         art={"status": status, "characters": characters, "places": places},
         outstanding=outstanding,

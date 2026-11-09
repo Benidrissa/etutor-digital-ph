@@ -197,6 +197,59 @@ class TestCollectLooks:
         keys = [item.key for item in collect_looks([DOC])]
         assert "hero:girl" in keys and "hero:boy" in keys and "hero" not in keys
 
+    def test_a_hero_with_one_variant_is_drawn_once_under_its_id(self):
+        # The player offers no choice below two variants and looks up the id.
+        doc = {"cast": [{"id": "hero", "look": "own", "variants": [{"id": "girl", "look": "v"}]}]}
+        assert collect_looks([doc]) == [ArtItem("character", "hero", "v")]
+        no_variant_look = {"cast": [{"id": "hero", "look": "own", "variants": [{"id": "girl"}]}]}
+        assert collect_looks([no_variant_look]) == [ArtItem("character", "hero", "own")]
+
+    def test_a_hero_without_variants_is_drawn_under_its_id(self):
+        doc = {"cast": [{"id": "kid", "role": "hero", "look": "own"}]}
+        assert collect_looks([doc]) == [ArtItem("character", "kid", "own")]
+
+    def test_variants_of_another_member_are_ignored(self):
+        doc = {
+            "cast": [
+                {
+                    "id": "friend",
+                    "look": "own",
+                    "variants": [{"id": "a", "look": "x"}, {"id": "b", "look": "y"}],
+                }
+            ]
+        }
+        assert collect_looks([doc]) == [ArtItem("character", "friend", "own")]
+
+    def test_the_hero_named_like_the_learner_is_keyed_hero(self):
+        # A hand-authored week names its hero after the learner (cast.ts isHero).
+        doc = {
+            "learner": {"first_name": "Nandi"},
+            "cast": [
+                {
+                    "id": "nandi",
+                    "name": "Nandi",
+                    "variants": [{"id": "girl", "look": "g"}, {"id": "boy", "look": "b"}],
+                },
+                {"id": "awa", "name": "Awa", "look": "a friend"},
+            ],
+        }
+        keys = [item.key for item in collect_looks([doc])]
+        assert keys == ["hero:girl", "hero:boy", "awa"]
+
+    def test_a_placeholder_first_name_names_no_hero(self):
+        doc = {
+            "learner": {"first_name": "{child}"},
+            "cast": [
+                {
+                    "id": "kid",
+                    "name": "{child}",
+                    "look": "own",
+                    "variants": [{"id": "girl", "look": "g"}, {"id": "boy", "look": "b"}],
+                }
+            ],
+        }
+        assert collect_looks([doc]) == [ArtItem("character", "kid", "own")]
+
     def test_a_cast_entry_without_a_look_is_skipped(self):
         assert "peer" not in {item.key for item in collect_looks([DOC])}
 
@@ -268,7 +321,8 @@ class _LooksSession:
 
     def __init__(self, bible: tuple | None = None, weeks: list[tuple] | None = None) -> None:
         self.bible = bible
-        self.weeks = weeks or []
+        #: (cast, places[, learner]) per published week, newest first.
+        self.weeks = [week if len(week) == 3 else (*week, None) for week in weeks or []]
         self.statements: list[str] = []
 
     async def execute(self, statement):
@@ -305,11 +359,24 @@ class TestLoadCourseLooks:
         items = await svc.load_published_week_looks(session, COURSE_ID)
         (sql,) = session.statements
         assert sql.startswith("SELECT story_courses.content[")
+        assert sql.count("story_courses.content[") == 3  # cast, places, learner
         assert "story_courses.status = " in sql  # published only: drafts never
         assert "story_courses.module_id IS NULL" in sql
         assert "story_courses.module_unit_id IS NULL" in sql
         assert "ORDER BY story_courses.updated_at DESC" in sql
         assert {item.key: item.look for item in items}["mentor"] == "newer"
+
+    async def test_a_weeks_hero_named_like_the_learner_is_keyed_hero(self):
+        cast = [
+            {
+                "id": "nandi",
+                "name": "Nandi",
+                "variants": [{"id": "girl", "look": "a girl"}, {"id": "boy", "look": "a boy"}],
+            }
+        ]
+        session = _LooksSession(weeks=[(cast, None, {"first_name": "Nandi"})])
+        items = await svc.load_published_week_looks(session, COURSE_ID)
+        assert [item.key for item in items] == ["hero:girl", "hero:boy"]
 
     async def test_a_run_draws_the_bible_plus_the_weeks_extra_keys(self):
         week = {"cast": [{"id": "mentor", "look": "a week's mentor"}]}
@@ -339,40 +406,66 @@ class TestLoadCourseLooks:
         # Its keys are still judged against it.
         assert ("character", "mentor") in looks.accepted
 
+    async def test_a_generated_storys_view_reads_only_the_bible(self):
+        session = _LooksSession(bible=(DOC["cast"], DOC["places"], "claude"))
+        looks = await svc.load_bible_course_looks(session, COURSE_ID)
+        assert looks.items == ALL_ITEMS
+        assert all("FROM story_courses" not in sql for sql in session.statements)
 
-class TestServingLooks:
-    def test_bible_keys_are_judged_by_the_bible_others_by_the_document(self):
-        bible = course_of(DOC)
-        doc = collect_looks(
-            [
-                {
-                    "cast": [{"id": "mentor", "look": "a different mentor"}],
-                    "places": [{"id": "clinic", "look": "a clinic"}],
-                }
-            ]
+
+class TestArtForView:
+    """A view judges, plans and reports exactly as a run (round 3, items 1-2)."""
+
+    def test_two_published_weeks_that_disagree_share_one_drawing(self):
+        # Item 1: week 2 (newer) says "mentor B", week 1 "mentor A". A run
+        # draws B; week 1's view is served B's art, ready, and plans nothing.
+        week1 = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        week2 = {"cast": [{"id": "mentor", "look": "mentor B."}]}
+        course = svc.collect_course_looks([week2, week1])  # load_course_looks' order
+        rows = ready_rows([ArtItem("character", "mentor", "mentor B.")])
+        view = svc.art_for_view(collect_looks([week1]), course, rows)
+        assert view.art_map.art["status"] == "ready"
+        assert set(view.art_map.art["characters"]["mentor"]) == set(CHARACTER_POSES)
+        assert view.plan == [] and view.art_map.outstanding == 0
+
+    def test_before_the_drawing_the_older_week_is_pending_with_work_planned(self):
+        week1 = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        week2 = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        course = svc.collect_course_looks([week2, week1])
+        view = svc.art_for_view(collect_looks([week1]), course, [])
+        assert view.art_map.art["status"] == "pending" and view.art_map.outstanding == 4
+        (job,) = view.plan
+        assert job.item.look == "mentor B"
+
+    def test_a_drafts_own_key_is_missing_not_pending(self):
+        # Item 2: a key no run will draw (a draft's own) never reads "pending".
+        draft = collect_looks([{"places": [{"id": "garden", "look": "a garden"}]}])
+        view = svc.art_for_view(draft, svc.CourseLooks(), [])
+        assert view.art_map.art["status"] == "none" and view.art_map.outstanding == 0
+        assert view.plan == []
+
+    def test_a_drafts_own_key_beside_ready_art_is_partial(self):
+        draft = collect_looks(
+            [{"cast": DOC["cast"], "places": [{"id": "garden", "look": "a garden"}]}]
         )
-        looks = svc.serving_looks(doc, bible, feeds_art=True)
-        assert looks.accepted[("character", "mentor")] == {MENTOR.digest: MENTOR.look}
-        clinic = ArtItem("place", "clinic", "a clinic")
-        assert looks.accepted[("place", "clinic")] == {clinic.digest: "a clinic"}
-        assert looks.plan_items == [*bible.items, clinic]
+        course = course_of(DOC)
+        view = svc.art_for_view(draft, course, ready_rows(ALL_ITEMS))
+        assert view.art_map.art["status"] == "partial" and view.art_map.outstanding == 0
 
-    def test_a_draft_or_a_generated_story_never_plans_its_own_keys(self):
-        doc = collect_looks([{"places": [{"id": "clinic", "look": "a clinic"}]}])
-        looks = svc.serving_looks(doc, None, feeds_art=False)
-        assert looks.plan_items == []
-        assert ("place", "clinic") in looks.accepted
+    def test_a_bible_awaiting_its_retry_is_never_pending(self):
+        # Item 2's example: a bible of defaults is judged against, never drawn.
+        course = svc._merged(svc.collect_course_looks([DOC], final=False), [])
+        view = svc.art_for_view(collect_looks([DOC]), course, [])
+        assert view.plan == []
+        assert view.art_map.art["status"] == "none" and view.art_map.outstanding == 0
 
-    def test_a_bible_awaiting_its_retry_is_not_planned(self):
-        bible = svc.collect_course_looks([DOC], final=False)
-        looks = svc.serving_looks(collect_looks([DOC]), bible, feeds_art=True)
-        assert looks.plan_items == []
-        assert looks.accepted == bible.accepted
-
-
-# --------------------------------------------------------------------------
-# Planning: digest skip, regenerate, cap
-# --------------------------------------------------------------------------
+    def test_outstanding_is_exactly_the_documents_share_of_the_plan(self):
+        course = course_of(DOC)
+        rows = ready_rows([GIRL, MARKET])
+        view = svc.art_for_view(collect_looks([DOC]), course, rows)
+        planned = {(job.item.kind, job.item.key, pose) for job in view.plan for pose in job.poses}
+        assert view.art_map.outstanding == len(planned) == 4 * 3 + 1
+        assert view.art_map.art["status"] == "partial"
 
 
 class TestPlan:
@@ -452,7 +545,7 @@ class TestTransientFailures:
         rows = [self._row(NOW + timedelta(minutes=5))]
         assert plan_art([MARKET], rows, now=NOW) == []
         result = build_art_map([MARKET], rows, now=NOW)
-        assert result.outstanding == 0 and result.art["status"] == "partial"
+        assert result.outstanding == 0 and result.art["status"] == "none"
 
     def test_after_its_wait_it_is_drawn_and_outstanding_again(self):
         rows = [self._row(NOW - timedelta(seconds=1))]
@@ -673,9 +766,10 @@ class TestArtMap:
         assert result.art["status"] == "partial" and result.outstanding == 0
         assert result.art["places"] == {}
 
-    def test_everything_failed_is_partial_not_pending(self):
+    def test_everything_failed_is_none_not_pending(self):
+        # Nothing ready and nothing being drawn: no "being drawn" chip.
         result = build_art_map([MARKET], [row(MARKET, "backdrop", status="failed")])
-        assert result.art["status"] == "partial" and result.outstanding == 0
+        assert result.art["status"] == "none" and result.outstanding == 0
 
     def test_a_failed_idle_hides_poses_drawn_before_it(self):
         rows = [row(GIRL, "idle", status="failed")] + [row(GIRL, p) for p in CHARACTER_POSES[1:]]
@@ -699,14 +793,11 @@ class TestArtMap:
         assert build_art_map(ALL_ITEMS, rows).art["status"] == "ready"
         assert plan_art(ALL_ITEMS, rows) == []
 
-    def _view(self, doc: dict, bible: dict | None, rows, *, feeds_art: bool = True):
-        """One story view: its art map and whether it would dispatch."""
-        bible_looks = course_of(bible) if bible is not None else None
-        items = collect_looks([doc])
-        looks = svc.serving_looks(items, bible_looks, feeds_art=feeds_art)
-        served = build_art_map(items, rows, accepted=looks.accepted)
-        dispatches = bool(plan_art(looks.plan_items, rows, accepted=looks.accepted))
-        return served, dispatches
+    def _view(self, doc: dict, course: dict | None, rows):
+        """One story view against the course's looks: its map, and whether it dispatches."""
+        looks = course_of(course) if course is not None else svc.CourseLooks()
+        view = svc.art_for_view(collect_looks([doc]), looks, rows)
+        return view.art_map, bool(view.plan)
 
     def test_a_document_whose_look_differs_from_the_bible_gets_the_bibles_art(self):
         # Symptom 1 of the review: the week says mentor A, the bible mentor B,
@@ -743,14 +834,15 @@ class TestArtMap:
             assert not dispatches
 
     def test_a_draft_never_dispatches_nor_changes_learners_art(self):
-        # Without a bible: the published week's art is ready; an admin's draft
-        # with another look neither dispatches nor changes the published week.
+        # Without a bible the course's looks are its published weeks: an
+        # admin's draft with another look is served the course's art, neither
+        # dispatches nor changes what learners see.
         published = {"cast": [{"id": "mentor", "look": "mentor B"}]}
         draft = {"cast": [{"id": "mentor", "look": "mentor A"}]}
         rows = ready_rows([ArtItem("character", "mentor", "mentor B")])
-        served, dispatches = self._view(draft, None, rows, feeds_art=False)
-        assert served.outstanding == 4 and not dispatches
-        served, dispatches = self._view(published, None, rows)
+        served, dispatches = self._view(draft, published, rows)
+        assert served.art["status"] == "ready" and not dispatches
+        served, dispatches = self._view(published, published, rows)
         assert served.art["status"] == "ready" and not dispatches
 
     def test_a_new_bible_is_drawn_while_old_chapters_still_say_the_old_look(self):
@@ -761,7 +853,7 @@ class TestArtMap:
         (job,) = plan_art(looks.items, rows, accepted=looks.accepted)
         assert job.item.look == "mentor N"
         # Meanwhile the old chapter is not served the stale art, and dispatches.
-        served, dispatches = self._view(old_chapter, new_bible, rows, feeds_art=False)
+        served, dispatches = self._view(old_chapter, new_bible, rows)
         assert served.outstanding == 4 and served.art["characters"] == {} and dispatches
 
     def test_a_key_the_course_lacks_is_judged_by_the_documents_own_look(self):
@@ -1807,19 +1899,32 @@ def routes():
         role="lesson",
         title={"en": "U", "fr": "U"},
     )
+    # What a run draws for the course: by default DOC's cast and places. Both
+    # loaders answer from it; ``loaders`` records which one each view used.
+    looks = AsyncMock(return_value=course_of(DOC))
+    loaders: list[str] = []
+
+    async def bible_part(db, course_id):
+        loaders.append("bible")
+        return await looks(db, course_id)
+
+    async def whole_course(db, course_id):
+        loaders.append("course")
+        return await looks(db, course_id)
+
     with (
         patch.object(api, "story_mode_enabled", return_value=True),
         patch.object(api, "load_story_units", AsyncMock(return_value=[unit])),
         patch.object(api, "find_module_story", AsyncMock(return_value=None)) as find,
         patch.object(api, "module_story_is_fresh", AsyncMock(return_value=True)),
-        # The course's bible: by default it carries DOC's cast and places.
-        patch.object(api, "load_bible_looks", AsyncMock(return_value=course_of(DOC))) as looks,
+        patch.object(api, "load_bible_course_looks", bible_part),
+        patch.object(api, "load_course_looks", whole_course),
         patch.object(api, "load_art_rows", AsyncMock(return_value=[])) as rows,
         patch.object(
             api, "dispatch_story_art_generation", AsyncMock(return_value="art-task")
         ) as dispatch,
     ):
-        yield SimpleNamespace(find=find, looks=looks, rows=rows, dispatch=dispatch)
+        yield SimpleNamespace(find=find, looks=looks, loaders=loaders, rows=rows, dispatch=dispatch)
 
 
 def _install(db: _Db, role: str = "user") -> None:
@@ -1900,21 +2005,35 @@ class TestModuleStoryArt:
         assert body["art"]["status"] == "ready"  # this story's art is complete
         routes.dispatch.assert_awaited_once_with(COURSE_ID)
 
-    async def test_a_view_reads_the_bible_never_other_stories(self, client, routes):
+    async def test_a_generated_storys_view_reads_the_bible_never_other_stories(
+        self, client, routes
+    ):
         routes.find.return_value = _story()
         _install(_Db())
-        with patch.object(svc, "load_course_looks", AsyncMock()) as course_wide:
-            await client.get(MODULE_URL)
-        course_wide.assert_not_awaited()
+        await client.get(MODULE_URL)
+        assert routes.loaders == ["bible"]
         assert routes.looks.await_args.args[1] == COURSE_ID
 
-    async def test_a_bible_awaiting_its_retry_is_not_paid_for(self, client, routes):
-        routes.looks.return_value = svc.collect_course_looks([DOC], final=False)
+    async def test_a_bible_awaiting_its_retry_is_not_paid_for_nor_pending(self, client, routes):
+        routes.looks.return_value = svc._merged(svc.collect_course_looks([DOC], final=False), [])
         routes.find.return_value = _story()
         _install(_Db())
         body = (await client.get(MODULE_URL)).json()
-        assert body["art"]["status"] == "pending"
+        # Nothing will be drawn for it: no "being drawn" chip.
+        assert body["art"]["status"] == "none"
         routes.dispatch.assert_not_awaited()
+
+    async def test_the_offline_download_never_starts_an_art_run(self, client, routes):
+        # Item 5: generate=false answers from the cache and never pays.
+        routes.find.return_value = _story()
+        _install(_Db())
+        resp = await client.get(MODULE_URL, params={"generate": "false"})
+        assert resp.status_code == 200
+        assert resp.json()["art"]["status"] == "pending"  # the map is still built
+        routes.dispatch.assert_not_awaited()
+        # The same story opened normally does start it.
+        await client.get(MODULE_URL)
+        routes.dispatch.assert_awaited_once_with(COURSE_ID)
 
     async def test_an_old_story_without_looks_has_no_art(self, client, routes):
         routes.find.return_value = _story(content={"format": "story-course/1", "cast": []})
@@ -1987,27 +2106,44 @@ class TestSlugRouteArt:
         assert resp.headers["cache-control"] == "public, max-age=3600"
         routes.dispatch.assert_awaited_once_with(COURSE_ID)
 
-    async def test_without_a_bible_a_published_week_draws_its_own_looks(self, client, routes):
-        routes.looks.return_value = None
+    async def test_a_published_weeks_view_uses_the_runs_whole_looks(self, client, routes):
+        # Without a bible the run's looks are the published weeks (this one).
         _install(_Db(self._authored()))
         resp = await client.get(self.URL)
+        assert routes.loaders == ["course"]
         assert resp.json()["art"]["status"] == "pending"
         assert resp.headers["cache-control"] == "public, no-cache"
         routes.dispatch.assert_awaited_once_with(COURSE_ID)
 
-    @pytest.mark.parametrize("bible", [None, "doc"])
-    async def test_a_draft_week_never_dispatches(self, client, routes, bible):
-        # An admin's draft with its own looks (or keys the bible lacks) must not
-        # pay for art nor change what learners see.
+    async def test_the_older_of_two_disagreeing_weeks_shares_the_drawing(self, client, routes):
+        # Item 1, end to end: week 2 (newer) says "mentor B."; this week 1
+        # says "mentor look". The run drew B. Week 1 is ready and keeps its
+        # hour, and its views dispatch nothing: no loop of empty runs.
+        newer = {"cast": [{"id": "mentor", "look": "mentor B."}]}
+        routes.looks.return_value = course_of(newer, DOC)
+        mentor_b = ArtItem("character", "mentor", "mentor B.")
+        others = [item for item in ALL_ITEMS if item.key != "mentor"]
+        routes.rows.return_value = ready_rows([*others, mentor_b])
+        _install(_Db(self._authored()))
+        for _ in range(3):
+            resp = await client.get(self.URL)
+            assert resp.json()["art"]["status"] == "ready"
+            assert resp.headers["cache-control"] == "public, max-age=3600"
+        routes.dispatch.assert_not_awaited()
+
+    @pytest.mark.parametrize("course", ["empty", "doc"])
+    async def test_a_draft_week_never_dispatches_nor_shows_pending(self, client, routes, course):
+        # An admin's draft with its own key (one the course does not know) must
+        # not pay for art, nor claim it is being drawn (nobody will draw it).
         draft = self._authored(
             status="draft",
             content={"cast": [], "places": [{"id": "clinic", "look": "a draft clinic"}]},
         )
-        routes.looks.return_value = None if bible is None else course_of(DOC)
+        routes.looks.return_value = svc.CourseLooks() if course == "empty" else course_of(DOC)
         routes.rows.return_value = ready_rows(ALL_ITEMS)
         _install(_Db(draft), role="admin")
         resp = await client.get(self.URL)
-        assert resp.json()["art"]["status"] == "pending"
+        assert resp.json()["art"]["status"] == "none"
         assert resp.headers["cache-control"] == "no-store"
         routes.dispatch.assert_not_awaited()
 
@@ -2641,7 +2777,7 @@ def test_on_postgres_the_chain_107_108_109_upgrades_and_downgrades(monkeypatch):
         command.stamp(config, "104_add_ai_usage_events")
         command.upgrade(config, "107_story_module_binding")
         command.upgrade(config, "108_story_course_bible")
-        command.upgrade(config, "head")
+        command.upgrade(config, "109_story_art")
 
         engine = sync_engine(url)
         tables = Base.metadata.tables
@@ -2687,7 +2823,7 @@ def test_on_postgres_the_chain_107_108_109_upgrades_and_downgrades(monkeypatch):
             assert "story_course_bibles" not in set(sa.inspect(engine).get_table_names())
             assert version(engine) == "107_story_module_binding"
 
-            command.upgrade(config, "head")
+            command.upgrade(config, "109_story_art")
             names = set(sa.inspect(engine).get_table_names())
             assert {"story_art", "story_course_bibles"} <= names
             assert version(engine) == "109_story_art"

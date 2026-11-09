@@ -53,14 +53,13 @@ from app.domain.models.story_course import StoryCourseRecord
 from app.domain.models.user import UserRole
 from app.domain.services.country_utils import canonicalize_country
 from app.domain.services.story_art_service import (
-    build_art_map,
+    art_for_view,
     collect_looks,
     empty_art,
     is_authored_week,
     load_art_rows,
-    load_bible_looks,
-    plan_art,
-    serving_looks,
+    load_bible_course_looks,
+    load_course_looks,
 )
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
@@ -400,56 +399,68 @@ class _ServedArt:
 
 
 async def _story_art(
-    db: AsyncSession, course_id: uuid.UUID | None, content: dict, *, feeds_art: bool
+    db: AsyncSession,
+    course_id: uuid.UUID | None,
+    content: dict,
+    *,
+    authored: bool,
+    may_dispatch: bool = True,
 ) -> _ServedArt:
     """The ``art`` map for a served story of course ``course_id`` (contract #2672).
 
     ``none`` when the document has no looks (an old story) or no course to
-    hold its art. Otherwise the ready images' URLs. A view reads the course's
-    bible (one small row) and its art rows, never another story: each image
-    is judged against the bible's look for its key, else the document's own
-    (:func:`serving_looks`), by the very rule a run plans with. The art run is
-    dispatched (deduplicated) exactly when that plan has something to draw:
-    the bible's images (unless it is a bible of defaults awaiting its retry)
-    and, for a published hand-authored week (``feeds_art``), its own extra
-    keys. A draft never dispatches. Never waits for a drawing, and never
-    fails the story: the reads run in a savepoint, so a failure leaves the
-    request's session (and the record it loaded) intact, and the story is
-    served with a ``pending`` map and nothing dispatched.
+    hold its art. Otherwise the ready images' URLs, judged exactly as a run
+    plans (:func:`art_for_view`): against what a run draws for the course.
+    A generated story (module story, chapter) reads only the course's bible
+    (one small row); a hand-authored week (``authored``) reads the run's
+    whole looks, the bible plus the published weeks, so two published weeks
+    that disagree on a look share one drawing. The art run is dispatched
+    (deduplicated) exactly when that plan has something to draw, and never
+    when ``may_dispatch`` is False (the offline download). Never waits for a
+    drawing, and never fails the story: the reads run in a savepoint, so a
+    failure leaves the request's session (and the record it loaded) intact,
+    and the story is served with a ``pending`` map and nothing dispatched.
     """
     items = collect_looks([content])
     if not items or course_id is None:
         return _ServedArt(empty_art("none"))
     try:
         async with db.begin_nested():
-            bible = await load_bible_looks(db, course_id)
+            if authored:
+                course = await load_course_looks(db, course_id)
+            else:
+                course = await load_bible_course_looks(db, course_id)
             rows = await load_art_rows(db, course_id)
     except Exception as exc:
         logger.warning("Story art unavailable", course_id=str(course_id), error=str(exc))
         return _ServedArt(empty_art("pending"), drawing=True)
-    now = datetime.now(UTC)
-    looks = serving_looks(items, bible, feeds_art=feeds_art)
-    art_map = build_art_map(items, rows, accepted=looks.accepted, now=now)
-    if plan_art(looks.plan_items, rows, accepted=looks.accepted, now=now):
+    view = art_for_view(items, course, rows, now=datetime.now(UTC))
+    if view.plan and may_dispatch:
         try:
             await dispatch_story_art_generation(course_id)
         except Exception as exc:
             logger.warning("Story art not dispatched", course_id=str(course_id), error=str(exc))
-    # The cache follows this document's own images, not other stories' work.
-    return _ServedArt(art_map.art, drawing=art_map.outstanding > 0)
+    # The cache follows this document's own scheduled images, not other stories' work.
+    return _ServedArt(view.art_map.art, drawing=view.art_map.outstanding > 0)
 
 
-async def _served(db: AsyncSession, record: StoryCourseRecord) -> tuple[dict, bool]:
+async def _served(
+    db: AsyncSession, record: StoryCourseRecord, *, may_dispatch: bool = True
+) -> tuple[dict, bool]:
     """The stored document as served (a copy with the ``art`` map, never stored).
 
     Returns it with :attr:`_ServedArt.drawing`. Everything needed from
-    ``record`` is read before the art queries run. Only a published
-    hand-authored week feeds the art with its own looks.
+    ``record`` is read before the art queries run.
     """
     content = record.content if isinstance(record.content, dict) else {}
     course_id = getattr(record, "course_id", None)
-    feeds_art = getattr(record, "status", None) == "published" and is_authored_week(record)
-    served_art = await _story_art(db, course_id, content, feeds_art=feeds_art)
+    served_art = await _story_art(
+        db,
+        course_id,
+        content,
+        authored=is_authored_week(record),
+        may_dispatch=may_dispatch,
+    )
     return {**content, "art": served_art.art}, served_art.drawing
 
 
@@ -562,7 +573,8 @@ async def get_module_story(
     record = await find_module_story(db, module_uuid, language)
     if record is not None and not force and await module_story_is_fresh(db, record, units=units):
         if record.is_valid and record.status == "published":
-            served, _drawing = await _served(db, record)
+            # generate=false (the offline download) never starts a paid art run.
+            served, _drawing = await _served(db, record, may_dispatch=generate)
             return JSONResponse(
                 content=served,
                 status_code=status.HTTP_200_OK,
