@@ -60,10 +60,17 @@ def story_art_dispatch_key(course_id: uuid.UUID | str) -> str:
     return f"story_art_dispatch:course:{course_id}"
 
 
-def story_art_lock_key(course_id: uuid.UUID) -> int:
-    """The course's advisory-lock key: a stable signed 64-bit integer."""
+#: First key of the story-art advisory locks (two int4 keys: namespace, course).
+#: PostgreSQL keeps two-key advisory locks apart from single-bigint ones, so
+#: these never collide with the story bible's lock (``story_bible._lock_key``,
+#: one bigint from the course id) or any other single-key lock.
+STORY_ART_LOCK_NAMESPACE = 0x2675
+
+
+def story_art_lock_key(course_id: uuid.UUID) -> tuple[int, int]:
+    """The course's advisory-lock key: ``(namespace, signed int4 of the course)``."""
     digest = hashlib.sha256(b"story_art:" + course_id.bytes).digest()
-    return int.from_bytes(digest[:8], "big", signed=True)
+    return STORY_ART_LOCK_NAMESPACE, int.from_bytes(digest[:4], "big", signed=True)
 
 
 @contextlib.asynccontextmanager
@@ -77,18 +84,20 @@ async def course_run_lock(engine, course_id: uuid.UUID) -> AsyncIterator[bool]:
     expired, finds it taken. A connection that dies frees it, and the task's
     engine is disposed after every run, which closes this connection.
     """
-    key = story_art_lock_key(course_id)
+    namespace, key = story_art_lock_key(course_id)
     async with engine.connect() as connection:
         connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
         taken = bool(
-            (await connection.execute(sa.select(sa.func.pg_try_advisory_lock(key)))).scalar()
+            (
+                await connection.execute(sa.select(sa.func.pg_try_advisory_lock(namespace, key)))
+            ).scalar()
         )
         try:
             yield taken
         finally:
             if taken:
                 with contextlib.suppress(Exception):
-                    await connection.execute(sa.select(sa.func.pg_advisory_unlock(key)))
+                    await connection.execute(sa.select(sa.func.pg_advisory_unlock(namespace, key)))
 
 
 @celery_app.task(

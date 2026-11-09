@@ -263,32 +263,111 @@ class TestLookDigest:
             assert look_digest("a teacher") == before
 
 
+class _LooksSession:
+    """Answers the bible query and the published-weeks query; records both."""
+
+    def __init__(self, bible: tuple | None = None, weeks: list[tuple] | None = None) -> None:
+        self.bible = bible
+        self.weeks = weeks or []
+        self.statements: list[str] = []
+
+    async def execute(self, statement):
+        sql = str(statement.compile(dialect=sa.dialects.postgresql.dialect()))
+        self.statements.append(sql)
+        if "FROM story_course_bibles" in sql:
+            return SimpleNamespace(first=lambda: self.bible)
+        assert "FROM story_courses" in sql, sql
+        return SimpleNamespace(all=lambda: list(self.weeks))
+
+
 class TestLoadCourseLooks:
-    async def test_reads_only_cast_and_places_newest_first_without_archived(self):
-        captured: list[Any] = []
+    async def test_the_bible_is_one_small_row(self):
+        session = _LooksSession(bible=(DOC["cast"], DOC["places"], "claude-opus-4-8"))
+        looks = await svc.load_bible_looks(session, COURSE_ID)
+        (sql,) = session.statements
+        # Only the bible's cast and places (and model), never a story document.
+        assert sql.startswith("SELECT story_course_bibles.content[")
+        assert "FROM story_course_bibles" in sql and "story_courses" not in sql
+        assert "story_course_bibles.course_id =" in sql
+        assert looks.items == ALL_ITEMS and looks.final is True
 
-        class Session:
-            async def execute(self, statement):
-                captured.append(statement)
-                newer = ([{"id": "mentor", "look": "newer"}], None)
-                older = (DOC["cast"], DOC["places"])
-                return SimpleNamespace(all=lambda: [newer, older])
+    async def test_no_bible_is_none(self):
+        assert await svc.load_bible_looks(_LooksSession(), COURSE_ID) is None
 
-        looks = await svc.load_course_looks(Session(), COURSE_ID)
-        sql = str(captured[0].compile(dialect=sa.dialects.postgresql.dialect()))
-        # Only the two sub-objects are selected, never the whole document.
-        assert sql.startswith("SELECT story_courses.content[") and ", story_courses.content[" in sql
-        assert "story_courses.content," not in sql and "story_courses.id" not in sql
-        # Module stories (the course bible) first, then the rest; newest first.
-        order = sql.split("ORDER BY", 1)[1]
-        assert order.index("CASE WHEN") < order.index("story_courses.updated_at DESC")
-        assert "story_courses.module_id IS NOT NULL" in order
-        assert "story_courses.module_unit_id IS NULL" in order
-        assert "story_courses.status !=" in sql
-        assert "story_courses.course_id =" in sql
-        assert {item.key: item.look for item in looks.items}["mentor"] == "newer"
-        assert len(looks.items) == len(ALL_ITEMS)
-        assert len(looks.accepted[("character", "mentor")]) == 1
+    @pytest.mark.parametrize(("model", "final"), [("defaulted", False), ("defaulted-kept", True)])
+    async def test_a_bible_of_defaults_awaiting_its_retry_is_not_final(self, model, final):
+        session = _LooksSession(bible=(DOC["cast"], DOC["places"], model))
+        assert (await svc.load_bible_looks(session, COURSE_ID)).final is final
+
+    async def test_only_published_authored_weeks_feed_the_art(self):
+        newer = ([{"id": "mentor", "look": "newer"}], None)
+        session = _LooksSession(weeks=[newer, (DOC["cast"], DOC["places"])])
+        items = await svc.load_published_week_looks(session, COURSE_ID)
+        (sql,) = session.statements
+        assert sql.startswith("SELECT story_courses.content[")
+        assert "story_courses.status = " in sql  # published only: drafts never
+        assert "story_courses.module_id IS NULL" in sql
+        assert "story_courses.module_unit_id IS NULL" in sql
+        assert "ORDER BY story_courses.updated_at DESC" in sql
+        assert {item.key: item.look for item in items}["mentor"] == "newer"
+
+    async def test_a_run_draws_the_bible_plus_the_weeks_extra_keys(self):
+        week = {"cast": [{"id": "mentor", "look": "a week's mentor"}]}
+        week["places"] = [{"id": "clinic", "look": "a clinic"}]
+        session = _LooksSession(
+            bible=(DOC["cast"], DOC["places"], "claude"), weeks=[(week["cast"], week["places"])]
+        )
+        looks = await svc.load_course_looks(session, COURSE_ID)
+        drawn = {item.key: item.look for item in looks.items}
+        assert drawn["mentor"] == MENTOR.look  # the bible's, not the week's
+        assert drawn["clinic"] == "a clinic"  # a key the bible lacks
+        assert set(drawn) == {item.key for item in ALL_ITEMS} | {"clinic"}
+        kinds = [item.kind for item in looks.items]
+        assert kinds == sorted(kinds, key=lambda kind: kind != "character")
+
+    async def test_without_a_bible_the_published_weeks_are_the_looks(self):
+        session = _LooksSession(weeks=[(DOC["cast"], DOC["places"])])
+        looks = await svc.load_course_looks(session, COURSE_ID)
+        assert looks.items == ALL_ITEMS and looks.final is True
+
+    async def test_a_bible_awaiting_its_retry_draws_nothing_of_its_own(self):
+        extra = ([], [{"id": "clinic", "look": "a clinic"}])
+        session = _LooksSession(bible=(DOC["cast"], DOC["places"], "defaulted"), weeks=[extra])
+        looks = await svc.load_course_looks(session, COURSE_ID)
+        assert looks.final is False
+        assert [item.key for item in looks.items] == ["clinic"]
+        # Its keys are still judged against it.
+        assert ("character", "mentor") in looks.accepted
+
+
+class TestServingLooks:
+    def test_bible_keys_are_judged_by_the_bible_others_by_the_document(self):
+        bible = course_of(DOC)
+        doc = collect_looks(
+            [
+                {
+                    "cast": [{"id": "mentor", "look": "a different mentor"}],
+                    "places": [{"id": "clinic", "look": "a clinic"}],
+                }
+            ]
+        )
+        looks = svc.serving_looks(doc, bible, feeds_art=True)
+        assert looks.accepted[("character", "mentor")] == {MENTOR.digest: MENTOR.look}
+        clinic = ArtItem("place", "clinic", "a clinic")
+        assert looks.accepted[("place", "clinic")] == {clinic.digest: "a clinic"}
+        assert looks.plan_items == [*bible.items, clinic]
+
+    def test_a_draft_or_a_generated_story_never_plans_its_own_keys(self):
+        doc = collect_looks([{"places": [{"id": "clinic", "look": "a clinic"}]}])
+        looks = svc.serving_looks(doc, None, feeds_art=False)
+        assert looks.plan_items == []
+        assert ("place", "clinic") in looks.accepted
+
+    def test_a_bible_awaiting_its_retry_is_not_planned(self):
+        bible = svc.collect_course_looks([DOC], final=False)
+        looks = svc.serving_looks(collect_looks([DOC]), bible, feeds_art=True)
+        assert looks.plan_items == []
+        assert looks.accepted == bible.accepted
 
 
 # --------------------------------------------------------------------------
@@ -620,56 +699,70 @@ class TestArtMap:
         assert build_art_map(ALL_ITEMS, rows).art["status"] == "ready"
         assert plan_art(ALL_ITEMS, rows) == []
 
-    def test_a_document_with_a_replaced_look_is_served_the_courses_art(self):
-        # Symptom 1 of the review: week1 says mentor A, the newest story says
-        # mentor B and the art was drawn from B. week1 is served B's art,
-        # nothing is outstanding, and the plan is empty: no dispatch storm.
-        week1 = {"cast": [{"id": "mentor", "look": "mentor A"}]}
-        week2 = {"cast": [{"id": "mentor", "look": "mentor B"}]}
-        mentor_b = ArtItem("character", "mentor", "mentor B")
-        looks = course_of(week2, week1)
-        rows = ready_rows([mentor_b])
-        served = build_art_map(collect_looks([week1]), rows, accepted=looks.accepted)
-        assert served.art["status"] == "ready" and served.outstanding == 0
-        assert plan_art(looks.items, rows, accepted=looks.accepted) == []
+    def _view(self, doc: dict, bible: dict | None, rows, *, feeds_art: bool = True):
+        """One story view: its art map and whether it would dispatch."""
+        bible_looks = course_of(bible) if bible is not None else None
+        items = collect_looks([doc])
+        looks = svc.serving_looks(items, bible_looks, feeds_art=feeds_art)
+        served = build_art_map(items, rows, accepted=looks.accepted)
+        dispatches = bool(plan_art(looks.plan_items, rows, accepted=looks.accepted))
+        return served, dispatches
 
-    def test_outstanding_matches_what_the_course_plan_draws(self):
-        week1 = {"cast": [{"id": "mentor", "look": "mentor A"}]}
-        week2 = {"cast": [{"id": "mentor", "look": "mentor B"}]}
-        looks = course_of(week2, week1)
-        # Art of a look no live story uses: both say "draw it".
+    def test_a_document_whose_look_differs_from_the_bible_gets_the_bibles_art(self):
+        # Symptom 1 of the review: the week says mentor A, the bible mentor B,
+        # and the art was drawn from B. The week is served B's art, nothing is
+        # outstanding, and nothing is dispatched: no dispatch storm.
+        week = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        bible = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        rows = ready_rows([ArtItem("character", "mentor", "mentor B")])
+        served, dispatches = self._view(week, bible, rows)
+        assert served.art["status"] == "ready" and served.outstanding == 0
+        assert not dispatches
+
+    def test_outstanding_matches_what_the_run_draws(self):
+        # Art of a look the bible no longer has: the view and the run agree.
+        bible = {"cast": [{"id": "mentor", "look": "mentor B"}]}
         rows = ready_rows([ArtItem("character", "mentor", "mentor Z")])
-        served = build_art_map(collect_looks([week1]), rows, accepted=looks.accepted)
-        assert served.outstanding == 4
+        served, dispatches = self._view(bible, bible, rows)
+        assert served.outstanding == 4 and dispatches
+        looks = course_of(bible)
         (job,) = plan_art(looks.items, rows, accepted=looks.accepted)
         assert job.item.look == "mentor B"
 
     def test_stories_that_disagree_never_make_the_art_flip(self):
-        # Symptom 2: a module story (the bible) says mentor A; an authored week
-        # and a lesson chapter say mentor B and are written again and again.
-        # The course look stays the bible's (module stories come first,
-        # whatever the write order), so no write and no view ever redraws it.
+        # Symptom 2: the bible says mentor A; a week and a chapter say B and C
+        # and are written again and again. Their looks never reach a run (the
+        # bible has the key), so no write and no view ever redraws it.
         bible = {"cast": [{"id": "mentor", "look": "mentor A"}]}
         week = {"cast": [{"id": "mentor", "look": "mentor B"}]}
         chapter = {"cast": [{"id": "mentor", "look": "mentor C"}]}
         rows = ready_rows([ArtItem("character", "mentor", "mentor A")])
-        for others_newest_first in ((week, chapter), (chapter, week), (week, chapter)):
-            looks = course_of(bible, *others_newest_first)
-            assert plan_art(looks.items, rows, accepted=looks.accepted) == []
-            for doc in (bible, *others_newest_first):
-                served = build_art_map(collect_looks([doc]), rows, accepted=looks.accepted)
-                assert served.art["status"] == "ready" and served.outstanding == 0
+        for doc in (bible, week, chapter, week, chapter):
+            served, dispatches = self._view(doc, bible, rows)
+            assert served.art["status"] == "ready" and served.outstanding == 0
+            assert not dispatches
+
+    def test_a_draft_never_dispatches_nor_changes_learners_art(self):
+        # Without a bible: the published week's art is ready; an admin's draft
+        # with another look neither dispatches nor changes the published week.
+        published = {"cast": [{"id": "mentor", "look": "mentor B"}]}
+        draft = {"cast": [{"id": "mentor", "look": "mentor A"}]}
+        rows = ready_rows([ArtItem("character", "mentor", "mentor B")])
+        served, dispatches = self._view(draft, None, rows, feeds_art=False)
+        assert served.outstanding == 4 and not dispatches
+        served, dispatches = self._view(published, None, rows)
+        assert served.art["status"] == "ready" and not dispatches
 
     def test_a_new_bible_is_drawn_while_old_chapters_still_say_the_old_look(self):
         new_bible = {"cast": [{"id": "mentor", "look": "mentor N"}]}
         old_chapter = {"cast": [{"id": "mentor", "look": "mentor A"}]}
         rows = ready_rows([ArtItem("character", "mentor", "mentor A")])
-        looks = course_of(new_bible, old_chapter)
+        looks = course_of(new_bible)
         (job,) = plan_art(looks.items, rows, accepted=looks.accepted)
         assert job.item.look == "mentor N"
-        # Meanwhile the old chapter is not served the stale art.
-        served = build_art_map(collect_looks([old_chapter]), rows, accepted=looks.accepted)
-        assert served.outstanding == 4 and served.art["characters"] == {}
+        # Meanwhile the old chapter is not served the stale art, and dispatches.
+        served, dispatches = self._view(old_chapter, new_bible, rows, feeds_art=False)
+        assert served.outstanding == 4 and served.art["characters"] == {} and dispatches
 
     def test_a_key_the_course_lacks_is_judged_by_the_documents_own_look(self):
         rows = ready_rows([MARKET])
@@ -1719,7 +1812,8 @@ def routes():
         patch.object(api, "load_story_units", AsyncMock(return_value=[unit])),
         patch.object(api, "find_module_story", AsyncMock(return_value=None)) as find,
         patch.object(api, "module_story_is_fresh", AsyncMock(return_value=True)),
-        patch.object(api, "load_course_looks", AsyncMock(return_value=course_of(DOC))) as looks,
+        # The course's bible: by default it carries DOC's cast and places.
+        patch.object(api, "load_bible_looks", AsyncMock(return_value=course_of(DOC))) as looks,
         patch.object(api, "load_art_rows", AsyncMock(return_value=[])) as rows,
         patch.object(
             api, "dispatch_story_art_generation", AsyncMock(return_value="art-task")
@@ -1780,13 +1874,12 @@ class TestModuleStoryArt:
         assert set(body["art"]["characters"]) == {"hero:girl"}
         routes.dispatch.assert_awaited_once()
 
-    async def test_a_story_whose_look_another_story_replaced_dispatches_nothing(
-        self, client, routes
-    ):
-        # The served (older) story says "mentor look"; the newest says "mentor B",
-        # and the art was drawn from it. Nothing for a run to draw: no dispatch.
-        newer = {"cast": [{"id": "mentor", "look": "mentor B"}]}
-        routes.looks.return_value = course_of(newer, DOC)
+    async def test_a_story_whose_look_the_bible_replaced_dispatches_nothing(self, client, routes):
+        # The served (older) story says "mentor look"; the bible says "mentor
+        # B", and the art was drawn from it. Nothing for a run to draw.
+        bible = {"cast": [{"id": "mentor", "look": "mentor B"}], "places": DOC["places"]}
+        bible["cast"] = [*DOC["cast"][:1], bible["cast"][0], *DOC["cast"][2:]]
+        routes.looks.return_value = course_of(bible)
         mentor_b = ArtItem("character", "mentor", "mentor B")
         others = [item for item in ALL_ITEMS if item.key != "mentor"]
         routes.rows.return_value = ready_rows([*others, mentor_b])
@@ -1797,15 +1890,31 @@ class TestModuleStoryArt:
         assert set(body["art"]["characters"]["mentor"]) == set(CHARACTER_POSES)
         routes.dispatch.assert_not_awaited()
 
-    async def test_work_elsewhere_in_the_course_is_dispatched(self, client, routes):
-        other = {"places": [{"id": "clinic", "look": "a clinic"}]}
-        routes.looks.return_value = course_of(other, DOC)
+    async def test_bible_work_this_story_does_not_show_is_still_dispatched(self, client, routes):
+        bible = {**DOC, "places": [*DOC["places"], {"id": "clinic", "look": "a clinic"}]}
+        routes.looks.return_value = course_of(bible)
         routes.rows.return_value = ready_rows(ALL_ITEMS)
         routes.find.return_value = _story()
         _install(_Db())
         body = (await client.get(MODULE_URL)).json()
         assert body["art"]["status"] == "ready"  # this story's art is complete
         routes.dispatch.assert_awaited_once_with(COURSE_ID)
+
+    async def test_a_view_reads_the_bible_never_other_stories(self, client, routes):
+        routes.find.return_value = _story()
+        _install(_Db())
+        with patch.object(svc, "load_course_looks", AsyncMock()) as course_wide:
+            await client.get(MODULE_URL)
+        course_wide.assert_not_awaited()
+        assert routes.looks.await_args.args[1] == COURSE_ID
+
+    async def test_a_bible_awaiting_its_retry_is_not_paid_for(self, client, routes):
+        routes.looks.return_value = svc.collect_course_looks([DOC], final=False)
+        routes.find.return_value = _story()
+        _install(_Db())
+        body = (await client.get(MODULE_URL)).json()
+        assert body["art"]["status"] == "pending"
+        routes.dispatch.assert_not_awaited()
 
     async def test_an_old_story_without_looks_has_no_art(self, client, routes):
         routes.find.return_value = _story(content={"format": "story-course/1", "cast": []})
@@ -1863,6 +1972,44 @@ class TestSlugRouteArt:
         resp = await client.get(self.URL)
         assert resp.json()["art"]["status"] == "ready"
         assert resp.headers["cache-control"] == "public, max-age=3600"
+
+    async def test_a_ready_week_keeps_the_hour_while_other_stories_art_is_drawn(
+        self, client, routes
+    ):
+        # Item 7: the bible has a place this week does not show and that is not
+        # drawn yet. A run is dispatched, but this week's map cannot change.
+        bible = {**DOC, "places": [*DOC["places"], {"id": "clinic", "look": "a clinic"}]}
+        routes.looks.return_value = course_of(bible)
+        routes.rows.return_value = ready_rows(ALL_ITEMS)
+        _install(_Db(self._authored()))
+        resp = await client.get(self.URL)
+        assert resp.json()["art"]["status"] == "ready"
+        assert resp.headers["cache-control"] == "public, max-age=3600"
+        routes.dispatch.assert_awaited_once_with(COURSE_ID)
+
+    async def test_without_a_bible_a_published_week_draws_its_own_looks(self, client, routes):
+        routes.looks.return_value = None
+        _install(_Db(self._authored()))
+        resp = await client.get(self.URL)
+        assert resp.json()["art"]["status"] == "pending"
+        assert resp.headers["cache-control"] == "public, no-cache"
+        routes.dispatch.assert_awaited_once_with(COURSE_ID)
+
+    @pytest.mark.parametrize("bible", [None, "doc"])
+    async def test_a_draft_week_never_dispatches(self, client, routes, bible):
+        # An admin's draft with its own looks (or keys the bible lacks) must not
+        # pay for art nor change what learners see.
+        draft = self._authored(
+            status="draft",
+            content={"cast": [], "places": [{"id": "clinic", "look": "a draft clinic"}]},
+        )
+        routes.looks.return_value = None if bible is None else course_of(DOC)
+        routes.rows.return_value = ready_rows(ALL_ITEMS)
+        _install(_Db(draft), role="admin")
+        resp = await client.get(self.URL)
+        assert resp.json()["art"]["status"] == "pending"
+        assert resp.headers["cache-control"] == "no-store"
+        routes.dispatch.assert_not_awaited()
 
     async def test_a_final_partial_keeps_the_hour(self, client, routes):
         # One image failed for good: nothing is being drawn, so nothing changes.
@@ -2099,11 +2246,20 @@ class TestTask:
         run_task(str(COURSE_ID), dedup_key=KEY)
         assert task_wiring.held == set()
 
-    def test_the_lock_key_is_stable_per_course_and_a_signed_bigint(self):
-        key = story_art_task.story_art_lock_key(COURSE_ID)
-        assert key == story_art_task.story_art_lock_key(uuid.UUID(str(COURSE_ID)))
-        assert key != story_art_task.story_art_lock_key(uuid.uuid4())
-        assert -(2**63) <= key < 2**63
+    def test_the_lock_key_is_stable_per_course_and_two_int4(self):
+        namespace, key = story_art_task.story_art_lock_key(COURSE_ID)
+        assert (namespace, key) == story_art_task.story_art_lock_key(uuid.UUID(str(COURSE_ID)))
+        assert key != story_art_task.story_art_lock_key(uuid.uuid4())[1]
+        assert namespace == story_art_task.STORY_ART_LOCK_NAMESPACE
+        assert -(2**31) <= namespace < 2**31 and -(2**31) <= key < 2**31
+
+    def test_the_lock_never_shares_a_key_with_the_bibles(self):
+        # The bible locks one bigint; story art locks two int4 keys. PostgreSQL
+        # keeps the two key spaces apart, so they can never collide.
+        from app.domain.services import story_bible
+
+        assert isinstance(story_bible._lock_key(COURSE_ID), int)
+        assert isinstance(story_art_task.story_art_lock_key(COURSE_ID), tuple)
 
     def test_the_hold_reports_the_scripts_answer(self):
         from app.tasks import content_generation
@@ -2248,6 +2404,7 @@ def test_on_postgres_a_run_stores_skips_and_redraws_under_new_ids():
 
     from app.domain.models import Base
     from app.domain.models.course import Course
+    from app.domain.models.story_bible import StoryCourseBible
     from app.domain.models.story_course import StoryCourseRecord
     from tests._story_db import create_tables, scratch_database, story_tables
 
@@ -2269,17 +2426,28 @@ def test_on_postgres_a_run_stores_skips_and_redraws_under_new_ids():
                         )
                     )
                     await session.flush()
-                    story = StoryCourseRecord(
-                        slug=f"week-{course_id.hex[:8]}",
+                    # The course's bible carries the looks (#2674) ...
+                    bible = StoryCourseBible(
+                        id=uuid.uuid4(),
                         course_id=course_id,
-                        course_label="Course",
-                        week=1,
-                        title={"en": "T", "fr": "T"},
-                        languages={"target": "en", "home": "fr"},
-                        format_version="story-course/1",
-                        content=SMALL_DOC,
+                        content={**SMALL_DOC, "facts": []},
+                        digest="0" * 64,
+                        model="claude-opus-4-8",
                     )
-                    session.add(story)
+                    session.add(bible)
+                    # ... and a draft week with its own extra place must not feed it.
+                    session.add(
+                        StoryCourseRecord(
+                            slug=f"week-{course_id.hex[:8]}",
+                            course_id=course_id,
+                            course_label="Course",
+                            week=1,
+                            title={"en": "T", "fr": "T"},
+                            languages={"target": "en", "home": "fr"},
+                            format_version="story-course/1",
+                            content={"places": [{"id": "garden", "look": "a draft garden"}]},
+                        )
+                    )
                     await session.commit()
 
                 async def run(images: FakeImages) -> dict:
@@ -2296,7 +2464,8 @@ def test_on_postgres_a_run_stores_skips_and_redraws_under_new_ids():
                 assert {(r.key, r.pose) for r in rows} == {
                     *(("mentor", pose) for pose in CHARACTER_POSES),
                     ("market", "backdrop"),
-                }
+                }  # nothing of the draft's garden
+                assert looks.final is True
                 assert build_art_map(looks.items, rows, accepted=looks.accepted).art == {
                     "status": "ready",
                     "characters": {
@@ -2322,7 +2491,7 @@ def test_on_postgres_a_run_stores_skips_and_redraws_under_new_ids():
 
                 # The place's look changed: only its backdrop is redrawn, under a new id.
                 async with maker() as session:
-                    record = await session.get(StoryCourseRecord, story.id)
+                    record = await session.get(StoryCourseBible, bible.id)
                     record.content = {**SMALL_DOC, "places": [{"id": "market", "look": "new"}]}
                     await session.commit()
                 third_images = FakeImages()
@@ -2448,3 +2617,79 @@ def test_on_postgres_the_course_lock_lets_one_run_in():
                 await second.dispose()
 
         asyncio.run(scenario())
+
+
+def test_on_postgres_the_chain_107_108_109_upgrades_and_downgrades(monkeypatch):
+    """107 -> 108 (the bible, #2674) -> 109 (story art), down again, and up again."""
+    from alembic import command
+    from alembic.config import Config
+
+    from app.domain.models import Base
+    from app.infrastructure.config.settings import settings
+    from tests._story_db import create_tables, scratch_database, story_tables, sync_engine
+
+    def version(engine: sa.Engine) -> str:
+        with engine.connect() as conn:
+            return conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
+
+    with scratch_database("story_mig109") as url:
+        # The tables 105-109 reference come from the models; 105-109 then run.
+        create_tables(url, story_tables(without={"story_courses", "story_course_bibles"}))
+        monkeypatch.setattr(settings, "database_url", url)
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATION_109.parents[1]))
+        command.stamp(config, "104_add_ai_usage_events")
+        command.upgrade(config, "107_story_module_binding")
+        command.upgrade(config, "108_story_course_bible")
+        command.upgrade(config, "head")
+
+        engine = sync_engine(url)
+        tables = Base.metadata.tables
+        art = tables["story_art"]
+        course_id = uuid.uuid4()
+        values = {
+            "course_id": course_id,
+            "kind": "place",
+            "key": "market",
+            "pose": "backdrop",
+            "look_digest": "0" * 64,
+            "status": "ready",
+        }
+        try:
+            assert version(engine) == "109_story_art"
+            with engine.begin() as conn:
+                conn.execute(
+                    tables["courses"]
+                    .insert()
+                    .values(id=course_id, slug="c-109", title_fr="C", title_en="C")
+                )
+                conn.execute(art.insert().values(id=uuid.uuid4(), **values))
+                stored = conn.execute(sa.select(art.c.art_version, art.c.failed_runs)).one()
+                assert tuple(stored) == (1, 0)  # server defaults
+            # One row per (course, kind, key, pose), and the CHECK constraints.
+            with pytest.raises(sa.exc.IntegrityError), engine.begin() as conn:
+                conn.execute(art.insert().values(id=uuid.uuid4(), **values))
+            with pytest.raises(sa.exc.IntegrityError), engine.begin() as conn:
+                conn.execute(art.insert().values(id=uuid.uuid4(), **{**values, "pose": "walk"}))
+            with pytest.raises(sa.exc.IntegrityError), engine.begin() as conn:
+                bad = {**values, "key": "school", "status": "pending"}
+                conn.execute(art.insert().values(id=uuid.uuid4(), **bad))
+            # Deleted with its course.
+            with engine.begin() as conn:
+                conn.execute(tables["courses"].delete().where(tables["courses"].c.id == course_id))
+                assert conn.execute(sa.text("SELECT count(*) FROM story_art")).scalar_one() == 0
+
+            command.downgrade(config, "108_story_course_bible")
+            names = set(sa.inspect(engine).get_table_names())
+            assert "story_art" not in names and "story_course_bibles" in names
+            assert version(engine) == "108_story_course_bible"
+            command.downgrade(config, "107_story_module_binding")
+            assert "story_course_bibles" not in set(sa.inspect(engine).get_table_names())
+            assert version(engine) == "107_story_module_binding"
+
+            command.upgrade(config, "head")
+            names = set(sa.inspect(engine).get_table_names())
+            assert {"story_art", "story_course_bibles"} <= names
+            assert version(engine) == "109_story_art"
+        finally:
+            engine.dispose()

@@ -56,9 +56,11 @@ from app.domain.services.story_art_service import (
     build_art_map,
     collect_looks,
     empty_art,
+    is_authored_week,
     load_art_rows,
-    load_course_looks,
+    load_bible_looks,
     plan_art,
+    serving_looks,
 )
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import (
@@ -392,22 +394,27 @@ class _ServedArt:
     """The ``art`` map of a served story, and whether it may still change soon."""
 
     art: dict
-    #: A run has something to draw for the course (one was dispatched or
-    #: joined), or the art could not be read: the map is not final yet.
+    #: This document has images a run would draw now (one was dispatched or
+    #: joined), or the art could not be read: its map is not final yet.
     drawing: bool = False
 
 
-async def _story_art(db: AsyncSession, course_id: uuid.UUID | None, content: dict) -> _ServedArt:
+async def _story_art(
+    db: AsyncSession, course_id: uuid.UUID | None, content: dict, *, feeds_art: bool
+) -> _ServedArt:
     """The ``art`` map for a served story of course ``course_id`` (contract #2672).
 
     ``none`` when the document has no looks (an old story) or no course to
-    hold its art. Otherwise the ready images' URLs. The document's images are
-    judged against the course's current looks, by the very rule the run plans
-    with, and the course's art run is dispatched (deduplicated) exactly when
-    that plan has something to draw: never for a document whose look another
-    story has replaced, and never for nothing. Never waits for a drawing, and
-    never fails the story: the reads run in a savepoint, so a failure leaves
-    the request's session (and the record it loaded) intact, and the story is
+    hold its art. Otherwise the ready images' URLs. A view reads the course's
+    bible (one small row) and its art rows, never another story: each image
+    is judged against the bible's look for its key, else the document's own
+    (:func:`serving_looks`), by the very rule a run plans with. The art run is
+    dispatched (deduplicated) exactly when that plan has something to draw:
+    the bible's images (unless it is a bible of defaults awaiting its retry)
+    and, for a published hand-authored week (``feeds_art``), its own extra
+    keys. A draft never dispatches. Never waits for a drawing, and never
+    fails the story: the reads run in a savepoint, so a failure leaves the
+    request's session (and the record it loaded) intact, and the story is
     served with a ``pending`` map and nothing dispatched.
     """
     items = collect_looks([content])
@@ -415,30 +422,34 @@ async def _story_art(db: AsyncSession, course_id: uuid.UUID | None, content: dic
         return _ServedArt(empty_art("none"))
     try:
         async with db.begin_nested():
-            looks = await load_course_looks(db, course_id)
+            bible = await load_bible_looks(db, course_id)
             rows = await load_art_rows(db, course_id)
     except Exception as exc:
         logger.warning("Story art unavailable", course_id=str(course_id), error=str(exc))
         return _ServedArt(empty_art("pending"), drawing=True)
     now = datetime.now(UTC)
+    looks = serving_looks(items, bible, feeds_art=feeds_art)
     art_map = build_art_map(items, rows, accepted=looks.accepted, now=now)
-    plan = plan_art(looks.items, rows, accepted=looks.accepted, now=now)
-    if plan:
+    if plan_art(looks.plan_items, rows, accepted=looks.accepted, now=now):
         try:
             await dispatch_story_art_generation(course_id)
         except Exception as exc:
             logger.warning("Story art not dispatched", course_id=str(course_id), error=str(exc))
-    return _ServedArt(art_map.art, drawing=bool(plan))
+    # The cache follows this document's own images, not other stories' work.
+    return _ServedArt(art_map.art, drawing=art_map.outstanding > 0)
 
 
 async def _served(db: AsyncSession, record: StoryCourseRecord) -> tuple[dict, bool]:
     """The stored document as served (a copy with the ``art`` map, never stored).
 
     Returns it with :attr:`_ServedArt.drawing`. Everything needed from
-    ``record`` is read before the art queries run.
+    ``record`` is read before the art queries run. Only a published
+    hand-authored week feeds the art with its own looks.
     """
     content = record.content if isinstance(record.content, dict) else {}
-    served_art = await _story_art(db, getattr(record, "course_id", None), content)
+    course_id = getattr(record, "course_id", None)
+    feeds_art = getattr(record, "status", None) == "published" and is_authored_week(record)
+    served_art = await _story_art(db, course_id, content, feeds_art=feeds_art)
     return {**content, "art": served_art.art}, served_art.drawing
 
 

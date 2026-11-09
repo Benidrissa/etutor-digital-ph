@@ -8,10 +8,12 @@ images are ready.
 * :func:`collect_looks` reads the looks out of story documents: ``cast[].look``
   (keyed by cast id), each ``cast[].variants[].look`` of the hero (keyed
   ``hero:<variant id>``) and ``places[].look`` (keyed by place id).
-  :func:`load_course_looks` gives each key one course-level look, from the
-  course's live stories: module stories (which carry the course bible) first,
-  then the others, newest first. A story whose look differs is served the
-  course's art; it never asks for its own.
+  The course-level looks come from the course's story bible (#2674, one small
+  row): :func:`load_course_looks` gives a run the bible's looks, plus the keys
+  the bible lacks from *published* hand-authored weeks (a course without a
+  bible has only those). Drafts never feed the art. A story whose look of a
+  bible key differs is served the bible's art; it never asks for its own.
+  A view reads no other story (:func:`serving_looks`).
 * :func:`plan_art` is what a run must draw, and :func:`build_art_map` the
   ``art`` map the story routes attach to the document they serve (the
   contract in #2672; never stored). Both judge every image by the same rule
@@ -43,7 +45,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-import sqlalchemy as sa
 import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -239,47 +240,143 @@ class CourseLooks:
 
     ``items`` is what a run draws; ``accepted`` maps each ``(kind, key)`` to
     ``{digest: look}`` of that look, the form :func:`row_state` judges with.
+    ``final`` is False while the looks come from a bible of defaults waiting
+    for its retry (:data:`app.domain.services.story_bible.DEFAULTED`): it is
+    likely to be replaced, so no art is paid for it.
     """
 
     items: list[ArtItem] = field(default_factory=list)
     accepted: dict[tuple[str, str], dict[str, str]] = field(default_factory=dict)
+    final: bool = True
+
+    def has(self, item: ArtItem) -> bool:
+        return (item.kind, item.key) in self.accepted
 
 
-def collect_course_looks(documents: Iterable[Any]) -> CourseLooks:
+def collect_course_looks(documents: Iterable[Any], *, final: bool = True) -> CourseLooks:
     """:class:`CourseLooks` of ``documents``, given in authority order (first wins)."""
     items = collect_looks(documents)
     return CourseLooks(
         items=items,
         accepted={(item.kind, item.key): {item.digest: item.look} for item in items},
+        final=final,
     )
 
 
-async def load_course_looks(session: AsyncSession, course_id: uuid.UUID) -> CourseLooks:
-    """The course-level looks, from every live story of the course.
+def _merged(first: CourseLooks, extra: Iterable[ArtItem]) -> CourseLooks:
+    """``first`` plus the ``extra`` items whose keys it lacks (characters first).
 
-    Authority order: generated module stories first (they carry the course
-    bible, #2674), then every other story (lesson chapters, hand-authored
-    weeks), each newest first. So a key's look follows the bible as soon as
-    one module story carries a new one, and a chapter or an authored week
-    that disagrees never makes the art flip; it only supplies keys the module
-    stories lack. Reads only each document's ``cast`` and ``places``, not the
-    whole document. Archived stories are left out.
+    ``first``'s own items are drawn only when it is final: a bible of defaults
+    waiting for its retry is judged against (its keys stay its own) but not
+    paid for.
     """
-    is_module_story = sa.and_(
-        StoryCourseRecord.module_id.is_not(None), StoryCourseRecord.module_unit_id.is_(None)
+    items = list(first.items) if first.final else []
+    accepted = {key: dict(looks) for key, looks in first.accepted.items()}
+    for item in extra:
+        if (item.kind, item.key) not in accepted:
+            items.append(item)
+            accepted[(item.kind, item.key)] = {item.digest: item.look}
+    items.sort(key=lambda item: item.kind != KIND_CHARACTER)
+    return CourseLooks(items=items, accepted=accepted, final=first.final)
+
+
+async def load_bible_looks(session: AsyncSession, course_id: uuid.UUID) -> CourseLooks | None:
+    """The looks of the course's story bible (#2674), or None without a bible.
+
+    The bible is the course's one cast and set of places; every module story
+    is told with it. One small row: only its ``cast`` and ``places`` are read.
+    """
+    from app.domain.models.story_bible import StoryCourseBible
+    from app.domain.services.story_bible import DEFAULTED
+
+    row = (
+        await session.execute(
+            select(
+                StoryCourseBible.content["cast"],
+                StoryCourseBible.content["places"],
+                StoryCourseBible.model,
+            ).where(StoryCourseBible.course_id == course_id)
+        )
+    ).first()
+    if row is None:
+        return None
+    cast, places, model = row
+    return collect_course_looks([{"cast": cast, "places": places}], final=model != DEFAULTED)
+
+
+def is_authored_week(record: Any) -> bool:
+    """A hand-authored week: a story bound to no module (not generated)."""
+    return getattr(record, "module_id", None) is None and (
+        getattr(record, "module_unit_id", None) is None
     )
+
+
+async def load_published_week_looks(session: AsyncSession, course_id: uuid.UUID) -> list[ArtItem]:
+    """The looks of the course's *published* hand-authored weeks, newest first.
+
+    Drafts never feed the art (an unpublished week must not change, or pay
+    for, what learners see), and generated stories are told with the bible.
+    """
     result = await session.execute(
         select(StoryCourseRecord.content["cast"], StoryCourseRecord.content["places"])
         .where(
             StoryCourseRecord.course_id == course_id,
-            StoryCourseRecord.status != "archived",
+            StoryCourseRecord.status == "published",
+            StoryCourseRecord.module_id.is_(None),
+            StoryCourseRecord.module_unit_id.is_(None),
         )
-        .order_by(
-            sa.case((is_module_story, 0), else_=1),
-            StoryCourseRecord.updated_at.desc(),
-        )
+        .order_by(StoryCourseRecord.updated_at.desc())
     )
-    return collect_course_looks({"cast": cast, "places": places} for cast, places in result.all())
+    return collect_looks({"cast": cast, "places": places} for cast, places in result.all())
+
+
+async def load_course_looks(session: AsyncSession, course_id: uuid.UUID) -> CourseLooks:
+    """What a run draws for the course: the bible, then published weeks' extra keys.
+
+    With a bible, its looks are the course's; a published hand-authored week
+    only adds keys the bible lacks. Without one (a course of hand-authored
+    weeks only), the published weeks' looks, the newest week first.
+    """
+    bible = await load_bible_looks(session, course_id)
+    weeks = await load_published_week_looks(session, course_id)
+    return _merged(bible or CourseLooks(), weeks)
+
+
+@dataclass
+class ServingLooks:
+    """The looks a story view judges and dispatches with (see :func:`serving_looks`)."""
+
+    #: What each of the document's images is judged against.
+    accepted: dict[tuple[str, str], dict[str, str]]
+    #: What the view compares with the stored art to decide whether to dispatch:
+    #: exactly what the run would draw for these keys.
+    plan_items: list[ArtItem]
+
+
+def serving_looks(
+    document_items: list[ArtItem], bible: CourseLooks | None, *, feeds_art: bool
+) -> ServingLooks:
+    """The looks of one story view, without reading any other story.
+
+    A key of the bible is judged against the bible's look. Any other key is
+    judged against the document's own look. The view dispatches for the
+    bible's images (unless the bible is not final) and, for a published
+    hand-authored week (``feeds_art``), for its own extra keys, which is what
+    :func:`load_course_looks` gives a run.
+    """
+    accepted: dict[tuple[str, str], dict[str, str]] = {}
+    plan_items: list[ArtItem] = []
+    if bible is not None:
+        accepted.update(bible.accepted)
+        if bible.final:
+            plan_items.extend(bible.items)
+    for item in document_items:
+        if (item.kind, item.key) in accepted:
+            continue
+        accepted[(item.kind, item.key)] = {item.digest: item.look}
+        if feeds_art:
+            plan_items.append(item)
+    return ServingLooks(accepted=accepted, plan_items=plan_items)
 
 
 async def load_art_rows(session: AsyncSession, course_id: uuid.UUID) -> list[StoryArt]:
@@ -848,6 +945,12 @@ class StoryArtGenerator:
         async with self._session_factory() as session:
             looks = await load_course_looks(session, course_id)
             rows = await load_art_rows(session, course_id)
+        if not looks.final:
+            logger.info(
+                "story_art.bible_not_final",
+                course_id=str(course_id),
+                detail="a bible of defaults awaits its retry: its looks are not drawn",
+            )
         self._previous = _by_item(rows)
         jobs = plan_art(looks.items, rows, accepted=looks.accepted, retry_failed=self._retry_failed)
         kept, skipped = apply_cap(jobs, self._max_images)
