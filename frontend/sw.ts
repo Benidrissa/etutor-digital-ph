@@ -29,7 +29,31 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // v9 drops the pre-#2622 shell so existing PWA clients pick up the moved
 // API Keys route (/admin/api-keys) + admin nav change instead of the stale
 // cached settings-embedded card (#2625).
-const CACHE_VERSION = "v9-api-keys-tab";
+// v10 adds the story media route (#2681): story art, prop pictures and
+// course figures go to their own stable cache, and the story player with
+// props and the Previous button (#2682) replaces the cached one.
+const CACHE_VERSION = "v10-story-media";
+
+// Story pictures (#2681): character poses, backdrops, prop stickers and
+// photos, and course figures. Not versioned with CACHE_VERSION on purpose,
+// so a downloaded story keeps its pictures across service worker updates.
+const STORY_MEDIA_CACHE = "story-media-v1";
+const STORY_MEDIA_PATH = /^\/api\/v1\/(story-art|story-props)\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
+const SOURCE_IMAGE_PATH = /^\/api\/v1\/source-images\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
+
+// One set of plugins for both story media rules: one expiration for the
+// one cache, and only whole, successful answers kept (never an error page).
+const storyMediaPlugins = [
+  new ExpirationPlugin({
+    maxEntries: 600,
+    maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    purgeOnQuotaError: true,
+  }),
+  {
+    cacheWillUpdate: async ({ response }: { response: Response }) =>
+      response && response.status === 200 ? response : null,
+  },
+];
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -92,6 +116,26 @@ const serwist = new Serwist({
             maxAgeSeconds: 30 * DAY_IN_SECONDS,
           }),
         ],
+      }),
+    },
+    // Before the API rule: story art and prop pictures never change in place
+    // (a new picture gets a new id), so the cache answers first.
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        request.method === "GET" && STORY_MEDIA_PATH.test(url.pathname),
+      handler: new CacheFirst({
+        cacheName: STORY_MEDIA_CACHE,
+        plugins: storyMediaPlugins,
+      }),
+    },
+    // Course figures have been fixed in place before: shown from the cache,
+    // refreshed behind it.
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        request.method === "GET" && SOURCE_IMAGE_PATH.test(url.pathname),
+      handler: new StaleWhileRevalidate({
+        cacheName: STORY_MEDIA_CACHE,
+        plugins: storyMediaPlugins,
       }),
     },
     {

@@ -82,17 +82,20 @@ function StageCharacterView({
 }: StageCharacterProps) {
   const gestureRef = useRef<HTMLDivElement | null>(null);
   const faceRef = useRef<HTMLDivElement | null>(null);
-  // The picture on screen, and pictures that failed to load.
-  const [shown, setShown] = useState<string | null>(null);
+  // The picture on screen (with the look it belongs to), and pictures that
+  // failed to load. A picture of another look (the hero's other variant) is
+  // never kept: switching looks switches the picture, or the drawn figure.
+  const artKey = actor.artKey;
+  const [shown, setShown] = useState<{ url: string; key: string } | null>(null);
   const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
 
   // Load a new pose's picture off screen; swap it in once it is there.
   useEffect(() => {
-    if (!artUrl || artUrl === shown || failed.has(artUrl) || typeof Image === "undefined") return;
+    if (!artUrl || shown?.url === artUrl || failed.has(artUrl) || typeof Image === "undefined") return;
     let cancelled = false;
     const image = new Image();
     image.onload = () => {
-      if (!cancelled) setShown(artUrl);
+      if (!cancelled) setShown({ url: artUrl, key: artKey });
     };
     image.onerror = () => {
       if (!cancelled) setFailed((previous) => new Set(previous).add(artUrl));
@@ -101,7 +104,7 @@ function StageCharacterView({
     return () => {
       cancelled = true;
     };
-  }, [artUrl, shown, failed]);
+  }, [artUrl, artKey, shown, failed]);
 
   // Replay the gesture on its wrapper, without touching the picture.
   useEffect(() => {
@@ -130,10 +133,12 @@ function StageCharacterView({
     };
   }, [actor.id, still]);
 
-  // Until the first picture has loaded, show the one asked for (it fills in
-  // as it arrives); after that, the last good picture until the next is in.
+  // Until the first picture of this look has loaded, show the one asked for
+  // (it fills in as it arrives); after that, this look's last good picture
+  // until the next pose is in. Nothing of this look: the drawn figure.
   const usable = artUrl && !failed.has(artUrl) ? artUrl : null;
-  const picture = shown ?? usable;
+  const sameLook = shown && shown.key === artKey ? shown.url : null;
+  const picture = usable ? (sameLook ?? usable) : sameLook;
   const fromLeft = x < 50;
 
   return (
@@ -163,7 +168,7 @@ function StageCharacterView({
                   alt=""
                   aria-hidden="true"
                   className="h-full w-auto max-w-none select-none object-contain object-bottom drop-shadow-[0_4px_0_rgba(0,0,0,0.12)]"
-                  onLoad={() => setShown((current) => current ?? picture)}
+                  onLoad={() => setShown((current) => (current && current.key === artKey ? current : { url: picture, key: artKey }))}
                   onError={() => setFailed((previous) => new Set(previous).add(picture))}
                   draggable={false}
                 />
@@ -199,10 +204,11 @@ export const StageCharacter = memo(StageCharacterView);
 const preloaded = new Set<string>();
 
 /**
- * Warm the cache with the poses of the cast now on stage — and only them: a
+ * Warm the cache with pictures needed next: the poses of the cast now on
+ * stage and the scene's prop tokens — and only those: a
  * whole story's art is too much for a 3G link.
  */
-export function preloadPoses(urls: Iterable<string | undefined>): void {
+export function preloadImages(urls: Iterable<string | undefined>): void {
   if (typeof Image === "undefined") return;
   for (const url of urls) {
     if (!url || preloaded.has(url)) continue;

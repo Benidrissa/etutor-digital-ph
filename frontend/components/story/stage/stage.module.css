@@ -57,8 +57,10 @@
   margin-top: 0.75rem;
 }
 
+/* Empty (during a title beat) it takes no room, but stays in the page: a
+   live region that is not rendered may not announce what arrives in it. */
 .dialogue:empty {
-  display: none;
+  margin-top: 0;
 }
 
 .panel {
@@ -108,10 +110,6 @@
     margin-top: 0;
     pointer-events: none;
     z-index: 20;
-  }
-
-  .dialogue:empty {
-    display: block;
   }
 
   .dialogue > * {
@@ -171,6 +169,12 @@
     bottom: 3%;
   }
 
+  /* Props stand in front of the cast's feet: the caption goes to the top. */
+  .caption.captionTop {
+    top: 3%;
+    bottom: auto;
+  }
+
   .board {
     position: absolute;
     left: 9%;
@@ -178,6 +182,11 @@
     top: 4%;
     max-height: var(--board-max, 82%);
     overflow-y: auto;
+  }
+
+  /* Its rows do not fit above the presenter's head: full height, no scroll. */
+  .board.boardUncapped {
+    max-height: 92%;
   }
 
   /* Away from the teacher presenting it, clear of their face. */
@@ -270,6 +279,57 @@
     #dbe8f6 27px,
     #dbe8f6 28px
   );
+}
+
+/* ---- Props (#2681) --------------------------------------------------------- */
+
+.prop {
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 1;
+}
+
+.propButton {
+  cursor: zoom-in;
+  border-radius: 0.5rem;
+}
+
+/* At least 44 x 44 px to tap, however small the prop is drawn. */
+.propButton::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(44px, calc(100% + 16px));
+  height: max(44px, calc(100% + 16px));
+  transform: translate(-50%, -50%);
+}
+
+.propButton:focus-visible {
+  outline: 3px solid #1d6fb8;
+  outline-offset: 3px;
+}
+
+/* A soft yellow halo behind the prop a line names. */
+.propPointed::after {
+  content: "";
+  position: absolute;
+  inset: -18% -25%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(255 210 63 / 0.75), rgb(255 210 63 / 0));
+  pointer-events: none;
+}
+
+.polaroid {
+  box-sizing: border-box;
+  border: 4px solid #ffffff;
+  border-bottom-width: 12px;
+  border-radius: 2px;
+  background: #ffffff;
+  box-shadow: 0 3px 0 rgb(0 0 0 / 0.2);
+  transform: rotate(-3deg);
 }
 
 /* ---- Typewriter ---------------------------------------------------------- */
@@ -389,12 +449,57 @@
   .nudge {
     animation: nudge 1.6s ease-in-out infinite;
   }
+
+  .propEnter {
+    transform-origin: 50% 100%;
+    animation: propPop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+  }
+
+  .propPointed::after {
+    animation: propGlow 0.9s ease-in-out 2 both;
+  }
 }
 
 /* Without motion the confetti would sit still on top of the stage. */
 @media (prefers-reduced-motion: reduce) {
   .confetti {
     display: none;
+  }
+
+  /* No bounce, no glow: the prop a line names gets a still outline. */
+  .propPointed {
+    outline: 3px solid #ffd23f;
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  .propPointed::after {
+    display: none;
+  }
+}
+
+@keyframes propPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) translateY(30%);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15) translateY(-6%);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes propGlow {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
   }
 }
 

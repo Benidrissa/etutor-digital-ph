@@ -25,7 +25,7 @@
 
 "use client";
 
-import { Speech, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, Images, Speech, Volume2, VolumeX } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   useCallback,
@@ -35,6 +35,7 @@ import {
   useState,
   type MouseEvent,
   type ReactNode,
+  type TouchEvent,
 } from "react";
 
 import { starsFor, text } from "@/lib/story-course/answer";
@@ -46,11 +47,11 @@ import {
   type StoryLanguage,
 } from "@/lib/story-course/personalize";
 import { chapterLocalId } from "@/lib/story-course/progress";
-import type { Step, StoryCourse } from "@/lib/story-course/types";
+import type { Prop, Step, StoryCourse } from "@/lib/story-course/types";
 
 import { ConceptVisual } from "./concept-visual";
 import { MinigameView } from "./minigame";
-import { QuestionCard } from "./question-card";
+import { QuestionCard, type QuestionAnswer } from "./question-card";
 import { Backdrop } from "./stage/backdrop";
 import {
   FIGURE_HEIGHT,
@@ -64,6 +65,8 @@ import {
   type Pose,
 } from "./stage/cast";
 import { Confetti, StarRow } from "./stage/confetti";
+import { CreditsSheet, creditsFor } from "./stage/credits-sheet";
+import { LookCloser } from "./stage/look-closer";
 import {
   CaptionBar,
   Chalkboard,
@@ -86,16 +89,40 @@ import {
   writeSoundOn,
   type StoryChoices,
 } from "./stage/prefs";
+import {
+  closeUpProp,
+  isScenery,
+  layoutProps,
+  pictureFor,
+  placementOf,
+  propLabel,
+  savesData,
+  sizeOf,
+  tokenFor,
+  type OnStageProp,
+} from "./stage/props";
 import { planSteps, presenterOf, reactorOf, type PlannedStep } from "./stage/scene-plan";
+import { reveal } from "./stage/scroll";
 import { playSfx, unlockAudio, type Sfx } from "./stage/sound";
-import { speak, stopSpeaking, type SpeechVoice } from "./stage/speech";
-import { StageCharacter, preloadPoses, type Gesture } from "./stage/stage-character";
+import { speak, speechAvailable, stopSpeaking, type SpeechVoice } from "./stage/speech";
+import { StageCharacter, preloadImages, type Gesture } from "./stage/stage-character";
+import { StageProp } from "./stage/stage-prop";
 import styles from "./stage/stage.module.css";
 import { PlaceRibbon, PlayIcon, StartCard, TitleCard } from "./stage/title-card";
 import type { TypedHandle } from "./stage/typed-text";
 
 /** A step the learner must deal with before the story moves on. */
 const BLOCKING: ReadonlySet<string> = new Set(["ask", "game", "photo"]);
+
+/** How a step that asked something was settled: shown again, never scored again. */
+interface StepRecord {
+  points: number;
+  question?: QuestionAnswer;
+}
+
+/** A swipe to the right on the stage (a phone's "back"): far enough, and flat. */
+const SWIPE_MIN_PX = 60;
+const SWIPE_MAX_DRIFT_PX = 40;
 
 /** Steps whose panel a tap on the stage may carry past. */
 const TAP_THROUGH: ReadonlySet<string> = new Set(["say", "narrate", "concept", "show", "video"]);
@@ -252,6 +279,7 @@ export function StoryPlayer({
   // read-aloud (off by default: a screen reader already speaks each line).
   const [soundOn, setSoundOn] = useState(readSoundOn);
   const [readAloud, setReadAloud] = useState(readReadAloud);
+  const [speechWorks] = useState(speechAvailable);
   const soundRef = useRef(soundOn);
   useEffect(() => {
     soundRef.current = soundOn;
@@ -302,10 +330,24 @@ export function StoryPlayer({
     [story.chapters, chapterId],
   );
   const singleChapter = chapterId !== undefined ? chapters[0] : undefined;
-  const flat = useMemo<PlannedStep[]>(
-    () => planSteps(chapters, story.chapters ?? [], actors),
-    [chapters, story.chapters, actors],
+  // The things the story talks about (#2681), and their pictures.
+  const propsById = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(story.props) ? story.props : [])
+          .filter((prop): prop is Prop => !!prop && typeof prop.id === "string" && !!prop.id)
+          .map((prop) => [prop.id, prop]),
+      ),
+    [story.props],
   );
+  const propMedia = story.art?.props;
+  const propContext = useMemo(() => ({ props: propsById, media: propMedia }), [propsById, propMedia]);
+  const flat = useMemo<PlannedStep[]>(
+    () => planSteps(chapters, story.chapters ?? [], actors, propContext),
+    [chapters, story.chapters, actors, propContext],
+  );
+  const figureLang = figureLanguage(target, home);
+  const credits = useMemo(() => creditsFor(story, figureLang), [story, figureLang]);
 
   const questions = useMemo(() => new Map((story.questions ?? []).map((q) => [q.id, q])), [story.questions]);
   const exercises = useMemo(() => new Map((story.exercises ?? []).map((e) => [e.id, e])), [story.exercises]);
@@ -319,33 +361,38 @@ export function StoryPlayer({
   const unitLabel = text(story.rewards?.unit, target, home) || t("pointsUnit");
 
   const [index, setIndex] = useState(0);
+  // The furthest step reached. Previous walks back through what was played
+  // (#2682); Next walks forward again up to here without replaying anything.
+  const [furthest, setFurthest] = useState(0);
+  // The step that is on screen for the first time, or -1 after Previous: a
+  // step seen again is shown at once, with no typing, title beat or sound.
+  const [fresh, setFresh] = useState(0);
+  const revisit = index !== fresh;
   const [points, setPoints] = useState(0);
   const [settledSteps, setSettledSteps] = useState<Set<number>>(new Set());
   // Mirrors settledSteps synchronously so a step can only ever score once,
   // even if a child reports twice before React re-renders.
   const settledRef = useRef<Set<number>>(new Set());
+  // How each settled step was answered, to show it again read-only.
+  const [records, setRecords] = useState<ReadonlyMap<number, StepRecord>>(() => new Map());
   // The hero's reaction to the latest answer on the current step.
   const [reaction, setReaction] = useState<{ index: number; correct: boolean; n: number } | null>(null);
   const [bursts, setBursts] = useState(0);
 
   // A chapter's title card is a beat of its own when its first line is not a
-  // narrator's caption (which sits clear of it): the card shows alone, then
-  // fades on a timer or at the first Next, and only then does the line come.
+  // narrator's caption (which sits clear of it), or when props pop onto the
+  // stage with that line: the card shows alone, then fades on a timer or at
+  // the first Next, and only then does the line come (with its props).
   const beatAt = useCallback(
     (stepIndex: number) => {
       const item = flat[stepIndex];
-      return item?.startsChapter && item.step.type !== "narrate" ? stepIndex : null;
+      return item?.startsChapter && (item.step.type !== "narrate" || item.entering.length > 0) ? stepIndex : null;
     },
     [flat],
   );
   const [titleBeat, setTitleBeat] = useState<number | null>(() => (choices === null ? null : beatAt(0)));
   // Started from the start card: the title was on screen with it already.
   const [startedFromIntro, setStartedFromIntro] = useState(false);
-  useEffect(() => {
-    if (titleBeat === null) return;
-    const timer = setTimeout(() => setTitleBeat(null), TITLE_BEAT_MS);
-    return () => clearTimeout(timer);
-  }, [titleBeat]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -356,33 +403,62 @@ export function StoryPlayer({
   const boardRef = useRef<SkipHandle | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
+  // Bring the step's text into view, between the app's real bars (measured,
+  // see ./stage/scroll). Embedded, down to the Next button under it.
+  const revealStep = useCallback(() => {
+    requestAnimationFrame(() => {
+      const dialogue = dialogueRef.current;
+      const panel = (dialogue?.firstElementChild as HTMLElement | null) ?? dialogue;
+      reveal(panel, { to: embedded ? controlsRef.current : undefined, smooth: !reducedMotion });
+    });
+  }, [embedded, reducedMotion]);
+
+  useEffect(() => {
+    if (titleBeat === null) return;
+    const timer = setTimeout(() => {
+      setTitleBeat(null);
+      revealStep();
+    }, TITLE_BEAT_MS);
+    return () => clearTimeout(timer);
+  }, [titleBeat, revealStep]);
+
   const advance = useCallback(() => {
     // During a title beat, Next only ends the beat: the first line comes up.
     if (titleBeat !== null) {
       setTitleBeat(null);
+      revealStep();
       return;
     }
     const next = Math.min(index + 1, flat.length - 1);
     setIndex(next);
-    setTitleBeat(beatAt(next));
-    requestAnimationFrame(() =>
-      // Bring the new step's text into view. Embedded, that is the Next
-      // button and the box above it, clear of the phone's bottom nav; on the
-      // page, the text itself, clear of the sticky header, the fixed Next bar
-      // and the nav (scroll margins on each). (Optional call: jsdom and some
-      // old WebViews lack scrollIntoView.)
-      (embedded ? controlsRef : dialogueRef).current?.scrollIntoView?.({
-        behavior: reducedMotion ? "auto" : "smooth",
-        block: "nearest",
-      }),
-    );
-  }, [titleBeat, index, flat.length, beatAt, embedded, reducedMotion]);
+    if (next > furthest) {
+      setFurthest(next);
+      setFresh(next);
+      setTitleBeat(beatAt(next));
+    } else {
+      setTitleBeat(null);
+    }
+    revealStep();
+  }, [titleBeat, index, furthest, flat.length, beatAt, revealStep]);
 
-  const settle = useCallback((stepIndex: number, earned: number) => {
+  // One line back, across scenes and chapters, never to the start card or a
+  // title beat. What was answered is shown answered.
+  const goBack = useCallback(() => {
+    if (index <= 0) return;
+    setIndex(index - 1);
+    setFresh(-1);
+    setTitleBeat(null);
+    // An answer seen again is not cheered (or sighed over) again.
+    setReaction(null);
+    revealStep();
+  }, [index, revealStep]);
+
+  const settle = useCallback((stepIndex: number, earned: number, record?: Omit<StepRecord, "points">) => {
     if (settledRef.current.has(stepIndex)) return;
     settledRef.current.add(stepIndex);
     setPoints((total) => total + earned);
     setSettledSteps(new Set(settledRef.current));
+    setRecords((previous) => new Map(previous).set(stepIndex, { points: earned, ...record }));
   }, []);
 
   const current = flat[index];
@@ -425,21 +501,28 @@ export function StoryPlayer({
     sfx("fanfare");
   }, [celebrating, sfx]);
 
-  // A whoosh for a new place, a pop for a card (once the title beat is over).
+  // A whoosh for a new place, a pop for a card or a prop popping in (once the
+  // title beat is over). A step seen again is quiet.
   const lastPlaceRun = useRef<number | null>(null);
   useEffect(() => {
     if (!current || introOpen || beatOn) return;
-    if (lastPlaceRun.current !== null && lastPlaceRun.current !== current.placeRun) sfx("whoosh");
-    else if (POP_STEPS.has(current.step.type)) sfx("pop");
+    const quiet = revisit;
+    if (lastPlaceRun.current !== null && lastPlaceRun.current !== current.placeRun) {
+      if (!quiet) sfx("whoosh");
+    } else if (!quiet && (POP_STEPS.has(current.step.type) || current.entering.length > 0)) sfx("pop");
     lastPlaceRun.current = current.placeRun;
-  }, [current, introOpen, beatOn, sfx]);
+  }, [current, introOpen, beatOn, revisit, sfx]);
 
-  // Ambient motion stands still while the stage is out of sight.
+  // Ambient motion stands still while the stage is out of sight. Several
+  // changes can come in one batch: the last one is the state now.
   const [onScreen, setOnScreen] = useState(true);
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(([entry]) => setOnScreen(entry?.isIntersecting ?? true));
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      setOnScreen(entry?.isIntersecting ?? true);
+    });
     observer.observe(frame);
     return () => observer.disconnect();
   }, []);
@@ -476,9 +559,21 @@ export function StoryPlayer({
         speech = { lines: [title, ...rows], lang, voice: voiceOf(presenter) };
         break;
       }
-      case "show":
-        if (step.caption) speech = { lines: [text(step.caption, target, home)], lang: target, voice: NARRATOR };
+      case "show": {
+        // A close-up says its caption, else the picture's, else the thing's name.
+        const closeUp = closeUpProp(step);
+        const prop = closeUp ? propsById.get(closeUp) : undefined;
+        const picture = prop ? pictureFor(prop, propMedia?.[prop.id], figureLang) : undefined;
+        const words = step.caption
+          ? text(step.caption, target, home)
+          : picture?.caption
+            ? text(picture.caption, target, home)
+            : prop
+              ? propLabel(prop, target, home)
+              : "";
+        if (words) speech = { lines: [words], lang: target, voice: NARRATOR };
         break;
+      }
       case "ask": {
         const question = step.ref ? questions.get(step.ref) : undefined;
         if (question) speech = { lines: [text(question.prompt, target, home)], lang: target, voice: NARRATOR };
@@ -517,40 +612,115 @@ export function StoryPlayer({
       if (!actor) continue;
       for (const pose of ["idle", "talk", "happy", "think"] as const) urls.push(artFor(story.art, actor.artKey, pose));
     }
-    preloadPoses(urls);
+    preloadImages(urls);
   }, [stageKey, actors, story.art]);
 
-  // Space and → move on, like the Next button, when the story has the focus
-  // (or nothing does) and the key is not meant for a field or a button. The
-  // key is only taken from the page when it did move the story on.
+  // The scene's prop drawings, and the next close-up's small picture (never
+  // the large one, and not at all when the learner saves data).
+  const propPreload = (() => {
+    if (!current || introOpen) return "";
+    const urls: string[] = [];
+    for (const id of current.sceneProps) {
+      const prop = propsById.get(id);
+      if (!prop) continue;
+      const token = tokenFor(prop, propMedia?.[id], placementOf(prop, current.cast));
+      if (token.kind === "sticker" || token.kind === "polaroid") urls.push(token.src);
+    }
+    const nextStep = flat[index + 1]?.step;
+    const nextCloseUp = nextStep ? closeUpProp(nextStep) : undefined;
+    const nextProp = nextCloseUp ? propsById.get(nextCloseUp) : undefined;
+    if (nextProp && !savesData()) {
+      const picture = pictureFor(nextProp, propMedia?.[nextProp.id], figureLang);
+      if (picture) urls.push(picture.src);
+    }
+    return urls.join("\n");
+  })();
+  useEffect(() => {
+    if (propPreload) preloadImages(propPreload.split("\n"));
+  }, [propPreload]);
+
+  // A close-up opened by tapping a prop, for the step it was opened on, and
+  // the image credits; the opener gets the focus back when they close.
+  const [looking, setLooking] = useState<{ id: string; index: number } | null>(null);
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const lookingProp = looking && looking.index === index ? propsById.get(looking.id) : undefined;
+  const dialogOpen = !!lookingProp || creditsOpen;
+  const openLook = useCallback(
+    (prop: Prop, trigger: HTMLElement) => {
+      openerRef.current = trigger;
+      setLooking({ id: prop.id, index });
+    },
+    [index],
+  );
+  const closeDialog = useCallback(() => {
+    setLooking(null);
+    setCreditsOpen(false);
+    requestAnimationFrame(() => openerRef.current?.focus());
+  }, []);
+
+  // Space and → move on, like the Next button, and ← goes back, like
+  // Previous, when the story has the focus (or nothing does) and the key is
+  // not meant for a field or a button. The key is only taken from the page
+  // when it did move the story.
   const tryAdvanceRef = useRef<() => boolean>(() => false);
+  const tryBackRef = useRef<() => boolean>(() => false);
   useEffect(() => {
     tryAdvanceRef.current = () => {
-      if (!nextEnabled) return false;
+      if (!nextEnabled || dialogOpen) return false;
       advance();
       return true;
     };
-  }, [nextEnabled, advance]);
+    tryBackRef.current = () => {
+      if (introOpen || index <= 0 || dialogOpen) return false;
+      goBack();
+      return true;
+    };
+  }, [nextEnabled, advance, introOpen, index, dialogOpen, goBack]);
   useEffect(() => {
     if (!active) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
-      if (event.key !== " " && event.key !== "ArrowRight") return;
+      if (event.key !== " " && event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
       // A focused button already answers Space itself.
       if (event.key === " " && target?.closest("button, a, summary, [role=button]")) return;
       if (target && target !== document.body && !rootRef.current?.contains(target)) return;
-      if (tryAdvanceRef.current()) event.preventDefault();
+      const moved = event.key === "ArrowLeft" ? tryBackRef.current() : tryAdvanceRef.current();
+      if (moved) event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [active]);
 
+  // A swipe to the right on the stage or its text goes back one line, like
+  // turning back a page. The tap a swipe ends with is not a tap.
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  const swipedAtRef = useRef(0);
+  const onTouchStart = (event: TouchEvent) => {
+    const touch = event.touches[0];
+    swipeRef.current = event.touches.length === 1 && touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+  const onTouchEnd = (event: TouchEvent) => {
+    const start = swipeRef.current;
+    swipeRef.current = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (dx < SWIPE_MIN_PX || Math.abs(dy) > SWIPE_MAX_DRIFT_PX) return;
+    if (event.target instanceof Element && event.target.closest("input, textarea, select")) return;
+    swipedAtRef.current = event.timeStamp;
+    tryBackRef.current();
+  };
+
   // A tap on the stage finishes the line being typed, then moves on. Never
   // while a question, a game or a paper exercise is waiting.
   const onStageTap = (event: MouseEvent) => {
     if (introOpen || !current) return;
+    if (dialogOpen) return;
+    if (swipedAtRef.current && event.timeStamp - swipedAtRef.current < 600) return;
     if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, label")) return;
     if (beatOn) {
       advance();
@@ -652,6 +822,8 @@ export function StoryPlayer({
     if (step.type === "say" && step.who === id) return poseFor(step.mood, true);
     if (step.type === "concept" && id === presenter) return "talk";
     if ((step.type === "ask" || step.type === "game" || step.type === "photo") && id === reactor) return "think";
+    // A close-up of the thing everyone is talking about: the hero is amazed.
+    if (step.type === "show" && closeUpProp(step) && id === reactor) return "surprised";
     return "idle";
   };
 
@@ -691,6 +863,52 @@ export function StoryPlayer({
     );
   });
 
+  // The props on stage (#2681): none with the start card or under a title
+  // beat, so they pop in with the line that brings them.
+  const propIds = introOpen || beatOn || !current ? [] : current.props;
+  const onStageProps: OnStageProp[] = propIds.flatMap((id) => {
+    const prop = propsById.get(id);
+    if (!prop) return [];
+    const placement = placementOf(prop, cast);
+    return [{ prop, placement, size: sizeOf(prop, placement) }];
+  });
+  const propSlots = layoutProps(
+    onStageProps,
+    cast.flatMap((id, slot) => {
+      const actor = actors.get(id);
+      return actor ? [{ id, x: slots[slot], height: FIGURE_HEIGHT[actor.figure] }] : [];
+    }),
+  );
+  const propViews = onStageProps.flatMap((item) => {
+    const slot = propSlots.get(item.prop.id);
+    if (!slot || !current) return [];
+    const media = propMedia?.[item.prop.id];
+    const hasCloseUp = !!pictureFor(item.prop, media, figureLang);
+    return [
+      {
+        scenery: isScenery(item.placement),
+        node: (
+          <StageProp
+            key={item.prop.id}
+            prop={item.prop}
+            token={tokenFor(item.prop, media, item.placement)}
+            slot={slot}
+            label={propLabel(item.prop, target, home)}
+            lang={target}
+            entering={!revisit && current.entering.includes(item.prop.id)}
+            pointed={current.pointed.includes(item.prop.id)}
+            bounceKey={String(index)}
+            still={reducedMotion || paused}
+            onOpen={hasCloseUp ? openLook : undefined}
+          />
+        ),
+      },
+    ];
+  });
+  // Something stands in front of the cast's feet: on a wide stage the
+  // narrator's caption goes to the top, so it never hides it.
+  const propsInFront = onStageProps.some((item) => !isScenery(item.placement));
+
   // Where everyone stands, for the bubble to keep clear of other faces.
   const standing = (id: string): Standing | undefined => {
     const slot = cast.indexOf(id);
@@ -719,7 +937,9 @@ export function StoryPlayer({
     const primary = targetLine || homeLine;
     const primaryLang = targetLine ? target : home;
     const secondary = bilingual && !!targetLine && !!homeLine && homeLine !== targetLine ? homeLine : undefined;
-    const animate = !reducedMotion;
+    // A line seen again (Previous) is shown whole at once.
+    const animate = !reducedMotion && !revisit;
+    const record = records.get(index);
     switch (step.type) {
       case "narrate":
         return (
@@ -731,6 +951,8 @@ export function StoryPlayer({
             secondaryLang={home}
             animate={animate}
             typedRef={typedRef}
+            at={propsInFront ? "top" : "bottom"}
+            eyebrow={propsInFront && ribbonTitle ? text(ribbonTitle, target, home) : undefined}
           />
         );
       case "say": {
@@ -767,28 +989,51 @@ export function StoryPlayer({
             rowsLang={targetRows.length ? target : home}
             homeRows={bilingual && targetRows.length ? homeRows : []}
             homeLang={home}
-            rowDelays={reducedMotion ? rows.map(() => 0) : rowDelays(rows, title, readAloud)}
+            rowDelays={reducedMotion || revisit ? rows.map(() => 0) : rowDelays(rows, title, readAloud)}
             side={boardSide}
             maxHeight={boardMax}
           />
         );
       }
-      case "show":
+      case "show": {
+        // A close-up of a prop (#2681): its picture, caption and credit.
+        const closeUp = closeUpProp(step);
+        if (closeUp) {
+          const prop = propsById.get(closeUp);
+          if (!prop) return null;
+          const media = propMedia?.[closeUp];
+          return (
+            <VisualPanel key={index}>
+              <LookCloser
+                variant="step"
+                prop={prop}
+                picture={pictureFor(prop, media, figureLang)}
+                stickerUrl={media?.sticker}
+                caption={step.caption}
+                target={target}
+                home={home}
+                bilingual={bilingual}
+                headingLevel={embedded ? 4 : 3}
+              />
+            </VisualPanel>
+          );
+        }
         return (
           <VisualPanel key={index}>
             <ConceptVisual
               visual={step.visual ?? "unknown"}
               params={step.params}
               caption={step.caption ? text(step.caption, target, home) : undefined}
-              language={figureLanguage(target, home)}
+              language={figureLang}
             />
           </VisualPanel>
         );
+      }
       case "ask": {
         const question = step.ref ? questions.get(step.ref) : undefined;
         if (!question) return <MissingRef key={index} kind="question" refId={step.ref} />;
         return (
-          <StageCard key={index} ref={cardRef} kind="ask" banner={t("questionBanner")} paper>
+          <StageCard key={index} ref={cardRef} kind="ask" banner={t("questionBanner")} paper review={!!record}>
             <QuestionCard
               question={question}
               target={target}
@@ -796,7 +1041,18 @@ export function StoryPlayer({
               bilingual={bilingual}
               rewards={story.rewards}
               className="pt-2"
-              onAnswered={({ points: earned }) => settle(index, earned)}
+              review={record?.question}
+              onAnswered={(outcome) =>
+                settle(index, outcome.points, {
+                  question: {
+                    answer: outcome.answer,
+                    parts: outcome.parts,
+                    correct: outcome.correct,
+                    points: outcome.points,
+                    attempts: outcome.attempts,
+                  },
+                })
+              }
               onAttempt={onAttempt(index)}
             />
           </StageCard>
@@ -806,7 +1062,14 @@ export function StoryPlayer({
         const game = step.ref ? games.get(step.ref) : undefined;
         if (!game) return <MissingRef key={index} kind="mini-game" refId={step.ref} />;
         return (
-          <StageCard key={index} kind="game" banner={t("gameBanner")} bannerColor="#c2410c">
+          <StageCard
+            key={index}
+            ref={cardRef}
+            kind="game"
+            banner={t("gameBanner")}
+            bannerColor="#c2410c"
+            review={!!record}
+          >
             <MinigameView
               game={game}
               target={target}
@@ -814,6 +1077,10 @@ export function StoryPlayer({
               bilingual={bilingual}
               active={active && !introOpen}
               className="pt-2"
+              result={record?.points}
+              onRound={(targets) =>
+                reveal(cardRef.current ?? targets, { to: targets, smooth: !reducedMotion })
+              }
               onTap={(correct) => sfx(correct ? "coin" : "oops")}
               onFinished={({ points: earned }) => {
                 settle(index, earned);
@@ -830,7 +1097,7 @@ export function StoryPlayer({
         const exercise = step.ref ? exercises.get(step.ref) : undefined;
         if (!exercise) return <MissingRef key={index} kind="exercise" refId={step.ref} />;
         return (
-          <StageCard key={index} kind="photo">
+          <StageCard key={index} kind="photo" review={!!record}>
             <PaperExercise
               exercise={exercise}
               label={story.module_story ? chapterLocalId(exercise.id) : exercise.id}
@@ -838,6 +1105,7 @@ export function StoryPlayer({
               home={home}
               bilingual={bilingual}
               settled={currentSettled}
+              awardedBefore={record?.points}
               onMarked={(earned) => {
                 settle(index, earned);
                 if (earned > 0) sfx("coin");
@@ -914,6 +1182,19 @@ export function StoryPlayer({
             ? t("scoreOf", { points, max: maxPoints, unit: unitLabel })
             : t("score", { points, unit: unitLabel })}
         </p>
+        {credits.length > 0 ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              openerRef.current = event.currentTarget;
+              setCreditsOpen(true);
+            }}
+            className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-sky-100 underline hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd23f]"
+          >
+            <Images className="h-4 w-4" aria-hidden="true" />
+            {t("imageCredits")}
+          </button>
+        ) : null}
       </div>
     ) : null;
 
@@ -924,7 +1205,7 @@ export function StoryPlayer({
         type="button"
         onClick={advance}
         disabled={!nextEnabled}
-        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-6 text-lg font-extrabold text-white shadow-[0_5px_0_rgba(0,0,0,0.25)] transition hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1d6fb8] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-700 disabled:shadow-none"
+        className="flex min-h-14 min-w-0 flex-1 items-center justify-center gap-3 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-4 text-lg font-extrabold text-white shadow-[0_5px_0_rgba(0,0,0,0.25)] transition hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1d6fb8] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-700 disabled:shadow-none sm:px-6"
       >
         {currentIsBlocking && !currentSettled && !beatOn ? (
           t("answerToContinue")
@@ -937,6 +1218,33 @@ export function StoryPlayer({
       </button>
     );
 
+  // « Précédent », next to « Suite » (#2682): one line back, across scenes and
+  // chapters; nothing to go back to on the first line.
+  const previousButton =
+    introOpen || flat.length < 2 ? null : (
+      <button
+        type="button"
+        onClick={goBack}
+        disabled={index <= 0}
+        className="flex min-h-14 shrink-0 items-center justify-center gap-1 rounded-full border-[3px] border-[#1d2b4f] bg-white pl-2 pr-4 text-base font-extrabold text-[#1d2b4f] shadow-[0_5px_0_rgba(0,0,0,0.15)] transition hover:bg-[#fff8db] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1d6fb8] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-500 disabled:shadow-none"
+      >
+        <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+        {t("previous")}
+      </button>
+    );
+  const controls =
+    previousButton || nextButton ? (
+      <div className="flex items-stretch gap-2">
+        {previousButton}
+        {nextButton}
+      </div>
+    ) : null;
+
+  // Read aloud, the line is spoken already: no second voice from the screen
+  // reader. Only when it really is spoken: no speech engine, or nothing to
+  // say for this step, leaves the live region on.
+  const spoken = readAloud && speechWorks && !!speechKey;
+
   const chapterHeading =
     !singleChapter && current ? text(current.chapterTitle, target, home) : undefined;
 
@@ -945,7 +1253,7 @@ export function StoryPlayer({
       ref={rootRef}
       // On the page, room under the last step for the fixed Next bar and,
       // on phones, the bottom navigation under it.
-      className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-2xl px-4 pb-44 md:pb-28"}
+      className={embedded ? "mx-auto w-full max-w-2xl" : "mx-auto w-full max-w-2xl px-4 pb-44 md:pb-28"}
     >
       {/* Header: title, chapter, running score and the two switches. */}
       <header
@@ -998,7 +1306,8 @@ export function StoryPlayer({
             }`}
           >
             <Speech className="h-5 w-5" aria-hidden="true" />
-            <span>{t("readAloudToggle")}</span>
+            {/* Words from 640px; on a 320px phone the header stays one row. */}
+            <span className="sr-only sm:not-sr-only">{t("readAloudToggle")}</span>
           </button>
           <button
             type="button"
@@ -1010,6 +1319,20 @@ export function StoryPlayer({
           >
             {soundOn ? <Volume2 className="h-5 w-5" aria-hidden="true" /> : <VolumeX className="h-5 w-5" aria-hidden="true" />}
           </button>
+          {credits.length > 0 ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                openerRef.current = event.currentTarget;
+                setCreditsOpen(true);
+              }}
+              aria-label={t("imageCredits")}
+              title={t("imageCredits")}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-gray-300 px-3 text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+            >
+              <Images className="h-5 w-5" aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -1019,12 +1342,27 @@ export function StoryPlayer({
         className={`${styles.frame} ${paused ? styles.paused : ""}`}
         data-testid="story-stage"
       >
-        <div className={`${styles.box} shadow-[0_6px_0_rgba(29,43,79,0.18)]`} onClick={onStageTap}>
+        <div
+          className={`${styles.box} shadow-[0_6px_0_rgba(29,43,79,0.18)]`}
+          onClick={onStageTap}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
           <div key={`${current?.chapterId ?? ""}:${current?.placeRun ?? 0}`} className={`${styles.scene} ${styles.iris}`}>
             <Backdrop placeId={placeId} theme={theme} url={backdropUrl} />
             {titleCard}
-            {ribbonTitle ? <PlaceRibbon label={text(ribbonTitle, target, home)} lang={target} /> : null}
-            <div className={styles.layer}>{characters}</div>
+            {ribbonTitle ? (
+              // On a wide stage with props in front, the caption moves to the
+              // top and says where we are itself.
+              <div className={propsInFront && step?.type === "narrate" ? styles.narrowOnly : undefined}>
+                <PlaceRibbon label={text(ribbonTitle, target, home)} lang={target} />
+              </div>
+            ) : null}
+            <div className={styles.layer}>
+              {propViews.filter((view) => view.scenery).map((view) => view.node)}
+              {characters}
+              {propViews.filter((view) => !view.scenery).map((view) => view.node)}
+            </div>
           </div>
           {celebrating && maxPoints > 0 ? (
             <div
@@ -1048,28 +1386,25 @@ export function StoryPlayer({
           ref={dialogueRef}
           tabIndex={-1}
           // A timed game sits under the stage at every width (see the stylesheet).
-          className={`${styles.dialogue} ${step?.type === "game" && !introOpen ? styles.dialogueFlow : ""} scroll-mt-[9.5rem] scroll-mb-[10rem] focus:outline-none md:scroll-mb-[6rem]`}
-          // Read aloud, the line is spoken already: no second voice from the
-          // screen reader. During a title beat the first line waits, unseen.
-          aria-live={readAloud ? "off" : "polite"}
-          style={beatOn ? { visibility: "hidden" } : undefined}
+          className={`${styles.dialogue} ${step?.type === "game" && !introOpen ? styles.dialogueFlow : ""} focus:outline-none`}
+          aria-live={spoken ? "off" : "polite"}
           onClick={onStageTap}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
         >
-          {startCard ?? panel}
+          {/* During a title beat the first line waits: it is not there to
+              type out unseen, nor (a card) to arm itself under the title. */}
+          {startCard ?? (beatOn ? null : panel)}
         </div>
       </div>
 
       {finishSummary}
 
       {embedded ? (
-        <div
-          ref={controlsRef}
-          // Clear of the phone's bottom navigation when scrolled into view.
-          className={`${nextButton ? "mt-4" : ""} scroll-mb-20 md:scroll-mb-4`}
-        >
-          {nextButton}
+        <div ref={controlsRef} className={controls ? "mt-4" : ""}>
+          {controls}
         </div>
-      ) : nextButton ? (
+      ) : controls ? (
         // On phones the bar sits above the bottom navigation (h-16, z-50),
         // which would otherwise cover it.
         <div
@@ -1077,10 +1412,24 @@ export function StoryPlayer({
           className="fixed inset-x-0 bottom-16 z-40 border-t border-gray-200 bg-white/95 p-3 backdrop-blur md:bottom-0"
         >
           <div className="mx-auto max-w-2xl" ref={controlsRef}>
-            {nextButton}
+            {controls}
           </div>
         </div>
       ) : null}
+
+      {lookingProp ? (
+        <LookCloser
+          variant="overlay"
+          prop={lookingProp}
+          picture={pictureFor(lookingProp, propMedia?.[lookingProp.id], figureLang)}
+          stickerUrl={propMedia?.[lookingProp.id]?.sticker}
+          target={target}
+          home={home}
+          bilingual={bilingual}
+          onClose={closeDialog}
+        />
+      ) : null}
+      {creditsOpen ? <CreditsSheet entries={credits} target={target} home={home} onClose={closeDialog} /> : null}
     </div>
   );
 }

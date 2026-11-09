@@ -15,7 +15,9 @@ import {
   moduleStoryId,
   readStoryProgress,
   storyProgressKey,
+  storyStanding,
   withChapterDone,
+  withChapterSnapshot,
   writeStoryProgress,
 } from "./progress";
 import type { Chapter } from "./types";
@@ -164,6 +166,44 @@ describe("story progress", () => {
     const progress = { v: 1 as const, completedUnits: ["gone", "a"], points: {} };
     expect(firstIncompleteChapter(chapters, progress)).toBe(1);
     expect(completedChapterCount(chapters, progress)).toBe(1);
+  });
+});
+
+describe("the revision snapshot (#2682)", () => {
+  const chapters = [chapter("c1", "unit-a"), chapter("c2", "unit-b")];
+
+  it("notes the chapters of the revision read, once", () => {
+    const first = withChapterSnapshot(emptyStoryProgress(), chapters, "rev-1");
+    expect(first).toMatchObject({ chapterKeys: ["unit-a", "unit-b"], revision: "rev-1" });
+    // Already noted: the same object, so nothing is written again.
+    expect(withChapterSnapshot(first, chapters, "rev-1")).toBe(first);
+    // Without a revision there is nothing to note.
+    const none = emptyStoryProgress();
+    expect(withChapterSnapshot(none, chapters, null)).toBe(none);
+  });
+
+  it("survives a chapter being finished, and a save and a read", () => {
+    const saved = withChapterDone(withChapterSnapshot(emptyStoryProgress(), chapters, "rev-1"), "unit-a", 2);
+    writeStoryProgress(STORY_ID, USER, saved);
+    expect(readStoryProgress(STORY_ID, USER)).toEqual(saved);
+  });
+
+  it("counts only this revision's chapters, and only for the revision served", () => {
+    const progress = {
+      ...withChapterSnapshot(emptyStoryProgress(), chapters, "rev-1"),
+      completedUnits: ["old-checkpoint", "unit-a"],
+    };
+    expect(storyStanding(progress, { chapters: 2, revision: "rev-1" })).toEqual({
+      completed: 1,
+      total: 2,
+      certain: true,
+    });
+    // Another revision now: the saved count is only a hint.
+    expect(storyStanding(progress, { chapters: 3, revision: "rev-2" })).toEqual({
+      completed: 2,
+      total: 3,
+      certain: false,
+    });
   });
 });
 

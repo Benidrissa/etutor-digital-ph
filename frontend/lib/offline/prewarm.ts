@@ -9,7 +9,7 @@
 
 // Cache name MUST stay aligned with `pages-${CACHE_VERSION}` in frontend/sw.ts.
 // Bump both together when changing.
-export const PAGES_CACHE_NAME = "pages-v9-api-keys-tab";
+export const PAGES_CACHE_NAME = "pages-v10-story-media";
 
 /**
  * Pre-fetch a same-origin page and stash it in the SW page cache so an offline

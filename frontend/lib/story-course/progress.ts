@@ -2,7 +2,8 @@
  * Where a learner is in a module story, kept in this browser (contract C-5).
  *
  * `sira.story.progress:{userId}:{storyId}` holds `{v: 1, completedUnits,
- * points}`. It is per learner: the story id is the same for every learner of
+ * points}`, plus the chapter keys of the revision last read here
+ * (`chapterKeys`, `revision`). It is per learner: the story id is the same for every learner of
  * the module, and a phone is often shared, so one learner must never resume
  * from (or be told they finished with) another's progress. Without a known
  * learner nothing is read or saved.
@@ -24,6 +25,15 @@ export interface StoryProgress {
   completedUnits: string[];
   /** Best points per module_unit_id. */
   points: Record<string, number>;
+  /**
+   * The chapter keys of the story revision last opened here, and that
+   * revision (#2682). `completedUnits` keeps keys of chapters a newer
+   * revision dropped (a checkpoint replaced by the rally); the module page,
+   * which never loads the story, counts only the keys of this snapshot, and
+   * only while the server still serves the same revision.
+   */
+  chapterKeys?: string[];
+  revision?: string;
 }
 
 const PREFIX = "sira.story.progress:";
@@ -89,10 +99,59 @@ export function readStoryProgress(
         }
       }
     }
-    return { v: 1, completedUnits, points };
+    const progress: StoryProgress = { v: 1, completedUnits, points };
+    if (Array.isArray(value.chapterKeys) && typeof value.revision === "string" && value.revision) {
+      progress.chapterKeys = [
+        ...new Set(value.chapterKeys.filter((key): key is string => typeof key === "string")),
+      ];
+      progress.revision = value.revision;
+    }
+    return progress;
   } catch {
     return emptyStoryProgress();
   }
+}
+
+/**
+ * The progress with a snapshot of the story revision being read: its
+ * chapter keys and its revision. Unchanged (the same object) when the
+ * snapshot is already there, so nothing needs writing.
+ */
+export function withChapterSnapshot(
+  progress: StoryProgress,
+  chapters: Chapter[],
+  revision: string | null | undefined,
+): StoryProgress {
+  if (!revision) return progress;
+  const chapterKeys = chapters.map(chapterKey);
+  if (
+    progress.revision === revision &&
+    progress.chapterKeys?.length === chapterKeys.length &&
+    progress.chapterKeys.every((key, index) => key === chapterKeys[index])
+  ) {
+    return progress;
+  }
+  return { ...progress, chapterKeys, revision };
+}
+
+/**
+ * How far a learner is, from the module page's side (which has the status
+ * route's revision and chapter count, never the story): finished chapters of
+ * the snapshot when it is of the revision the server serves now. Without
+ * one, the count of saved keys is only a hint: it may include stale keys, so
+ * it never says the story is finished.
+ */
+export function storyStanding(
+  progress: StoryProgress,
+  status: { chapters: number | null; revision: string | null } | null,
+): { completed: number; total: number; certain: boolean } {
+  const total = Math.max(0, Number(status?.chapters ?? 0) || 0);
+  if (progress.chapterKeys && progress.revision && status?.revision && progress.revision === status.revision) {
+    const keys = new Set(progress.chapterKeys);
+    const completed = progress.completedUnits.filter((key) => keys.has(key)).length;
+    return { completed, total: progress.chapterKeys.length || total, certain: true };
+  }
+  return { completed: progress.completedUnits.length, total, certain: false };
 }
 
 /** Save this learner's progress; a storage failure only means it is not remembered. */
@@ -123,7 +182,7 @@ export function withChapterDone(
     ? progress.completedUnits
     : [...progress.completedUnits, unitKey];
   const best = Math.max(progress.points[unitKey] ?? 0, Math.max(0, points));
-  return { v: 1, completedUnits, points: { ...progress.points, [unitKey]: best } };
+  return { ...progress, v: 1, completedUnits, points: { ...progress.points, [unitKey]: best } };
 }
 
 /**

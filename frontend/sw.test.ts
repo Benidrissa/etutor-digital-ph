@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { NetworkFirst, StaleWhileRevalidate } from "serwist";
+import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from "serwist";
 
 import { PAGES_CACHE_NAME } from "@/lib/offline/prewarm";
 
@@ -51,12 +51,30 @@ function rule(handler: abstract new (...args: never[]) => unknown): RuntimeCachi
   return found;
 }
 
+function apiRule(): RuntimeCaching {
+  const found = recorded.options?.runtimeCaching.find((entry) =>
+    entry.handler.options.cacheName?.startsWith("api-responses-"),
+  );
+  if (!found) throw new Error("no API rule");
+  return found;
+}
+
 function apiCacheTakes(path: string, method = "GET"): boolean {
-  const matcher = rule(StaleWhileRevalidate).matcher as Matcher;
+  const matcher = apiRule().matcher as Matcher;
   return matcher({
     url: new URL(path, "https://sira.example"),
     request: { method } as Request,
   });
+}
+
+/** The first rule that takes a GET of `path`, as the service worker picks it. */
+function ruleFor(path: string): RuntimeCaching | undefined {
+  const url = new URL(path, "https://sira.example");
+  return recorded.options?.runtimeCaching.find((entry) =>
+    entry.matcher instanceof RegExp
+      ? entry.matcher.test(url.href)
+      : entry.matcher({ url, request: { method: "GET", mode: "cors" } as Request }),
+  );
 }
 
 describe("service worker API cache", () => {
@@ -85,5 +103,36 @@ describe("service worker API cache", () => {
 
   it("pre-warmed pages land in the cache the navigation rule reads", () => {
     expect(rule(NetworkFirst).handler.options.cacheName).toBe(PAGES_CACHE_NAME);
+  });
+});
+
+describe("service worker story media cache (#2681)", () => {
+  const ART = "/api/v1/story-art/3f2c9a1e-0b7d-4c55-9e2a-1d2f3a4b5c6d/data";
+  const STICKER = "/api/v1/story-props/9b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/data";
+  const FIGURE = "/api/v1/source-images/7e8f9a0b-1c2d-4e3f-8a9b-0c1d2e3f4a5b/data?lang=fr";
+
+  it("keeps story art and prop pictures in a stable cache, cache first", () => {
+    for (const path of [ART, `${STICKER}?size=s`]) {
+      const found = ruleFor(path);
+      expect(found?.handler).toBeInstanceOf(CacheFirst);
+      // Not versioned: a downloaded story keeps its pictures across updates.
+      expect(found?.handler.options.cacheName).toBe("story-media-v1");
+    }
+  });
+
+  it("refreshes course figures behind the cached copy", () => {
+    const found = ruleFor(FIGURE);
+    expect(found?.handler).toBeInstanceOf(StaleWhileRevalidate);
+    expect(found?.handler.options.cacheName).toBe("story-media-v1");
+  });
+
+  it("leaves other paths of those routes to the API rule", () => {
+    expect(ruleFor("/api/v1/source-images/7e8f9a0b-1c2d-4e3f-8a9b-0c1d2e3f4a5b")?.handler.options.cacheName).toMatch(
+      /^api-responses-/,
+    );
+  });
+
+  it("bumps the page cache with the service worker", () => {
+    expect(PAGES_CACHE_NAME).toBe("pages-v10-story-media");
   });
 });

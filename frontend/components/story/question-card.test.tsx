@@ -91,11 +91,11 @@ describe("QuestionCard", () => {
 
     expect(screen.getByText("+2 mangoes")).toBeInTheDocument();
     expect(screen.getByText(/24 = 2³ × 3 and 36/)).toBeInTheDocument();
-    expect(onAnswered).toHaveBeenCalledWith({
+    expect(onAnswered).toHaveBeenCalledWith(expect.objectContaining({
       questionId: "q5",
       points: 2,
       attempts: 1,
-    });
+    }));
   });
 
   it("gives the trap's own hint on a first wrong answer, and keeps the card open", async () => {
@@ -137,11 +137,11 @@ describe("QuestionCard", () => {
     await user.click(screen.getByRole("button", { name: "Check" }));
 
     expect(screen.getByText("+1 mangoes")).toBeInTheDocument();
-    expect(onAnswered).toHaveBeenCalledWith({
+    expect(onAnswered).toHaveBeenCalledWith(expect.objectContaining({
       questionId: "q5",
       points: 1,
       attempts: 2,
-    });
+    }));
   });
 
   it("reveals the explanation after two wrong tries and scores zero", async () => {
@@ -157,11 +157,11 @@ describe("QuestionCard", () => {
 
     expect(screen.getByText("Here is how it works")).toBeInTheDocument();
     expect(screen.getByText(/24 = 2³ × 3 and 36/)).toBeInTheDocument();
-    expect(onAnswered).toHaveBeenCalledWith({
+    expect(onAnswered).toHaveBeenCalledWith(expect.objectContaining({
       questionId: "q5",
       points: 0,
       attempts: 2,
-    });
+    }));
   });
 
   it("accepts a decimal comma but shows the reminder", async () => {
@@ -208,11 +208,11 @@ describe("QuestionCard", () => {
 
       await user.click(screen.getByRole("button", { name: "13" }));
 
-      expect(onAnswered).toHaveBeenCalledWith({
+      expect(onAnswered).toHaveBeenCalledWith(expect.objectContaining({
         questionId: "q1",
         points: 2,
         attempts: 1,
-      });
+      }));
     });
   });
 
@@ -250,11 +250,11 @@ describe("QuestionCard", () => {
       await user.type(screen.getByLabelText("Your answer"), "2^3 x 3^2");
       await user.click(screen.getByRole("button", { name: "Check" }));
 
-      expect(onAnswered).toHaveBeenCalledWith({
+      expect(onAnswered).toHaveBeenCalledWith(expect.objectContaining({
         questionId: "q3",
         points: 2,
         attempts: 1,
-      });
+      }));
     });
 
     it("tells her to use powers when she expands the product", async () => {
@@ -269,5 +269,55 @@ describe("QuestionCard", () => {
       ).toBeInTheDocument();
       expect(screen.getByText("Group the repeats with powers.")).toBeInTheDocument();
     });
+  });
+});
+
+describe("QuestionCard — seen again (#2682)", () => {
+  it("shows the learner's answer and the explanation, read-only, and reports nothing", () => {
+    const onAnswered = vi.fn();
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QuestionCard
+          question={numberQuestion}
+          target="en"
+          home="fr"
+          bilingual={false}
+          rewards={{ unit: { en: "mangoes", fr: "mangues" }, first_try: 2, second_try: 1 }}
+          onAnswered={onAnswered}
+          review={{ answer: "72", correct: false, points: 0, attempts: 2 }}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByLabelText("Your answer")).toHaveValue("72");
+    expect(screen.getByLabelText("Your answer")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Check" })).not.toBeInTheDocument();
+    expect(screen.getByText(/24 = 2³ × 3 and 36/)).toBeInTheDocument();
+    expect(onAnswered).not.toHaveBeenCalled();
+  });
+
+  it("marks the choice the learner picked", () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QuestionCard
+          question={{
+            id: "q1",
+            type: "choice",
+            prompt: { en: "Which one is prime?", fr: "Lequel est premier ?" },
+            answer: "c",
+            choices: [
+              { id: "b", en: "9", fr: "9" },
+              { id: "c", en: "13", fr: "13" },
+            ],
+          }}
+          target="en"
+          home="fr"
+          bilingual={false}
+          onAnswered={vi.fn()}
+          review={{ answer: "c", correct: true, points: 2, attempts: 1 }}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByRole("button", { name: /13 · Your answer/ })).toBeDisabled();
+    expect(screen.getByText("+2 points")).toBeInTheDocument();
   });
 });

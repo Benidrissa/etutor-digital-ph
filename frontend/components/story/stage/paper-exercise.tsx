@@ -25,6 +25,7 @@ export function PaperExercise({
   home,
   bilingual,
   settled,
+  awardedBefore,
   onMarked,
 }: {
   exercise: Exercise;
@@ -34,13 +35,15 @@ export function PaperExercise({
   home: string;
   bilingual: boolean;
   settled: boolean;
+  /** The mark given before, when the exercise is shown again (Previous). */
+  awardedBefore?: number;
   onMarked: (points: number) => void;
 }) {
   const t = useTranslations("Story");
   // "Done on paper" pressed: the worked answer is open and can be marked.
   const [opened, setOpened] = useState(false);
   const [showWorking, setShowWorking] = useState(true);
-  const [awarded, setAwarded] = useState<number | null>(null);
+  const [awarded, setAwarded] = useState<number | null>(awardedBefore ?? null);
   const promptId = useId();
   const working = exercise.working ?? {};
   const marks = Math.max(0, Number(exercise.marks) || 0);

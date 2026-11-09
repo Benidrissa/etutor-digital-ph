@@ -18,6 +18,17 @@ import { useMemo, useState } from "react";
 import { scoreAttempt, seededShuffle, text } from "@/lib/story-course/answer";
 import type { Question, Rewards, TextObject } from "@/lib/story-course/types";
 
+/** How a question was answered: enough to show it again, read-only. */
+export interface QuestionAnswer {
+  /** The last answer given: a choice id, or what was typed. */
+  answer: string;
+  /** A `multi` question's answer per part. */
+  parts?: Record<string, string>;
+  correct: boolean;
+  points: number;
+  attempts: number;
+}
+
 interface QuestionCardProps {
   question: Question;
   /** Language of instruction, then the home language shown beneath it. */
@@ -25,7 +36,12 @@ interface QuestionCardProps {
   home: string;
   bilingual: boolean;
   rewards?: Rewards;
-  onAnswered: (outcome: { questionId: string; points: number; attempts: number }) => void;
+  onAnswered: (outcome: { questionId: string } & QuestionAnswer) => void;
+  /**
+   * Shown again (the story's Previous): the learner's answer and the
+   * explanation, settled and read-only. Nothing is scored again.
+   */
+  review?: QuestionAnswer;
   /**
    * Every attempt, right or wrong, as it is checked: the cartoon stage cheers
    * a right one and lets the hero think over a wrong one. `settled` is true
@@ -76,17 +92,18 @@ export function QuestionCard({
   rewards,
   onAnswered,
   onAttempt,
+  review,
   className,
 }: QuestionCardProps) {
   const t = useTranslations("Story");
-  const [typed, setTyped] = useState("");
-  const [partAnswers, setPartAnswers] = useState<Record<string, string>>({});
-  const [attempts, setAttempts] = useState(0);
+  const [typed, setTyped] = useState(review?.answer ?? "");
+  const [partAnswers, setPartAnswers] = useState<Record<string, string>>(review?.parts ?? {});
+  const [attempts, setAttempts] = useState(review?.attempts ?? 0);
   const [hint, setHint] = useState<TextObject | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [settled, setSettled] = useState(false);
-  const [correct, setCorrect] = useState(false);
-  const [earned, setEarned] = useState(0);
+  const [settled, setSettled] = useState(!!review);
+  const [correct, setCorrect] = useState(review?.correct ?? false);
+  const [earned, setEarned] = useState(review?.points ?? 0);
 
   const choices = useMemo(
     () => seededShuffle(question.choices ?? [], question.id),
@@ -113,7 +130,7 @@ export function QuestionCard({
         );
         return outcome.result.correct;
       });
-      finish(allCorrect, null, null);
+      finish(allCorrect, null, null, value);
       return;
     }
 
@@ -125,7 +142,7 @@ export function QuestionCard({
           ? t("useIndexForm")
           : null,
     );
-    finish(outcome.result.correct, outcome.hint, outcome.points);
+    finish(outcome.result.correct, outcome.hint, outcome.points, value);
   };
 
   /**
@@ -136,7 +153,9 @@ export function QuestionCard({
     isCorrect: boolean,
     nextHint: TextObject | null,
     points: number | null,
+    value: string,
   ) => {
+    const given = { answer: value, parts: isMulti ? { ...partAnswers } : undefined };
     const nextAttempts = attempts + 1;
     setAttempts(nextAttempts);
 
@@ -150,7 +169,7 @@ export function QuestionCard({
       setSettled(true);
       setEarned(won);
       setHint(null);
-      onAnswered({ questionId: question.id, points: won, attempts: nextAttempts });
+      onAnswered({ questionId: question.id, points: won, attempts: nextAttempts, correct: true, ...given });
       onAttempt?.({ correct: true, settled: true });
       return;
     }
@@ -158,7 +177,7 @@ export function QuestionCard({
     if (nextAttempts >= 2) {
       setSettled(true);
       setHint(null);
-      onAnswered({ questionId: question.id, points: 0, attempts: nextAttempts });
+      onAnswered({ questionId: question.id, points: 0, attempts: nextAttempts, correct: false, ...given });
       onAttempt?.({ correct: false, settled: true });
       return;
     }
@@ -208,6 +227,11 @@ export function QuestionCard({
                   }`}
                 >
                   {text({ en: choice.en, fr: choice.fr }, target, home)}
+                  {settled && chosen ? (
+                    <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      {`· ${t("yourAnswer")}`}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             );

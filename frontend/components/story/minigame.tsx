@@ -57,6 +57,16 @@ interface MinigameViewProps {
   onTap?: (correct: boolean) => void;
   /** Replaces the game's own frame, for a host that draws one around it. */
   className?: string;
+  /**
+   * Played already (the story's Previous): shows how it ended, with nothing
+   * to play or score again.
+   */
+  result?: number;
+  /**
+   * Brings the targets into view when a round starts: a game under the
+   * stage can begin below the fold on a laptop.
+   */
+  onRound?: (targets: HTMLElement) => void;
 }
 
 /** Rule predicates the player can evaluate locally, for list rounds. */
@@ -212,6 +222,8 @@ export function MinigameView({
   onFinished,
   onTap,
   className,
+  result,
+  onRound,
 }: MinigameViewProps) {
   const t = useTranslations("Story");
   const rounds = useMemo(() => playableRounds(game), [game]);
@@ -227,13 +239,14 @@ export function MinigameView({
   const perCorrect = Number(game.points?.per_correct) || 1;
 
   const [state, dispatch] = useReducer(gameReducer, {
-    phase: "ready",
+    phase: result === undefined ? "ready" : "done",
     round: 0,
     caught: [],
     wrong: [],
-    score: 0,
+    score: result ?? 0,
     secondsLeft: seconds,
   });
+  const targetsRef = useRef<HTMLUListElement | null>(null);
   const { phase, round, caught, wrong, score, secondsLeft } = state;
   const current = rounds[round];
   const correctSlots = useMemo(
@@ -274,7 +287,8 @@ export function MinigameView({
   useEffect(() => {
     onFinishedRef.current = onFinished;
   }, [onFinished]);
-  const reportedRef = useRef(false);
+  // A game shown again has been reported already.
+  const reportedRef = useRef(result !== undefined);
   useEffect(() => {
     if (phase !== "done" || reportedRef.current) return;
     reportedRef.current = true;
@@ -284,6 +298,18 @@ export function MinigameView({
   useEffect(() => {
     onTapRef.current = onTap;
   }, [onTap]);
+
+  // Every round's targets in view, once they are on screen.
+  const onRoundRef = useRef(onRound);
+  useEffect(() => {
+    onRoundRef.current = onRound;
+  }, [onRound]);
+  useEffect(() => {
+    if (phase !== "playing" || !targetsRef.current) return;
+    const targets = targetsRef.current;
+    const frame = requestAnimationFrame(() => onRoundRef.current?.(targets));
+    return () => cancelAnimationFrame(frame);
+  }, [phase, round]);
 
   // Keys 1-6 mirror the touch targets (A.9), only while the game is in sight
   // and the key is not meant for something else.
@@ -370,6 +396,7 @@ export function MinigameView({
           ) : null}
 
           <ul
+            ref={targetsRef}
             className={`mt-3 grid gap-2 ${compact ? "grid-cols-3" : "grid-cols-1 sm:grid-cols-2"}`}
           >
             {current.items.map((item, slot) => {
