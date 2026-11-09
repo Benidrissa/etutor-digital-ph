@@ -642,6 +642,76 @@ async def test_an_added_quiz_unit_only_re_merges(raw, sessions):
     assert record.status == "published"
 
 
+class TwoExtraQuestions(FakeClaude):
+    """The spine with a second extra question: a chapter with no quiz still has two."""
+
+    async def generate_structured_content(self, system, user, content_type, max_retries=1):
+        spine = await super().generate_structured_content(system, user, content_type, max_retries)
+        extra = copy.deepcopy(spine["questions"][0])
+        extra["id"] = "x2"
+        extra["prompt"] = {
+            "en": "How many nights a week should a child sleep under a net? (number only)",
+            "fr": "Combien de nuits par semaine sous la moustiquaire ? (nombre seul)",
+        }
+        extra["answer"] = "7"
+        extra["traps"] = []
+        spine["questions"].append(extra)
+        return spine
+
+
+async def test_a_quiz_generated_by_the_run_remakes_the_fresh_chapters_it_covers(raw, sessions):
+    """The module story a run writes is fresh, even when the run made a covering quiz.
+
+    A lessons-only module's chapters are built with no quiz. A lesson and a
+    quiz unit covering every lesson are then added: only the new lesson's
+    chapter is stale, but making it generates the quiz, which makes the two
+    older chapters stale too. They are remade in the same run, so the next
+    open serves the story without another wait.
+    """
+    roster = [r for r in ROSTER if r[0] in ("1.1", "1.2")]
+    seed_ = await seed(sessions, raw, cached_lessons=("1.1", "1.2"), roster=roster)
+    model = TwoExtraQuestions(raw, "en")
+    lessons, quizzes = FakeLessonService(raw), FakeQuizService(raw)
+    service = ModuleStoryService(model, lessons, quizzes)
+    first = await generate(service, seed_, sessions)
+    assert first.status == "published"
+    assert sorted(model.calls) == ["1.1", "1.2"] and quizzes.calls == []
+    model.calls.clear()
+    async with sessions.maker() as session:
+        for number, kind, order in (("1.3", "lesson", 2), ("1.4", "quiz", 3)):
+            seed_.units[number] = uuid.uuid4()
+            session.add(
+                ModuleUnit(
+                    id=seed_.units[number],
+                    module_id=seed_.module_id,
+                    unit_number=number,
+                    unit_type=kind,
+                    order_index=order,
+                    title_en=f"Unit {number}",
+                    title_fr=f"Unité {number}",
+                )
+            )
+        await session.commit()
+
+    record = await generate(service, seed_, sessions)
+
+    assert lessons.calls == ["1.3"] and quizzes.calls == ["1.4"]
+    # 1.3 first (the quiz is generated for it), then 1.1 and 1.2 from the quiz.
+    assert model.calls[0] == "1.3" and sorted(model.calls[1:]) == ["1.1", "1.2"]
+    assert record.status == "published"
+    async with sessions.maker() as session:
+        assert await module_story_is_fresh(session, record)
+    chapters = await chapter_rows(sessions, seed_)
+    for number in ("1.1", "1.2", "1.3"):
+        derived = [q for q in chapters[number].content["questions"] if "derived_from" in q]
+        assert derived and {q["derived_from"]["quiz_unit"] for q in derived} == {"1.4"}
+
+    model.calls.clear()
+    again = await generate(service, seed_, sessions)
+    assert model.calls == [] and quizzes.calls == ["1.4"]
+    assert again.updated_at == record.updated_at
+
+
 async def test_an_own_quiz_on_a_lesson_unit_changes_nothing(raw, sessions):
     """The offline download creates one per unit; chapters never read it."""
     seed_, service, model, lessons, quizzes, first = await _first(raw, sessions)

@@ -25,6 +25,8 @@ asyncio loop:
    lesson if the unit has none (then dispatch its quality assessment, as the
    lesson task does), generate the covering quiz unit's quiz if it has none —
    at most once per quiz unit — and make the chapter, which commits its row;
+   a quiz generated there makes the fresh chapters its unit covers stale (they
+   were built without it), so those are made in one more pass;
 3. if any chapter failed, raise :class:`ChapterGenerationFailed`: the module
    row is neither written nor updated, and the chapters that succeeded stay
    cached, so the next open makes only the rest;
@@ -370,6 +372,8 @@ class _Run:
     semaphore: asyncio.Semaphore
     quiz_locks: dict[uuid.UUID, asyncio.Lock] = field(default_factory=dict)
     quiz_ready: set[uuid.UUID] = field(default_factory=set)
+    #: Quiz units whose quiz this run generated (a subset of ``quiz_ready``).
+    quiz_generated: set[uuid.UUID] = field(default_factory=set)
     quiz_failed: dict[uuid.UUID, str] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
 
@@ -508,15 +512,36 @@ class ModuleStoryService:
                 semaphore=asyncio.Semaphore(self.concurrency),
             )
             await self._make_chapters(run, stale)
-            if run.failures:
-                failed = [u.unit_number for u in stale if u.unit_number in run.failures]
-                logger.warning(
-                    "Module story not written: chapters failed",
-                    module_id=str(module_id),
-                    language=language,
-                    failed_units=failed,
-                )
-                raise ChapterGenerationFailed(failed, run.failures)
+            _raise_failures(run, stale)
+            # A quiz this run generated makes the fresh chapters its unit
+            # covers stale: they were built when it did not exist. Make them
+            # now (one more pass, at most), or the module story written
+            # below would be stale at once and the next open would pay for
+            # them anyway after another wait.
+            made = {u.module_unit_id for u in stale}
+            covered = [
+                u
+                for u in lessons
+                if u.module_unit_id not in made
+                and run.covering.get(u.module_unit_id) in run.quiz_generated
+            ]
+            if covered:
+                async with session_factory() as session:
+                    states = await _chapter_states(session, units, language)
+                again = [
+                    u
+                    for u in covered
+                    if u.module_unit_id not in states or not states[u.module_unit_id].fresh
+                ]
+                if again:
+                    logger.info(
+                        "Module story: remaking chapters a new quiz made stale",
+                        module_id=str(module_id),
+                        language=language,
+                        chapters_to_make=[u.unit_number for u in again],
+                    )
+                    await self._make_chapters(run, again)
+                    _raise_failures(run, again)
 
         return await self._merge(session_factory, ctx, units, course_id)
 
@@ -670,6 +695,7 @@ class ModuleStoryService:
                     f"The quiz of unit {quiz_unit.unit_number} could not be generated"
                 ) from exc
             run.quiz_ready.add(quiz_unit_id)
+            run.quiz_generated.add(quiz_unit_id)
             logger.info(
                 "Quiz generated for module story chapters",
                 module_id=str(run.module_id),
@@ -784,6 +810,20 @@ class ModuleStoryService:
             statuses=statuses,
         )
         return record
+
+
+def _raise_failures(run: _Run, units: Sequence[StoryUnit]) -> None:
+    """Raise :class:`ChapterGenerationFailed` when any of ``units``' chapters failed."""
+    if not run.failures:
+        return
+    failed = [u.unit_number for u in units if u.unit_number in run.failures]
+    logger.warning(
+        "Module story not written: chapters failed",
+        module_id=str(run.module_id),
+        language=run.language,
+        failed_units=failed,
+    )
+    raise ChapterGenerationFailed(failed, run.failures)
 
 
 def _chapter_status(doc: dict[str, Any], index: int, source: ChapterSource) -> str:
