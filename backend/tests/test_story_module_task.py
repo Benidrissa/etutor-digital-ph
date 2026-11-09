@@ -326,3 +326,125 @@ def test_end_to_end_a_time_limit_then_a_complete_run(monkeypatch):
         finally:
             client.delete(key)
             client.close()
+
+
+def test_end_to_end_a_signalled_time_limit_closes_every_chapter_session(monkeypatch):
+    """The soft limit as Celery delivers it: a signal while every chapter awaits the model.
+
+    The signal lands in the event loop's ``select()``, outside any task, so
+    ``asyncio.run``'s teardown cancels every task, and the main task's
+    TaskGroup then cancels the chapters a second time. A chapter already in
+    its session's ``__aexit__`` ends on that second cancel while the shielded
+    close task still holds its connection. The teardown cancels in set order;
+    the test puts the chapters first, the order that left those connections
+    checked out when the engine was disposed (and open in a long-lived worker).
+    """
+    import asyncio
+    import json
+    import signal
+    import threading
+    import time
+    from pathlib import Path
+
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
+    from app.infrastructure.config.settings import settings
+    from tests._story_db import create_tables, scratch_database, story_tables, sync_engine
+    from tests.test_story_module_service import (
+        LESSONS,
+        FakeClaude,
+        FakeLessonService,
+        FakeQuizService,
+        Sessions,
+        module_row,
+        seed,
+    )
+
+    raw = json.loads(
+        (Path(__file__).parent / "fixtures" / "lesson_story_unit.json").read_text("utf-8")
+    )
+    with scratch_database("story_signal") as url:
+        create_tables(url, story_tables())
+        database = url.rsplit("/", 1)[1]
+
+        async def with_sessions(work):
+            engine = create_async_engine(url)
+            try:
+                return await work(Sessions(engine))
+            finally:
+                await engine.dispose()
+
+        seeded = asyncio.run(with_sessions(lambda sessions: seed(sessions, raw)))
+        monkeypatch.setattr(settings, "database_url", url)
+
+        real_all_tasks = asyncio.tasks.all_tasks
+
+        def chapters_first(loop=None):
+            found = real_all_tasks(loop)
+            return sorted(found, key=lambda t: not t.get_name().startswith("story-chapter-"))
+
+        checked_out_at_dispose: list[int] = []
+        real_dispose = AsyncEngine.dispose
+
+        async def dispose(self, close=True):
+            checked_out_at_dispose.append(self.sync_engine.pool.checkedout())
+            return await real_dispose(self, close)
+
+        def soft_timeout_sighandler(signum, frame):  # billiard's, in a prefork child
+            raise SoftTimeLimitExceeded()
+
+        model = FakeClaude(raw, "en", delay=30.0)
+        main_thread = threading.main_thread().ident
+
+        def signal_once_every_chapter_waits() -> None:
+            deadline = time.monotonic() + 20
+            while model.in_flight < len(LESSONS) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            time.sleep(0.1)  # the loop is back in select()
+            signal.pthread_kill(main_thread, signal.SIGALRM)
+
+        previous = signal.signal(signal.SIGALRM, soft_timeout_sighandler)
+        sender = threading.Thread(target=signal_once_every_chapter_waits, daemon=True)
+        try:
+            with (
+                patch("app.ai.claude_service.ClaudeService", return_value=model),
+                patch("app.ai.rag.embeddings.EmbeddingService"),
+                patch("app.ai.rag.retriever.SemanticRetriever"),
+                patch(
+                    "app.domain.services.lesson_service.LessonGenerationService",
+                    return_value=FakeLessonService(raw),
+                ),
+                patch(
+                    "app.domain.services.quiz_service.QuizService",
+                    return_value=FakeQuizService(raw),
+                ),
+                patch("app.tasks.quality_assessment.assess_and_regenerate_unit_task"),
+                patch("asyncio.tasks.all_tasks", chapters_first),
+                patch.object(AsyncEngine, "dispose", dispose),
+            ):
+                sender.start()
+                result = run_task(str(seeded.module_id), "en", dedup_key=None)
+        finally:
+            sender.join(timeout=30)
+            signal.signal(signal.SIGALRM, previous)
+
+        assert result["status"] == "failed" and result["error"] == "time_limit_exceeded"
+        assert sorted(model.cancelled) == LESSONS  # every chapter was waiting on the model
+        assert asyncio.run(with_sessions(lambda s: module_row(s, seeded))) is None
+        # Every chapter session was closed before the engine went away...
+        assert checked_out_at_dispose == [0]
+        # ...so no connection outlives the task (no garbage collection needed).
+        monitor = sync_engine(url)
+        try:
+            with monitor.connect() as conn:
+                still_open = conn.execute(
+                    sa.text(
+                        "SELECT count(*) FROM pg_stat_activity"
+                        " WHERE datname = :name AND pid <> pg_backend_pid()"
+                    ),
+                    {"name": database},
+                ).scalar_one()
+        finally:
+            monitor.dispose()
+        assert still_open == 0

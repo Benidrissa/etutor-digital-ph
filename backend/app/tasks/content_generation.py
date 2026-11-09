@@ -34,6 +34,30 @@ MODULE_STORY_HARD_LIMIT = 1260
 MODULE_STORY_POOL_SIZE = 8
 MODULE_STORY_MAX_OVERFLOW = 2
 
+#: How long the module story task waits, before disposing of its engine, for
+#: the session closes a soft time limit left running (well inside the 60 s
+#: between the soft and the hard limit; a ROLLBACK takes milliseconds).
+MODULE_STORY_CLOSE_GRACE_S = 20.0
+
+
+async def _await_other_tasks(timeout: float) -> None:
+    """Wait (bounded) for every task on this loop but the current one to finish.
+
+    A Celery soft time limit arrives as a signal: while every chapter awaits
+    the model it lands in the loop's ``select()``, outside any task. Then
+    ``asyncio.run``'s teardown cancels every task and the main task's
+    TaskGroup cancels the chapters a second time, so a chapter can end while
+    its ``AsyncSession``'s shielded close task still holds a connection. The
+    engine must not be disposed before those closes return their connections,
+    or they stay open in the (long-lived) worker process.
+    """
+    import asyncio
+
+    current = asyncio.current_task()
+    others = {task for task in asyncio.all_tasks() if task is not current}
+    if others:
+        await asyncio.wait(others, timeout=timeout)
+
 
 def _safe_uuid(value: str | uuid.UUID | None) -> uuid.UUID | None:
     """Parse task-arg ids (strings over the wire) for ledger attribution."""
@@ -573,6 +597,9 @@ def generate_module_story_task(
                 "is_valid": bool(record.is_valid),
             }
         finally:
+            # A chapter session's close can outlive its chapter on a soft
+            # time limit (see _await_other_tasks): let it finish first.
+            await _await_other_tasks(MODULE_STORY_CLOSE_GRACE_S)
             await engine.dispose()
 
     failed: dict = {"status": "failed", "content_id": None, "is_valid": False}
