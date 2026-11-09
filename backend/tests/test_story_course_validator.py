@@ -658,3 +658,70 @@ class TestScores:
         assert validate(course).checks.max_points == 29 - 9
         course["minigames"][0]["points"] = {"per_correct": 1}
         assert validate(course).checks.max_points == 29 - 9 + 1
+
+
+class TestGeneratedOnly:
+    """The screenplay rules are errors for a generated story, warnings for an authored week."""
+
+    @staticmethod
+    def _spoiled(course):
+        steps = course["chapters"][0]["scenes"][0]["steps"]
+        steps[0]["mood"] = "furious"
+        steps[0]["en"] = "Mr. Kaboré: some numbers cannot be split at all."
+        line = {"type": "narrate", "en": "Every chapter starts like this one.", "fr": "Pareil."}
+        course["chapters"][0]["scenes"][0]["steps"].insert(1, dict(line))
+        course["chapters"][1]["scenes"][0]["steps"].insert(0, dict(line))
+        course["chapters"][1]["scenes"][0]["steps"][2]["visual"] = "number_line"
+        return course
+
+    CODES = {"unknown_mood", "speaker_prefix", "repeated_line", "visual_not_drawn"}
+
+    def test_an_authored_week_only_warns(self, course):
+        report = validate(self._spoiled(course))
+        assert report.ok, [e.model_dump() for e in report.errors]
+        assert {w.code for w in report.warnings} >= self.CODES
+
+    def test_a_generated_story_fails(self, course):
+        report = validate_story_course(
+            StoryCourse.model_validate(self._spoiled(course)), generated=True
+        )
+        assert not report.ok
+        assert {e.code for e in report.errors} >= self.CODES
+
+    @pytest.mark.parametrize(
+        ("visual", "params", "drawn"),
+        [
+            ("hundred_square", {"highlight": "primes"}, True),
+            ("hundred_square", {"highlight": "multiples:7"}, True),
+            ("hundred_square", {"highlight": "evens"}, False),
+            ("factor_tree", {"n": 72, "first_split": [8, 9]}, True),
+            ("factor_tree", {"n": 72, "first_split": [8, 8]}, False),
+            ("factor_tree", {}, False),
+            ("division_ladder", {"n": 360}, True),
+            ("venn_primes", {"a": 24, "b": 36}, True),
+            ("venn_primes", {"a": 24}, False),
+            ("thermometer", {"value": 30}, False),
+        ],
+    )
+    def test_only_the_visuals_the_player_draws(self, visual, params, drawn):
+        from app.domain.services.story_course_validator import drawn_visual_problem
+
+        assert (drawn_visual_problem(visual, params) is None) is drawn
+
+    @pytest.mark.parametrize(
+        ("line", "labelled"),
+        [
+            ("Kaboré: look.", True),
+            ("M. Kaboré dit : « Regarde. »", True),
+            ("Kaboré says 'look'.", True),
+            ("Teacher Kaboré: look.", True),
+            ("Kaboré dit que la nuit est longue.", False),
+            ("Kaboré says the answer is near.", False),
+            ("Kaboré is right: look.", False),
+        ],
+    )
+    def test_a_label_is_a_name_then_a_colon_or_a_quote(self, line, labelled):
+        from app.domain.services.story_course_validator import speaker_prefix_pattern
+
+        pattern = speaker_prefix_pattern(["Kaboré", "mentor"])
+        assert bool(pattern.match(line)) is labelled

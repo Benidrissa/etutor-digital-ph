@@ -1,13 +1,16 @@
 """The module story: one ``story-course/1`` week per (module, language).
 
-A module story has exactly one chapter per unit of the module, in teaching
-order. A lesson unit's chapter is that lesson's own story — made, validated
-and cached by the per-lesson pipeline (:mod:`story_repair`, contract C-1) —
-and a quiz, case-study or scenario unit's chapter is a short checkpoint scene
-that sends the learner to the unit's own page. This module joins them
-(contract C-2). It is pure and deterministic: no database, no model, no
-clock, no randomness, so the same inputs always give byte-identical JSON and
-a merge costs nothing.
+A module story tells a module as one cartoon series episode (#2672): one
+chapter per **lesson** unit, in teaching order, then — when the module has a
+quiz unit — one final **rally** chapter that mixes questions of the module's
+quizzes and resolves the module's mission. Quiz, case-study and scenario
+units produce no chapter of their own (their pages still list them). A lesson
+chapter is that lesson's own story, made, validated and cached by the
+per-lesson pipeline (:mod:`story_repair`, contract C-1); the rally is made by
+the same pipeline from the module's quizzes and cached with the module story.
+This module joins them (contract C-2). It is pure and deterministic: no
+database, no model, no clock, no randomness, so the same inputs always give
+byte-identical JSON and a merge costs nothing.
 
 What the assembler does, and nothing else:
 
@@ -15,29 +18,28 @@ What the assembler does, and nothing else:
   exercises, mini-games, videos, concept steps — and every reference to one
   is namespaced ``u{key}-`` (``key`` is the unit number with every
   non-alphanumeric character replaced by ``_``). Chapters are renumbered
-  ``ch1..chN`` and scenes ``s1..sM`` over the whole document. Cast ids are
-  not namespaced: every chapter has the same :func:`story_repair.pinned_cast`.
-* **Frames, by marker only.** A lesson's ``opener`` and ``ask_tutor`` steps
-  are dropped and its ``finished`` step becomes a "lesson X is done" line;
-  its ``objectives`` step is kept. The first chapter opens with a module
-  intro scene listing every unit, and the last one closes with the module's
-  closing scene. Every step the assembler writes carries a ``frame`` marker
-  (see :data:`GENERATED_FRAMES`) and addresses ``{child}``.
+  ``ch1..chN`` and scenes ``s1..sM`` over the whole document. Cast and place
+  ids are not namespaced: every chapter has the course bible's.
+* **The bible.** The document's ``cast`` (with ``role``, ``look``,
+  ``variants``) and ``places`` are the course bible's (:mod:`story_bible`),
+  identical in every module story of the course; its facts join the
+  chapters' own.
 * **Duplicates.** A quiz question copied into two lessons' chapters (both
   carry ``derived_from`` and read the same stem, options and answer in the
   target language) is kept in the first; a later copy is dropped unless that
   would leave its chapter with fewer than :data:`story_repair.MIN_QUESTIONS`.
+  The rally is a review and keeps its questions. A story line told again in a
+  later chapter is dropped there.
 * **Everything module-level**: header, merged sources, objectives,
-  misconceptions, glossary and facts, the tutor brief, rewards, one pass of
-  ask spacing (the same bridges as a lesson story), the summed typical run,
-  and the ``covers`` and ``module_story`` metadata.
+  misconceptions, glossary and facts, the tutor brief, rewards, the summed
+  typical run, and the ``covers`` and ``module_story`` metadata. A lesson
+  whose chapter is not ready keeps a "read it on its page" placeholder chapter
+  (``frame`` ``unavailable``), so completion still works.
 
-It never edits a text a learner reads, apart from those frame lines: every
-question, choice, hint, explanation, exercise, mini-game and concept row is
-the chapter's own, so the verbatim quiz MCQs that :mod:`mcq_checks` checked
-stay verbatim. Learner-facing text never comes from anywhere but the chapter
-documents and the fixed frame lines here; an ``option_misconceptions`` key is
-never copied.
+It never edits a text a learner reads: every question, choice, hint,
+explanation, exercise, mini-game, line and concept row is the chapter's own,
+so the verbatim quiz MCQs that :mod:`mcq_checks` checked stay verbatim. An
+``option_misconceptions`` key is never copied.
 """
 
 from __future__ import annotations
@@ -61,13 +63,24 @@ from app.api.v1.schemas.story_course import (
     ValidationReport,
 )
 from app.domain.services import story_repair as repair
-from app.domain.services.story_course_validator import validate_story_course
+from app.domain.services.story_bible import (
+    StoryBible,
+    default_bible,
+    doc_cast,
+    doc_facts,
+    doc_places,
+)
+from app.domain.services.story_course_validator import (
+    validate_story_course,
+)
 
 logger = structlog.get_logger(__name__)
 
-#: Recorded in ``module_story.assembler``; a stored module story built by
-#: another version is stale.
-MODULE_ASSEMBLER_VERSION = 1
+#: Recorded in ``module_story.assembler`` and the module row's manifest; a
+#: stored module story built by another version is stale. 2: the screenplay
+#: generator with the course bible (#2674) — chapters only for lessons, plus
+#: the rally.
+MODULE_ASSEMBLER_VERSION = 2
 
 UnitRole = Literal["lesson", "quiz_checkpoint", "case_checkpoint"]
 ChapterStatus = Literal["ready", "unavailable", "checkpoint"]
@@ -75,32 +88,10 @@ ChapterStatus = Literal["ready", "unavailable", "checkpoint"]
 #: Unit types completed without a quiz, other than lessons (progress.py).
 CASE_UNIT_TYPES = frozenset({"case-study", "scenario"})
 
-#: The ``frame`` markers of the steps the assembler writes. ``objectives``,
-#: the one chapter frame kept, is a lesson's own step.
-FRAME_OPENER = repair.FRAME_OPENER
-FRAME_MODULE_INTRO = "module_intro"
-FRAME_MODULE_OVERVIEW = "module_overview"
-FRAME_LESSON_DONE = "lesson_done"
-FRAME_CHECKPOINT = "checkpoint"
+#: The ``frame`` marker of the only lines the assembler writes: the
+#: placeholder of a lesson whose chapter is not ready.
 FRAME_UNAVAILABLE = "unavailable"
-FRAME_FINISHED = repair.FRAME_FINISHED
-FRAME_CHECKPOINT_REMINDER = "checkpoint_reminder"
-FRAME_ASK_TUTOR = repair.FRAME_ASK_TUTOR
-GENERATED_FRAMES = (
-    FRAME_OPENER,
-    FRAME_MODULE_INTRO,
-    FRAME_MODULE_OVERVIEW,
-    FRAME_LESSON_DONE,
-    FRAME_CHECKPOINT,
-    FRAME_UNAVAILABLE,
-    FRAME_FINISHED,
-    FRAME_CHECKPOINT_REMINDER,
-    FRAME_ASK_TUTOR,
-)
-
-#: The chapter frames dropped from every lesson: the module has one opener
-#: and one closing line to the tutor.
-_DROPPED_FRAMES = frozenset({repair.FRAME_OPENER, repair.FRAME_ASK_TUTOR})
+GENERATED_FRAMES = (FRAME_UNAVAILABLE,)
 
 #: Never copied from a chapter, at any depth: a quiz's per-option
 #: misconceptions are prompt input, not story content.
@@ -128,11 +119,11 @@ class StoryUnit:
 
 @dataclass(frozen=True)
 class ChapterSource:
-    """A unit and, for a lesson, its chapter document.
+    """A unit and, for a lesson (or the rally), its chapter document.
 
-    ``doc`` is the fresh, valid, published chapter (a lesson story, C-1) for
-    role ``"lesson"``; ``None`` means the lesson's chapter is unavailable. It
-    is ignored for checkpoints.
+    ``doc`` is the fresh, valid, published chapter for role ``"lesson"``;
+    ``None`` means the lesson's chapter is unavailable. It is ignored for
+    other units.
     """
 
     unit: StoryUnit
@@ -148,6 +139,12 @@ class ModuleStoryContext:
     course_title: dict[str, str]
     previous_module: tuple[int, dict[str, str]] | None
     is_kids: bool
+    #: The course bible; ``None``: the audience's default (a module without a course).
+    bible: StoryBible | None = None
+
+    @property
+    def story_bible(self) -> StoryBible:
+        return self.bible or default_bible(self.is_kids)
 
 
 def module_story_slug(module_id: uuid.UUID, language: str) -> str:
@@ -291,7 +288,7 @@ def _unusable_reason(source: ChapterSource, language: str) -> str | None:
 DerivedKey = tuple[str, tuple[str, ...], str]
 
 
-def _derived_key(question: dict[str, Any], language: str) -> DerivedKey | None:
+def derived_key(question: dict[str, Any], language: str) -> DerivedKey | None:
     """The verbatim quiz question a derived question copies, by its content.
 
     Only a question with ``derived_from`` (C-1) is a copy, but its identity is
@@ -373,13 +370,41 @@ def _drop_questions(doc: dict[str, Any], ids: set[str]) -> int:
     return points
 
 
+def _chapter_steps(doc: dict[str, Any]) -> list[list[dict[str, Any]]]:
+    """Each chapter of ``doc``'s steps, flattened across its scenes."""
+    return [
+        [step for scene in chapter["scenes"] for step in scene["steps"]]
+        for chapter in doc.get("chapters") or []
+    ]
+
+
+def _runs_hold_without(doc: dict[str, Any], ids: set[str]) -> bool:
+    """Whether ``doc`` keeps at most MAX_ASKS_IN_A_ROW asks in a row without ``ids``.
+
+    Their asks and situation cards go, as :func:`_drop_questions` removes them:
+    a situation card can be what separates two runs.
+    """
+    situations = {repair.situation_step_id(qid) for qid in ids}
+    for steps in _chapter_steps(doc):
+        kept = [
+            step
+            for step in steps
+            if not (step.get("type") == "ask" and step.get("ref") in ids)
+            and not (step.get("type") == "concept" and step.get("id") in situations)
+        ]
+        if repair.ask_run_excess(kept):
+            return False
+    return True
+
+
 def _deduplicate(docs: dict[int, dict[str, Any]], language: str) -> dict[int, list[str]]:
     """Drop later copies of a quiz question, in chapter order, with the floor rule.
 
-    Copies are the same verbatim question (:func:`_derived_key`). A copy is
+    Copies are the same verbatim question (:func:`derived_key`). A copy is
     kept when dropping it would leave its chapter with fewer than
-    :data:`story_repair.MIN_QUESTIONS` questions. Returns the dropped ids per
-    chapter index (ids as the chapter had them).
+    :data:`story_repair.MIN_QUESTIONS` questions, or would join two runs of
+    questions into one longer than :data:`story_repair.MAX_ASKS_IN_A_ROW`.
+    Returns the dropped ids per chapter index (ids as the chapter had them).
     """
     seen: set[DerivedKey] = set()
     dropped: dict[int, list[str]] = {}
@@ -388,12 +413,14 @@ def _deduplicate(docs: dict[int, dict[str, Any]], language: str) -> dict[int, li
         remaining = len(doc["questions"])
         drop: list[str] = []
         for question in doc["questions"]:
-            key = _derived_key(question, language)
+            key = derived_key(question, language)
             if key is None:
                 continue
             if key not in seen:
                 seen.add(key)
-            elif remaining - 1 >= repair.MIN_QUESTIONS:
+            elif remaining - 1 >= repair.MIN_QUESTIONS and _runs_hold_without(
+                doc, {*drop, question["id"]}
+            ):
                 drop.append(question["id"])
                 remaining -= 1
         if drop:
@@ -474,126 +501,16 @@ class _Namespace:
 
 
 # --------------------------------------------------------------------------
-# Frame lines (FR and EN, {child}, at most 100 characters, gender-neutral tu)
+# The placeholder of a lesson whose chapter is not ready
 # --------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _Kind:
-    """How a checkpoint unit is named."""
-
-    en: str  # "the quiz"
-    fr: str  # "le quiz"
-    title_en: str  # "Quiz"
-    title_fr: str  # "Quiz"
-    label_en: str  # " (quiz)" in the module overview
-    label_fr: str
-    leave_en: str  # the mentor's line sending the learner to the unit's page
-    leave_fr: str
-
-
-_QUIZ = _Kind(
-    en="the quiz",
-    fr="le quiz",
-    title_en="Quiz",
-    title_fr="Quiz",
-    label_en=" (quiz)",
-    label_fr=" (quiz)",
-    leave_en="This quiz is not part of the story, {child}: take it on its page.",
-    leave_fr="Ce quiz ne fait pas partie de l'histoire, {child} : fais-le sur sa page.",
-)
-_CASE = _Kind(
-    en="the case study",
-    fr="l'étude de cas",
-    title_en="Case study",
-    title_fr="Étude de cas",
-    label_en=" (case study)",
-    label_fr=" (étude de cas)",
-    leave_en="This case study is not part of the story, {child}: work on it on its page.",
-    leave_fr="Cette étude de cas ne fait pas partie de l'histoire, {child} : fais-la sur sa page.",
-)
-_SCENARIO = _Kind(
-    en="the scenario",
-    fr="la mise en situation",
-    title_en="Scenario",
-    title_fr="Mise en situation",
-    label_en=" (scenario)",
-    label_fr=" (mise en situation)",
-    leave_en="This scenario is not part of the story, {child}: work on it on its page.",
-    leave_fr=(
-        "Cette mise en situation ne fait pas partie de l'histoire, {child} : fais-la sur sa page."
-    ),
-)
-
-
-def _kind(unit: StoryUnit) -> _Kind | None:
-    if unit.role == "quiz_checkpoint":
-        return _QUIZ
-    if unit.role == "case_checkpoint":
-        return _SCENARIO if unit.unit_type == "scenario" else _CASE
-    return None
-
-
-def _intro_scene(units: Sequence[StoryUnit], place: str) -> dict[str, Any]:
-    rows: dict[str, list[str]] = {"en": [], "fr": []}
-    for unit in units:
-        title = _unit_title(unit)
-        kind = _kind(unit)
-        rows["en"].append(f"{unit.unit_number} · {title['en']}{kind.label_en if kind else ''}")
-        rows["fr"].append(f"{unit.unit_number} · {title['fr']}{kind.label_fr if kind else ''}")
-    return {
-        "place": place,
-        "steps": [
-            _line(
-                "narrate",
-                "This story is about you, {child}.",
-                "Cette histoire parle de toi, {child}.",
-                FRAME_OPENER,
-            ),
-            _line(
-                "narrate",
-                "Here is your path through this module, {child}.",
-                "Voici ton chemin dans ce module, {child}.",
-                FRAME_MODULE_INTRO,
-            ),
-            _concept(
-                "module-overview",
-                {"en": "In this module", "fr": "Dans ce module"},
-                rows,
-                FRAME_MODULE_OVERVIEW,
-            ),
-        ],
-    }
-
-
-def _checkpoint_scene(unit: StoryUnit, kind: _Kind, prefix: str, place: str) -> dict[str, Any]:
+def _unavailable_scene(unit: StoryUnit, prefix: str, place: str, cast: list[str]) -> dict[str, Any]:
     number = unit.unit_number
     title = _unit_title(unit)
     return {
         "place": place,
-        "steps": [
-            _line(
-                "narrate",
-                f"Checkpoint, {{child}}: {kind.en} of unit {number}.",
-                f"Étape, {{child}} : {kind.fr} de l'unité {number}.",
-                FRAME_CHECKPOINT,
-            ),
-            _concept(
-                f"{prefix}checkpoint",
-                {"en": f"{kind.title_en} {number}", "fr": f"{kind.title_fr} {number}"},
-                {"en": [title["en"]], "fr": [title["fr"]]},
-                FRAME_CHECKPOINT,
-            ),
-            _line("say", kind.leave_en, kind.leave_fr, FRAME_CHECKPOINT, repair.MENTOR_ID),
-        ],
-    }
-
-
-def _unavailable_scene(unit: StoryUnit, prefix: str, place: str) -> dict[str, Any]:
-    number = unit.unit_number
-    title = _unit_title(unit)
-    return {
-        "place": place,
+        "cast": cast,
         "steps": [
             _line(
                 "narrate",
@@ -609,60 +526,13 @@ def _unavailable_scene(unit: StoryUnit, prefix: str, place: str) -> dict[str, An
             ),
             _line(
                 "say",
-                "Read it on its own page, {child}, then come back.",
-                "Lis-la sur sa page, {child}, puis reviens.",
+                f"Read lesson {number} on its own page, {{child}}, then come back.",
+                f"Lis la leçon {number} sur sa page, {{child}}, puis reviens.",
                 FRAME_UNAVAILABLE,
                 repair.MENTOR_ID,
             ),
         ],
     }
-
-
-def _lesson_done(unit: StoryUnit) -> dict[str, Any]:
-    return _line(
-        "narrate",
-        f"Well done, {{child}}: lesson {unit.unit_number} is done.",
-        f"Bravo, {{child}} : la leçon {unit.unit_number} est terminée.",
-        FRAME_LESSON_DONE,
-    )
-
-
-def _closing_scene(units: Sequence[StoryUnit], place: str) -> dict[str, Any]:
-    roles = {unit.role for unit in units}
-    steps = [
-        _line(
-            "narrate",
-            "And that is the whole module, {child}: you have finished this story.",
-            "Et voilà tout le module, {child} : tu as terminé cette histoire.",
-            FRAME_FINISHED,
-        )
-    ]
-    quizzes, cases = "quiz_checkpoint" in roles, "case_checkpoint" in roles
-    if quizzes or cases:
-        if quizzes and cases:
-            en, fr = "Your quizzes and case studies", "Tes quiz et tes études de cas"
-        elif quizzes:
-            en, fr = "Your quizzes", "Tes quiz"
-        else:
-            en, fr = "Your case studies", "Tes études de cas"
-        steps.append(
-            _line(
-                "narrate",
-                f"{en} wait for you on their own pages, {{child}}.",
-                f"{fr} t'attendent sur leurs pages, {{child}}.",
-                FRAME_CHECKPOINT_REMINDER,
-            )
-        )
-    steps.append(
-        _line(
-            "say",
-            "Questions about this module? Ask me any time, {child}.",
-            "Une question sur ce module ? Demande-moi quand tu veux, {child}.",
-            FRAME_ASK_TUTOR,
-            repair.TUTOR_ID,
-        )
-    )
-    return {"place": place, "steps": steps}
 
 
 # --------------------------------------------------------------------------
@@ -780,20 +650,12 @@ def _merge_chapter(
     _merge_unique(merged["engine_requests"], doc.get("engine_requests"), lambda e: e.get("engine"))
 
 
-def _lesson_scenes(doc: dict[str, Any], unit: StoryUnit, ns: _Namespace) -> list[dict[str, Any]]:
-    """The lesson's scenes, flattened from its chapters, with the frame edits."""
+def _lesson_scenes(doc: dict[str, Any], ns: _Namespace) -> list[dict[str, Any]]:
+    """The chapter's scenes, flattened from its chapters, namespaced."""
     scenes: list[dict[str, Any]] = []
     for chapter in doc["chapters"]:
         for scene in chapter["scenes"]:
-            steps: list[dict[str, Any]] = []
-            for step in scene["steps"]:
-                frame = step.get("frame")
-                if frame in _DROPPED_FRAMES:
-                    continue
-                if frame == repair.FRAME_FINISHED:
-                    steps.append(_lesson_done(unit))
-                    continue
-                steps.append(ns.step(step))
+            steps = [ns.step(step) for step in scene["steps"]]
             if not steps:
                 continue
             out = {key: value for key, value in scene.items() if key != "steps"}
@@ -819,25 +681,92 @@ def _max_points(source_doc: dict[str, Any], dropped_points: int) -> int:
     return max(max_points - dropped_points, 0)
 
 
+def _drop_retold_lines(doc: dict[str, Any], seen: set[tuple[str, str]]) -> None:
+    """A line told in an earlier chapter is dropped from this one (never a frame line).
+
+    Unless it is all that separates two runs of questions: dropping it would
+    join them into one longer than :data:`story_repair.MAX_ASKS_IN_A_ROW`. It
+    then stays, marked ``retold`` so the repetition check lets it pass.
+    """
+
+    def told_before(step: dict[str, Any]) -> bool:
+        keys = repair.repeat_keys(step)
+        if keys & seen:
+            return True
+        seen.update(keys)
+        return False
+
+    for chapter in doc.get("chapters") or []:
+        for step in repair.drop_steps_keeping_runs(chapter["scenes"], told_before):
+            step["retold"] = True
+
+
+def _cap_runs(doc: dict[str, Any]) -> int:
+    """Leave out the asks of a run past MAX_ASKS_IN_A_ROW (a backstop); returns their points.
+
+    The chapter and the assembler's own edits keep runs short; this makes sure
+    an assembled story never fails on them. It never leaves the chapter with
+    fewer than :data:`story_repair.MIN_QUESTIONS` questions.
+    """
+    points = 0
+    for _ in range(len(doc.get("questions") or []) + 1):
+        excess = [ref for steps in _chapter_steps(doc) for ref in repair.ask_run_excess(steps)]
+        room = len(doc.get("questions") or []) - repair.MIN_QUESTIONS
+        excess = excess[: max(room, 0)]
+        if not excess:
+            break
+        logger.warning("Questions left out to keep runs short", questions=excess)
+        points += _drop_questions(doc, set(excess))
+    return points
+
+
+def _rally_unit(sources: Sequence[ChapterSource]) -> StoryUnit | None:
+    """The quiz unit the rally chapter covers: the module's last quiz unit."""
+    quizzes = [s.unit for s in sources if s.unit.role == "quiz_checkpoint"]
+    return quizzes[-1] if quizzes else None
+
+
 def assemble_module_story(
-    ctx: ModuleStoryContext, chapters: Sequence[ChapterSource]
+    ctx: ModuleStoryContext,
+    chapters: Sequence[ChapterSource],
+    rally: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Join a module's chapters into one ``story-course/1`` week (contract C-2).
 
-    Pure and deterministic; never mutates ``chapters``. A lesson whose
-    document cannot be joined (see :func:`_unusable_reason`) becomes a "read
-    it on its page" placeholder. The result is validated by the caller with
-    :func:`validate_module_story`.
+    ``chapters`` are the module's units in teaching order, each with its
+    lesson's chapter document (``None`` for other units); ``rally`` is the
+    rally's chapter document, told for the module's last quiz unit. Pure and
+    deterministic; never mutates its inputs. A lesson whose document cannot be
+    joined (see :func:`_unusable_reason`) becomes a "read it on its page"
+    placeholder; an unusable rally is left out. The result is validated by
+    the caller with :func:`validate_module_story`.
     """
     sources = list(chapters)
     language = ctx.language
-    place = "classroom" if ctx.is_kids else "desk"
-    prefixes = _prefixes(sources)
+    bible = ctx.story_bible
+    rally_unit = _rally_unit(sources)
+    told = [s for s in sources if s.unit.role == "lesson"]
+    rally_source = None
+    if rally is not None and rally_unit is not None:
+        candidate = ChapterSource(unit=rally_unit, doc=rally)
+        reason = _unusable_reason(candidate, language)
+        if reason is None:
+            rally_source = candidate
+        else:
+            logger.warning(
+                "Rally chapter left out of the module story",
+                module_id=str(ctx.module_id),
+                reason=reason,
+            )
+    if rally_source is not None:
+        told.append(rally_source)
+    prefixes = _prefixes(told)
 
     ready: dict[int, _Ready] = {}
     statuses: list[ChapterStatus] = []
-    for index, source in enumerate(sources):
-        if source.unit.role != "lesson":
+    for index, source in enumerate(told):
+        if source is rally_source:
+            ready[index] = _Ready(doc=_without_forbidden(source.doc))
             statuses.append("checkpoint")
             continue
         reason = _unusable_reason(source, language)
@@ -853,62 +782,76 @@ def assemble_module_story(
                 reason=reason,
             )
 
-    for index, ids in _deduplicate({i: r.doc for i, r in ready.items()}, language).items():
+    lessons_ready = {i: r.doc for i, r in ready.items() if told[i] is not rally_source}
+    for index, ids in _deduplicate(lessons_ready, language).items():
         ready[index].dropped_points = _drop_questions(ready[index].doc, set(ids))
         logger.info(
             "Quiz questions already told by an earlier chapter left out",
             module_id=str(ctx.module_id),
-            unit=sources[index].unit.unit_number,
+            unit=told[index].unit.unit_number,
             questions=ids,
         )
 
     module_chapters: list[dict[str, Any]] = []
     merged: dict[str, list[dict[str, Any]]] = {name: [] for name in _MERGED}
+    merged["facts"].extend(doc_facts(bible.content))
     typical_points = 0
     typical_plans: list[str] = []
+    seen_lines: set[tuple[str, str]] = set()
+    place = next(iter(p["id"] for p in doc_places(bible.content)), "classroom")
 
-    for index, source in enumerate(sources):
+    for index, source in enumerate(told):
         unit, prefix = source.unit, prefixes[index]
         title = _unit_title(unit)
-        scenes: list[dict[str, Any]] = []
-        if index == 0:
-            scenes.append(_intro_scene([s.unit for s in sources], place))
         max_points = 0
         if index in ready:
             chapter_doc = ready[index].doc
+            _drop_retold_lines(chapter_doc, seen_lines)
+            ready[index].dropped_points += _cap_runs(chapter_doc)
             ns = _Namespace(prefix, chapter_doc)
-            scenes.extend(_lesson_scenes(chapter_doc, unit, ns))
+            scenes = _lesson_scenes(chapter_doc, ns)
             _merge_chapter(merged, chapter_doc, ns)
             typical = _typical(chapter_doc)
             typical_points += int(typical["points"])
-            typical_plans.append(f"Lesson {unit.unit_number}: {typical['plan']}")
+            label = "Rally" if source is rally_source else f"Lesson {unit.unit_number}"
+            typical_plans.append(f"{label}: {typical['plan']}")
             max_points = _max_points(source.doc or {}, ready[index].dropped_points)
-        elif (kind := _kind(unit)) is not None:
-            scenes.append(_checkpoint_scene(unit, kind, prefix, place))
         else:
-            scenes.append(_unavailable_scene(unit, prefix, place))
-        if index == len(sources) - 1:
-            scenes.append(_closing_scene([s.unit for s in sources], place))
+            scenes = [_unavailable_scene(unit, prefix, place, [repair.MENTOR_ID])]
 
-        status = statuses[index]
-        module_chapters.append(
-            {
-                "id": f"ch{index + 1}",
-                "title": {
-                    "en": f"{unit.unit_number} · {title['en']}",
-                    "fr": f"{unit.unit_number} · {title['fr']}",
-                },
-                "scenes": scenes,
-                "covers": {
-                    "module_unit_id": str(unit.module_unit_id),
-                    "unit_number": unit.unit_number,
-                    "unit_type": unit.unit_type,
-                    "role": unit.role,
-                    "status": status,
-                    "completes_unit": unit.role == "lesson" and status == "ready",
-                    "max_points": max_points,
-                },
+        if source is rally_source:
+            chapter_title = _pair(
+                (chapter_doc.get("chapters") or [{}])[0].get("title"), "The rally", "Le rallye"
+            )
+            covers = {
+                "module_unit_id": str(unit.module_unit_id),
+                "unit_number": unit.unit_number,
+                "unit_type": unit.unit_type,
+                "role": unit.role,
+                "status": "checkpoint",
+                # Story points never become a quiz score: the quiz unit is
+                # still taken on its own page.
+                "completes_unit": False,
+                "max_points": max_points,
+                "rally": True,
             }
+        else:
+            chapter_title = {
+                "en": f"{unit.unit_number} · {title['en']}",
+                "fr": f"{unit.unit_number} · {title['fr']}",
+            }
+            status = statuses[index]
+            covers = {
+                "module_unit_id": str(unit.module_unit_id),
+                "unit_number": unit.unit_number,
+                "unit_type": unit.unit_type,
+                "role": unit.role,
+                "status": status,
+                "completes_unit": status == "ready",
+                "max_points": max_points,
+            }
+        module_chapters.append(
+            {"id": f"ch{index + 1}", "title": chapter_title, "scenes": scenes, "covers": covers}
         )
 
     scene_number = 0
@@ -919,7 +862,6 @@ def assemble_module_story(
             rest = {key: value for key, value in scene.items() if key != "id"}
             renumbered.append({"id": f"s{scene_number}", **rest})
         chapter["scenes"] = renumbered
-    repair.enforce_ask_spacing(module_chapters)
 
     module_title = _pair(
         ctx.module_title, f"Module {ctx.module_number}", f"Module {ctx.module_number}"
@@ -928,11 +870,12 @@ def assemble_module_story(
     revision_rows = [
         [
             str(source.unit.module_unit_id),
-            source.unit.role,
-            _sha256(source.doc) if statuses[index] == "ready" else None,
+            "rally" if source is rally_source else source.unit.role,
+            _sha256(source.doc) if index in ready else None,
         ]
-        for index, source in enumerate(sources)
+        for index, source in enumerate(told)
     ]
+    revision_rows.append(["bible", bible.digest, repair.CHAPTER_BUILDER_VERSION])
     doc: dict[str, Any] = {
         "format": FORMAT_VERSION,
         "id": module_story_slug(ctx.module_id, language),
@@ -947,7 +890,8 @@ def assemble_module_story(
         "glossary": merged["glossary"],
         "calibration": merged["calibration"],
         "misconceptions": merged["misconceptions"],
-        "cast": repair.pinned_cast(ctx.is_kids, language),
+        "cast": doc_cast(bible.content),
+        "places": doc_places(bible.content),
         "facts": merged["facts"],
         "chapters": module_chapters,
         "questions": merged["questions"],
@@ -968,6 +912,8 @@ def assemble_module_story(
             "module_id": str(ctx.module_id),
             "module_number": ctx.module_number,
             "assembler": MODULE_ASSEMBLER_VERSION,
+            "generator": repair.CHAPTER_BUILDER_VERSION,
+            "bible": bible.digest,
             "revision": _sha256(revision_rows)[:16],
         },
     }
@@ -978,7 +924,7 @@ def assemble_module_story(
         chapters=len(module_chapters),
         ready=statuses.count("ready"),
         unavailable=statuses.count("unavailable"),
-        checkpoints=statuses.count("checkpoint"),
+        rally=rally_source is not None,
         questions=len(doc["questions"]),
     )
     return doc
@@ -1010,7 +956,7 @@ def validate_module_story(doc: dict[str, Any]) -> ValidationReport:
     except Exception as exc:
         return _failed("malformed_course_file", str(exc))
     try:
-        return repair.publishable(validate_story_course(course), doc)
+        return repair.publishable(validate_story_course(course, generated=True), doc)
     except SoftTimeLimitExceeded:
         raise
     except Exception as exc:  # pragma: no cover - the validator owns its shapes

@@ -223,6 +223,15 @@ class TestSummaries:
         assert summary["max_points"] == 40 and summary["revision"] == "0123456789abcdef"
         assert summary["errors"] == [] and summary["warnings"] == ["w2"]
 
+    def test_the_rally_status_comes_from_the_manifest(self, capsys):
+        record = module_story()
+        assert script.module_story_summary(record)["rally"] is None
+        record.source_rows = {**record.source_rows, "rally": {"status": "draft", "doc": None}}
+        summary = script.module_story_summary(record)
+        assert summary["rally"] == "draft"
+        script.print_module_summary("  ", summary, True)
+        assert "    rally=draft" in capsys.readouterr().out
+
     def test_a_module_story_without_a_manifest_still_summarises(self):
         summary = script.module_story_summary(module_story(source_rows=None, content={}))
         assert (summary["ready"], summary["unavailable"], summary["checkpoint"]) == (0, 0, 0)

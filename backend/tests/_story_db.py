@@ -26,6 +26,7 @@ from app.infrastructure.config.settings import settings
 #: The tables story mode reads and writes; their foreign-key targets follow.
 STORY_TABLE_ROOTS = (
     "story_courses",
+    "story_course_bibles",
     "generated_content",
     "module_units",
     "modules",

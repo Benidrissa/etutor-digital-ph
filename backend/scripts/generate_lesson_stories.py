@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """List or generate the story of chosen modules, from the server.
 
-Story mode tells each module as one story, one chapter per unit. It is
+Story mode tells each module as one story: one chapter per lesson, then a
+final rally for the module's quiz, told by the course's cast (#2674). It is
 normally generated the first time a learner opens it from the module page.
 This script lets an operator do it ahead of time for chosen courses, through
 the very same path: it dispatches ``generate_module_story_task`` through the
@@ -216,7 +217,10 @@ def module_story_summary(record: StoryCourseRecord | None) -> dict[str, Any]:
     The chapter counts come from its manifest (``source_rows``): one entry per
     unit, ``ready`` (a lesson's chapter), ``unavailable`` (a lesson whose
     chapter could not be made valid: a "read it on its page" placeholder) or
-    ``checkpoint`` (a quiz or case-study unit).
+    ``checkpoint`` (a quiz or case-study unit, which has no chapter of its
+    own). ``rally`` is the status of the final rally chapter (``ready``,
+    ``draft``: left out until its inputs change, ``none``: no quiz to mix), or
+    ``None`` for a module without a quiz unit.
     """
     if record is None:
         return {"stored": False}
@@ -236,6 +240,9 @@ def module_story_summary(record: StoryCourseRecord | None) -> dict[str, Any]:
         "ready": statuses.count("ready"),
         "unavailable": statuses.count("unavailable"),
         "checkpoint": statuses.count("checkpoint"),
+        "rally": (manifest.get("rally") or {}).get("status")
+        if isinstance(manifest.get("rally"), dict)
+        else None,
         "unavailable_units": [
             e.get("unit_number") for e in entries if e.get("status") == "unavailable"
         ],
@@ -302,6 +309,8 @@ def print_module_summary(prefix: str, summary: dict[str, Any], fresh: bool | Non
     )
     if summary["unavailable_units"]:
         print(f"{prefix}  unavailable units={summary['unavailable_units']}")
+    if summary.get("rally"):
+        print(f"{prefix}  rally={summary['rally']}")
     print(f"{prefix}  errors={summary['errors'] or 'none'}")
     print(f"{prefix}  warnings={summary['warnings'] or 'none'}")
 

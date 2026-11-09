@@ -875,7 +875,7 @@ def test_the_dedup_key_outlives_the_task_and_nothing_else():
     from app.tasks.content_generation import MODULE_STORY_HARD_LIMIT
 
     ttl = api._MODULE_STORY_DISPATCH_TTL_S
-    assert ttl == MODULE_STORY_HARD_LIMIT + 60 == 1320
+    assert ttl == MODULE_STORY_HARD_LIMIT + 60 == 1920
     assert ttl < 3600
     assert ttl <= celery_app.conf.result_expires
     visibility = (celery_app.conf.broker_transport_options or {}).get("visibility_timeout", 3600)
@@ -1480,7 +1480,7 @@ class TestOnARealDatabase:
         assert status_body == {
             "state": "ready",
             "task_id": None,
-            "chapters": 6,
+            "chapters": 5,  # four lessons and the rally
             "revision": stored.record.content["module_story"]["revision"],
             "access": "ok",
         }
@@ -1543,7 +1543,7 @@ class TestOnARealDatabase:
         assert "1.4 case_checkpoint (type=case-study)" in out
         assert "[en] chapter: lesson-" in out and "fresh=True" in out
         assert "[en] module story: module-" in out
-        assert "valid=True fresh=True chapters=6 (ready=4 unavailable=0 checkpoint=2)" in out
+        assert "valid=True fresh=True chapters=5 (ready=4 unavailable=0 checkpoint=2)" in out
         assert "[fr] module story: none" in out
 
         async def wait_for_task(_task_id, _timeout):

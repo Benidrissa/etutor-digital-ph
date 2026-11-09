@@ -33,12 +33,17 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.ai.usage_context import current_ai_context
+from app.api.v1.schemas.story_course import ValidationIssue
 from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.models.story_bible import StoryCourseBible
 from app.domain.models.story_course import StoryCourseRecord
+from app.domain.services import story_module_service
 from app.domain.services import story_repair as repair
+from app.domain.services.story_bible import find_bible
+from app.domain.services.story_from_lesson_service import content_digest
 from app.domain.services.story_module_assembly import MODULE_ASSEMBLER_VERSION, module_story_slug
 from app.domain.services.story_module_service import (
     ChapterGenerationFailed,
@@ -69,7 +74,112 @@ ROSTER = [
     ("1.6", None, 5, "Working with the community", "Travailler avec la communauté"),
 ]
 
-_UNIT_RE = re.compile(r"spine for unit (\S+) ")
+_UNIT_RE = re.compile(r"chapter for unit (\S+) ")
+_CANDIDATE_RE = re.compile(r"^\[(q\d+)\]( \(already asked\))? (.+)$", re.MULTILINE)
+
+
+def rally_spine(raw: dict[str, Any], language: str, message: str) -> dict[str, Any]:
+    """The rally's screenplay: the two candidates no lesson asked, as the prompt lists them."""
+    home = "fr" if language == "en" else "en"
+    target_quiz = covering_quiz(raw, language)["questions"]
+    home_quiz = {q["id"]: q for q in covering_quiz(raw, home)["questions"]}
+    by_stem = {q["question"]: q for q in target_quiz}
+    candidates = [(ref, by_stem[stem]) for ref, marked, stem in _CANDIDATE_RE.findall(message)]
+    fresh = [
+        (ref, q)
+        for (ref, q), (_r, marked, _s) in zip(
+            candidates, _CANDIDATE_RE.findall(message), strict=True
+        )
+        if not marked
+    ]
+    picks = (fresh or candidates)[:2]
+    derived, misconceptions = [], []
+    for ref, question in picks:
+        twin = home_quiz[question["id"]]
+        distractors = []
+        for index in range(len(question["options"])):
+            if index == question["correct_answer"]:
+                continue
+            mid = f"m_rally_{question['id']}_{index}"
+            misconceptions.append(
+                {
+                    "id": mid,
+                    "en": f"Thinks option {index} is right.",
+                    "fr": f"Pense que l'option {index} est juste.",
+                }
+            )
+            distractors.append(
+                {
+                    "option": "abcd"[index],
+                    "misconception": mid,
+                    "hint": {"en": "Look again at the lesson.", "fr": "Relis la leçon."},
+                }
+            )
+        derived.append(
+            {
+                "ref": ref,
+                "objective": "o1",
+                "prompt_home": twin["question"],
+                "options_home": twin["options"],
+                "explanation_home": twin.get("explanation", ""),
+                "distractors": distractors,
+            }
+        )
+    lesson = raw[language]["spine"]
+    return {
+        "chapter_title": {"en": "The district rally", "fr": "Le rallye du district"},
+        "objectives": [{"id": "o1", "en": "Bring the module together", "fr": "Réunir le module"}],
+        "misconceptions": [*misconceptions, *lesson["misconceptions"]],
+        "scenes": [
+            {
+                "place": "meeting_room",
+                "cast": ["mentor", "hero"],
+                "steps": [
+                    {
+                        "type": "narrate",
+                        "en": "Friday. The whole district team meets for the rally.",
+                        "fr": "Vendredi. Toute l'équipe du district se réunit pour le rallye.",
+                    },
+                    {
+                        "type": "say",
+                        "who": "mentor",
+                        "mood": "happy",
+                        "en": "Two last challenges before we close the campaign.",
+                        "fr": "Deux derniers défis avant de clore la campagne.",
+                    },
+                    {"type": "ask", "ref": picks[0][0]},
+                ],
+            },
+            {
+                "place": "field",
+                "cast": ["friend", "hero"],
+                "steps": [
+                    {
+                        "type": "say",
+                        "who": "friend",
+                        "mood": "think",
+                        "en": "The last one is the hardest. Ready for it?",
+                        "fr": "Le dernier est le plus dur. Tu es là ?",
+                    },
+                    *[{"type": "ask", "ref": ref} for ref, _q in picks[1:]],
+                    {
+                        "type": "say",
+                        "who": "hero",
+                        "mood": "happy",
+                        "en": "Done! Every family in the district now knows what to do.",
+                        "fr": "Fini ! Chaque famille du district sait maintenant quoi faire.",
+                    },
+                    {"type": "game"},
+                    {"type": "photo", "ref": "E1"},
+                ],
+            },
+        ],
+        "derived": derived,
+        "questions": [],
+        "exercises": [lesson["exercises"][0] | {"objective": "o1"}],
+        "minigame": lesson["minigame"],
+        "__complete": True,
+    }
 
 
 @pytest.fixture(scope="module")
@@ -150,12 +260,29 @@ class FakeClaude:
         self.unreadable = set(unreadable or ())
         self.soft_limit_on_call = soft_limit_on_call
         self.calls: list[str] = []
+        #: The course bible's and the rally's calls, apart from the chapters'.
+        self.bible_calls = 0
+        self.rally_calls = 0
+        self.rally_answer: Any = None
+        #: The course bible's answer: by default, the five roles and nothing more
+        #: (normalised into the audience's default cast and places).
+        self.bible_answer: dict[str, Any] = {
+            "cast": [{"id": role} for role in ("hero", "friend", "mentor", "family", "margo")]
+        }
         self.features: list[str | None] = []
         self.cancelled: list[str] = []
         self.in_flight = 0
         self.max_in_flight = 0
 
     async def generate_structured_content(self, system, user, content_type, max_retries=1):
+        if user.startswith("COURSE:"):
+            self.bible_calls += 1
+            return copy.deepcopy(self.bible_answer)
+        if "screenplay of the RALLY" in user:
+            self.rally_calls += 1
+            if self.rally_answer is not None:
+                return copy.deepcopy(self.rally_answer)
+            return rally_spine(self.raw, self.language, user)
         unit = _UNIT_RE.search(user).group(1)
         self.calls.append(unit)
         self.features.append(current_ai_context().feature)
@@ -176,6 +303,15 @@ class FakeClaude:
             if unit in self.unreadable:
                 return {"raw_response": "this is not JSON"}
             spine = picking_spine(self.raw, self.language)
+            if "this unit has no quiz yet" in user:
+                # Nothing to pick: the model asks only its own questions.
+                spine["derived"] = []
+                for scene in spine["scenes"]:
+                    scene["steps"] = [
+                        s
+                        for s in scene["steps"]
+                        if not (s["type"] == "ask" and str(s["ref"]).startswith("q"))
+                    ]
             if unit in self.revised:
                 objective = spine["objectives"][0]
                 objective["en"] = (
@@ -416,9 +552,11 @@ async def test_the_first_open_makes_every_chapter_and_a_published_module_story(
 
     record = await generate(service, seed_, sessions, language)
 
-    # One spine call per lesson chapter; the missing lessons and the covering
-    # quiz generated once each, under their own ledger features.
+    # One screenplay call per lesson chapter, one for the course bible and one
+    # for the rally; the missing lessons and the covering quiz generated once
+    # each, under their own ledger features.
     assert sorted(model.calls) == LESSONS
+    assert (model.bible_calls, model.rally_calls) == (1, 1)
     assert set(model.features) == {"story_generation"}
     assert sorted(lessons.calls) == ["1.2", "1.5"]
     assert set(lessons.features) == {"lesson_generation"}
@@ -447,8 +585,24 @@ async def test_the_first_open_makes_every_chapter_and_a_published_module_story(
     assert record.content["module_story"]["assembler"] == MODULE_ASSEMBLER_VERSION
     assert record.content["module_story"]["module_id"] == str(seed_.module_id)
 
-    # The manifest (C-3), unit by unit in teaching order.
+    # The manifest (C-3), unit by unit in teaching order, with the generator,
+    # the bible and the rally it was made with.
     assert record.source_rows["assembler"] == MODULE_ASSEMBLER_VERSION
+    assert record.source_rows["generator"] == repair.CHAPTER_BUILDER_VERSION
+    async with sessions.maker() as session:
+        bible = await find_bible(session, seed_.course_id)
+    assert record.source_rows["bible"] == bible.digest == record.content["module_story"]["bible"]
+    rally = record.source_rows["rally"]
+    assert rally["status"] == "ready" and rally["doc"]["sira_chapter"]["kind"] == "rally"
+    for chapter in chapters.values():
+        assert chapter.content["sira_chapter"]["bible"] == bible.digest
+    assert [chapters[n].content["sira_chapter"]["arc"] for n in LESSONS] == [
+        "opens",
+        "continues",
+        "continues",
+        "continues",
+    ]
+    assert record.content["cast"][0]["variants"]  # the bible's, with its looks
     units = record.source_rows["units"]
     assert [u["unit_number"] for u in units] == [r[0] for r in ROSTER]
     assert [u["role"] for u in units] == [
@@ -481,9 +635,12 @@ async def test_the_first_open_makes_every_chapter_and_a_published_module_story(
         )
         assert await module_story_is_fresh(session, record)
 
+    # One chapter per lesson, then the rally for the quiz unit; none for the case study.
     covers = [c["covers"] for c in record.content["chapters"]]
-    assert [c["completes_unit"] for c in covers] == [True, True, False, False, True, True]
-    # Story points sum over the chapters; checkpoints carry none.
+    assert [c["unit_number"] for c in covers] == [*LESSONS, "1.3"]
+    assert [c["completes_unit"] for c in covers] == [True, True, True, True, False]
+    assert covers[-1]["rally"] is True and covers[-1]["role"] == "quiz_checkpoint"
+    # Story points sum over the chapters.
     assert sum(c["max_points"] for c in covers) == record.max_points
 
     # option_misconceptions are prompt input only: never in a chapter or the module.
@@ -536,6 +693,7 @@ async def test_the_second_open_calls_nothing_and_changes_nothing(raw, sessions):
     again = await generate(service, seed_, sessions)
 
     assert (len(model.calls), len(lessons.calls), len(quizzes.calls)) == calls
+    assert (model.bible_calls, model.rally_calls) == (1, 1)
     assert again.id == first.id and again.updated_at == first.updated_at
 
 
@@ -632,11 +790,12 @@ async def test_an_edited_covering_quiz_remakes_every_chapter_it_covers(raw, sess
 
 async def test_a_renamed_unit_only_re_merges(raw, sessions):
     seed_, service, model, lessons, quizzes, first = await _first(raw, sessions)
+    rallies = model.rally_calls
     await execute(
         sessions,
         sa.update(ModuleUnit)
-        .where(ModuleUnit.id == seed_.units["1.4"])
-        .values(title_en="A fever in Koudougou"),
+        .where(ModuleUnit.id == seed_.units["1.2"])
+        .values(title_en="Nets, tests and seasonal doses"),
     )
     async with sessions.maker() as session:
         assert not await module_story_is_fresh(session, first)
@@ -644,9 +803,10 @@ async def test_a_renamed_unit_only_re_merges(raw, sessions):
     record = await generate(service, seed_, sessions)
 
     assert model.calls == [] and lessons.calls == [] and quizzes.calls == []
+    assert model.rally_calls == rallies  # the rally is reused too
     assert record.id == first.id
     assert record.source_units_digest != first.source_units_digest
-    assert record.content["chapters"][3]["title"]["en"] == "1.4 · A fever in Koudougou"
+    assert record.content["chapters"][1]["title"]["en"] == "1.2 · Nets, tests and seasonal doses"
     async with sessions.maker() as session:
         assert await module_story_is_fresh(session, record)
 
@@ -670,8 +830,10 @@ async def test_an_added_quiz_unit_only_re_merges(raw, sessions):
     record = await generate(service, seed_, sessions)
 
     # 1.6 is now covered by 1.7, which has no quiz: its chapter, built from
-    # 1.3's quiz, is still fresh — nothing is generated or paid for.
+    # 1.3's quiz, is still fresh — no chapter is generated or paid for. The
+    # rally is told for the module's last quiz unit, now 1.7: it is made again.
     assert model.calls == [] and lessons.calls == [] and quizzes.calls == []
+    assert model.rally_calls == 2
     assert [c["covers"]["unit_number"] for c in record.content["chapters"]][-1] == "1.7"
     assert statuses(record)[-1] == "checkpoint"
     assert record.status == "published"
@@ -682,6 +844,8 @@ class TwoExtraQuestions(FakeClaude):
 
     async def generate_structured_content(self, system, user, content_type, max_retries=1):
         spine = await super().generate_structured_content(system, user, content_type, max_retries)
+        if not spine.get("questions"):
+            return spine  # the bible or the rally
         extra = copy.deepcopy(spine["questions"][0])
         extra["id"] = "x2"
         extra["prompt"] = {
@@ -691,6 +855,10 @@ class TwoExtraQuestions(FakeClaude):
         extra["answer"] = "7"
         extra["traps"] = []
         spine["questions"].append(extra)
+        # Asked right after the second concept card, as the model places it.
+        steps = spine["scenes"][1]["steps"]
+        card = next(i for i, s in enumerate(steps) if s["type"] == "concept")
+        steps.insert(card + 1, {"type": "ask", "ref": "x2"})
         return spine
 
 
@@ -731,8 +899,9 @@ async def test_a_quiz_generated_by_the_run_remakes_the_fresh_chapters_it_covers(
     record = await generate(service, seed_, sessions)
 
     assert lessons.calls == ["1.3"] and quizzes.calls == ["1.4"]
-    # 1.3 first (the quiz is generated for it), then 1.1 and 1.2 from the quiz.
-    assert model.calls[0] == "1.3" and sorted(model.calls[1:]) == ["1.1", "1.2"]
+    # 1.3 (the quiz is generated for it) and 1.2 (no longer the last lesson: the
+    # rally now solves the mission), then 1.1 from the new quiz.
+    assert sorted(model.calls[:2]) == ["1.2", "1.3"] and model.calls[2:] == ["1.1"]
     assert record.status == "published"
     async with sessions.maker() as session:
         assert await module_story_is_fresh(session, record)
@@ -902,9 +1071,10 @@ async def test_every_chapter_has_its_own_session(raw, sessions):
 
     assert sorted(used) == LESSONS
     assert len({id(s) for s in used.values()}) == 4
-    setup, *chapter_sessions, merge = sessions.made
+    setup, *chapter_sessions, rally, merge = sessions.made
     assert {id(s) for s in chapter_sessions} == {id(s) for s in used.values()}
     assert setup not in used.values() and merge not in used.values()
+    assert rally not in used.values()
     # A missing lesson is generated in its own chapter's session.
     assert lessons.sessions["1.2"] is used["1.2"]
     assert lessons.sessions["1.5"] is used["1.5"]
@@ -915,7 +1085,7 @@ async def test_every_chapter_has_its_own_session(raw, sessions):
 # --------------------------------------------------------------------------
 
 
-async def test_module_story_freshness_is_three_queries_however_many_chapters(raw, sessions, engine):
+async def test_module_story_freshness_is_five_queries_however_many_chapters(raw, sessions, engine):
     seed_, _service, _model, _lessons, _quizzes, record = await _first(raw, sessions)
     statements: list[str] = []
 
@@ -929,9 +1099,11 @@ async def test_module_story_freshness_is_three_queries_however_many_chapters(raw
     finally:
         sa.event.remove(engine.sync_engine, "before_cursor_execute", count)
 
-    # The roster, the four chapter rows, and one query of all their sources.
-    assert len(statements) == 3, statements
-    assert "generated_content" in statements[2]
+    # The roster, the bible's digest, the four chapter rows, one query of all
+    # their sources, and the quiz rows the rally was made from.
+    assert len(statements) == 5, statements
+    assert "story_course_bibles" in statements[1]
+    assert "generated_content" in statements[3] and "generated_content" in statements[4]
 
     # A caller that has just read the roster (the API) passes it: two queries.
     statements.clear()
@@ -945,7 +1117,7 @@ async def test_module_story_freshness_is_three_queries_however_many_chapters(raw
             assert not await module_story_is_fresh(session, record, units=renamed)
     finally:
         sa.event.remove(engine.sync_engine, "before_cursor_execute", count)
-    assert len(statements) == 2, statements
+    assert len(statements) == 4, statements
     assert not any("FROM module_units" in statement for statement in statements)
 
 
@@ -1021,3 +1193,247 @@ async def test_the_roster_digest_is_sha256_of_the_canonical_roster():
     assert roster_digest([unit]) == hashlib.sha256(canonical.encode()).hexdigest()
     renamed = StoryUnit(**{**unit.__dict__, "title": {"en": "Bed nets", "fr": "Moustiquaires"}})
     assert roster_digest([renamed]) != roster_digest([unit])
+
+
+# --------------------------------------------------------------------------
+# The screenplay generator (#2674): stories of the old generator and the bible
+# --------------------------------------------------------------------------
+
+
+async def test_a_story_of_the_old_generator_is_remade_on_next_access(raw, sessions):
+    """Stored before #2674: a manifest without a generator, chapters of builder 2."""
+    seed_, service, model, lessons, quizzes, first = await _first(raw, sessions)
+    rallies = model.rally_calls
+    old_manifest = {
+        k: v for k, v in first.source_rows.items() if k not in ("generator", "bible", "rally")
+    }
+    await execute(
+        sessions,
+        sa.update(StoryCourseRecord)
+        .where(StoryCourseRecord.id == first.id)
+        .values(source_rows={**old_manifest, "assembler": 1}),
+    )
+    chapters = await chapter_rows(sessions, seed_)
+    for row in chapters.values():
+        content = {k: v for k, v in row.content.items() if k != "sira_chapter"}
+        await execute(
+            sessions,
+            sa.update(StoryCourseRecord)
+            .where(StoryCourseRecord.id == row.id)
+            .values(content={**content, "sira_builder": 2}),
+        )
+    async with sessions.maker() as session:
+        stale = await find_module_story(session, seed_.module_id, "en")
+        assert not await module_story_is_fresh(session, stale)
+
+    record = await generate(service, seed_, sessions)
+
+    assert sorted(model.calls) == LESSONS  # every chapter told again
+    assert lessons.calls == [] and quizzes.calls == []  # its sources are unchanged
+    assert model.bible_calls == 1  # the course keeps its bible
+    assert model.rally_calls == rallies + 1  # chapters changed: the rally too
+    assert record.id == first.id
+    assert record.source_rows["generator"] == repair.CHAPTER_BUILDER_VERSION
+    async with sessions.maker() as session:
+        assert await module_story_is_fresh(session, record)
+
+
+async def test_the_generator_marker_alone_makes_a_module_story_stale(raw, sessions):
+    seed_, service, model, _, _, first = await _first(raw, sessions)
+    await execute(
+        sessions,
+        sa.update(StoryCourseRecord)
+        .where(StoryCourseRecord.id == first.id)
+        .values(source_rows={**first.source_rows, "generator": repair.CHAPTER_BUILDER_VERSION - 1}),
+    )
+    async with sessions.maker() as session:
+        stale = await find_module_story(session, seed_.module_id, "en")
+        assert not await module_story_is_fresh(session, stale)
+
+    record = await generate(service, seed_, sessions)
+
+    # Its chapters are this generator's: only the module row is merged again.
+    assert model.calls == []
+    assert record.source_rows["generator"] == repair.CHAPTER_BUILDER_VERSION
+
+
+async def test_a_replaced_bible_remakes_every_chapter_with_one_call(raw, sessions):
+    seed_, service, model, lessons, quizzes, first = await _first(raw, sessions)
+    rallies = model.rally_calls
+    await execute(sessions, sa.delete(StoryCourseBible))
+    async with sessions.maker() as session:
+        assert not await module_story_is_fresh(session, first)
+    # Another bible: the office is drawn differently.
+    model.bible_answer = {
+        "places": [
+            {
+                "id": "desk",
+                "title": {"en": "The office", "fr": "Le bureau"},
+                "look": "a bright district office with a green wall and a big map",
+            }
+        ]
+    }
+
+    record = await generate(service, seed_, sessions)
+
+    assert model.bible_calls == 2  # a new bible, once
+    assert sorted(model.calls) == LESSONS
+    assert model.rally_calls == rallies + 1
+    async with sessions.maker() as session:
+        bible = await find_bible(session, seed_.course_id)
+        assert await module_story_is_fresh(session, record)
+    assert record.source_rows["bible"] == bible.digest
+    chapters = await chapter_rows(sessions, seed_)
+    assert {row.content["sira_chapter"]["bible"] for row in chapters.values()} == {bible.digest}
+
+
+async def test_two_modules_of_a_course_share_one_bible(raw, sessions):
+    """The second module's story reuses the course's bible: same cast and places."""
+    seed_, service, model, *_rest, first = await _first(raw, sessions)
+    async with sessions.maker() as session:
+        other_module = uuid.uuid4()
+        session.add(
+            Module(
+                id=other_module,
+                module_number=3,
+                level=1,
+                title_en="Malaria treatment",
+                title_fr="Traitement du paludisme",
+                course_id=seed_.course_id,
+            )
+        )
+        await session.flush()
+        unit_id = uuid.uuid4()
+        session.add(
+            ModuleUnit(
+                id=unit_id,
+                module_id=other_module,
+                unit_number="3.1",
+                unit_type="lesson",
+                order_index=0,
+                title_en="Treating simple malaria",
+                title_fr="Traiter le paludisme simple",
+            )
+        )
+        session.add(_content_row(other_module, unit_id, "lesson", "en", raw))
+        await session.commit()
+
+    second = await service.get_or_generate_module_story(other_module, "en", sessions)
+
+    assert model.bible_calls == 1
+    assert second.content["cast"] == first.content["cast"]
+    assert second.content["places"] == first.content["places"]
+    assert second.source_rows["bible"] == first.source_rows["bible"]
+    # A one-lesson module without a quiz unit: its only chapter sets and solves the mission.
+    async with sessions.maker() as session:
+        row = (
+            await session.execute(
+                sa.select(StoryCourseRecord).where(StoryCourseRecord.module_unit_id == unit_id)
+            )
+        ).scalar_one()
+    assert row.content["sira_chapter"]["arc"] == "opens_closes"
+    assert "rally" not in second.source_rows
+
+
+# --------------------------------------------------------------------------
+# Review of #2678: an assembler failure is merged again; the rally's quiz is pinned
+# --------------------------------------------------------------------------
+
+
+async def test_a_draft_the_assembler_failed_is_merged_again_at_no_model_cost(raw, sessions):
+    seed_ = await seed(sessions, raw)
+    service, model, lessons, quizzes = make_service(raw)
+    real = story_module_service.validate_module_story
+
+    def failing(doc):
+        report = real(doc)
+        issue = ValidationIssue(
+            severity="error", code="too_many_questions_in_a_row", path="chapters", message="m"
+        )
+        return repair.with_issues(report, [issue])
+
+    with patch.object(story_module_service, "validate_module_story", side_effect=failing):
+        draft = await generate(service, seed_, sessions)
+    assert draft.status == "draft" and draft.source_rows["assembly_failed"] is True
+    async with sessions.maker() as session:
+        assert not await module_story_is_fresh(session, draft)
+    calls = (len(model.calls), model.rally_calls, model.bible_calls)
+
+    record = await generate(service, seed_, sessions)
+
+    assert (len(model.calls), model.rally_calls, model.bible_calls) == calls  # nothing paid
+    assert lessons.calls == ["1.2", "1.5"] and quizzes.calls == ["1.3"]  # from the first run
+    assert record.id == draft.id and record.status == "published"
+    assert "assembly_failed" not in record.source_rows
+    async with sessions.maker() as session:
+        assert await module_story_is_fresh(session, record)
+
+
+async def test_the_rally_pins_the_quiz_rows_it_was_made_from(raw, sessions):
+    seed_, service, model, _lessons, _quizzes, first = await _first(raw, sessions)
+    async with sessions.maker() as session:
+        quiz = (
+            await session.execute(
+                sa.select(GeneratedContent).where(
+                    GeneratedContent.module_unit_id == seed_.units["1.3"],
+                    GeneratedContent.content_type == "quiz",
+                )
+            )
+        ).scalar_one()
+    pinned = first.source_rows["rally"]["quiz_rows"]
+    assert pinned == [[str(quiz.id), quiz.content_revision or 1, content_digest(quiz.content)]]
+
+    # The row the rally read is edited: the module story is stale (a
+    # different row is never looked for: the pinned one is compared).
+    edited = copy.deepcopy(first.source_rows)
+    edited["rally"]["quiz_rows"][0][2] = "0" * 64
+    await execute(
+        sessions,
+        sa.update(StoryCourseRecord)
+        .where(StoryCourseRecord.id == first.id)
+        .values(source_rows=edited),
+    )
+    async with sessions.maker() as session:
+        stale = await find_module_story(session, seed_.module_id, "en")
+        assert not await module_story_is_fresh(session, stale)
+    rallies = model.rally_calls
+
+    record = await generate(service, seed_, sessions)
+
+    assert model.calls == []  # the lesson chapters are fresh
+    assert model.rally_calls == rallies  # the rally's inputs did not change
+    async with sessions.maker() as session:
+        assert await module_story_is_fresh(session, record)
+    assert record.source_rows["rally"]["quiz_rows"] == pinned
+
+
+async def test_a_bible_of_defaults_is_tried_once_more_then_kept(raw, sessions):
+    seed_ = await seed(sessions, raw)
+    service, model, *_rest = make_service(raw)
+    real = model.generate_structured_content
+
+    async def no_bible(system, user, content_type, max_retries=1):
+        if user.startswith("COURSE:"):
+            model.bible_calls += 1
+            raise RuntimeError("provider down")
+        return await real(system, user, content_type, max_retries)
+
+    model.generate_structured_content = no_bible
+    first = await generate(service, seed_, sessions)
+    assert model.bible_calls == 2  # the call, then its one retry
+    async with sessions.maker() as session:
+        row = await find_bible(session, seed_.course_id)
+        assert row.model == "defaulted"
+        assert not await module_story_is_fresh(session, first)  # waits for its retry
+    chapters = len(model.calls)
+
+    second = await generate(service, seed_, sessions)  # the retry fails too
+
+    assert model.bible_calls == 4
+    assert len(model.calls) == chapters  # same defaults, same digest: chapters reused
+    async with sessions.maker() as session:
+        row = await find_bible(session, seed_.course_id)
+        assert row.model == "defaulted-kept"
+        assert await module_story_is_fresh(session, second)
+    await generate(service, seed_, sessions)
+    assert model.bible_calls == 4  # kept for good: never asked again

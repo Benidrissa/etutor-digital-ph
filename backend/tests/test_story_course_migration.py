@@ -20,6 +20,7 @@ import pytest
 import sqlalchemy as sa
 
 from app.domain.models import Base
+from app.domain.models.story_bible import StoryCourseBible
 from app.domain.models.story_course import StoryCourseRecord
 from tests._story_db import create_tables, scratch_database, story_tables, sync_engine
 
@@ -28,6 +29,7 @@ VERSIONS = BACKEND / "migrations" / "versions"
 MIGRATION_105 = VERSIONS / "105_add_story_courses.py"
 MIGRATION_106 = VERSIONS / "106_add_story_unit_binding.py"
 MIGRATION_107 = VERSIONS / "107_story_module_binding.py"
+MIGRATION_108 = VERSIONS / "108_story_course_bible.py"
 
 #: Columns migration 106 adds; every one must stay nullable so hand-authored
 #: weeks are untouched.
@@ -437,7 +439,7 @@ def test_107_on_postgres_upgrades_enforces_and_downgrades(monkeypatch):
         config = _alembic_config()
         command.stamp(config, "104_add_ai_usage_events")
         command.upgrade(config, "106_add_story_unit_binding")
-        command.upgrade(config, "head")
+        command.upgrade(config, "107_story_module_binding")
 
         engine = sync_engine(url)
         tables = Base.metadata.tables
@@ -544,7 +546,7 @@ def test_107_on_postgres_upgrades_enforces_and_downgrades(monkeypatch):
                 i["name"] for i in sa.inspect(engine).get_indexes("story_courses")
             }
 
-            command.upgrade(config, "head")
+            command.upgrade(config, "107_story_module_binding")
             inspector = sa.inspect(engine)
             columns = {c["name"] for c in inspector.get_columns("story_courses")}
             assert columns >= MODULE_COLUMNS
@@ -575,7 +577,7 @@ def test_107_downgrade_deletes_a_module_story_a_merge_commits_meanwhile(monkeypa
         monkeypatch.setattr(settings, "database_url", url)
         config = _alembic_config()
         command.stamp(config, "104_add_ai_usage_events")
-        command.upgrade(config, "head")
+        command.upgrade(config, "107_story_module_binding")
 
         database = url.rsplit("/", 1)[1]
         engine = sync_engine(url)
@@ -647,5 +649,96 @@ def test_107_downgrade_deletes_a_module_story_a_merge_commits_meanwhile(monkeypa
                     )
                 ).all()
             assert leaked == []
+        finally:
+            engine.dispose()
+
+
+# --------------------------------------------------------------------------
+# 108: the course bible (#2674)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def recorded_108() -> _RecordingOp:
+    recorder = _RecordingOp()
+    module = _load(MIGRATION_108, "migration_108_only")
+    module.op = recorder  # type: ignore[attr-defined]
+    module.upgrade()
+    return recorder
+
+
+def test_108_revision_chain():
+    module = _load(MIGRATION_108, "migration_108_meta")
+    assert module.revision == "108_story_course_bible"
+    assert module.down_revision == "107_story_module_binding"
+    assert len(module.revision) <= 32
+
+
+def test_108_creates_the_bible_table_of_the_model(recorded_108):
+    assert set(recorded_108.tables) == {"story_course_bibles"}
+    columns = {c.name: c for c in recorded_108.columns("story_course_bibles")}
+    model = {c.name: c for c in StoryCourseBible.__table__.columns}
+    assert set(columns) == set(model)
+    for name, column in model.items():
+        assert columns[name].nullable == column.nullable, name
+        assert type(columns[name].type).__name__ in (
+            type(column.type).__name__,
+            "UUID",
+            "DateTime",
+        ), name
+    (fk,) = columns["course_id"].foreign_keys
+    (model_fk,) = model["course_id"].foreign_keys
+    assert fk.target_fullname == model_fk.target_fullname == "courses.id"
+    assert fk.ondelete == model_fk.ondelete == "CASCADE"
+    assert columns["course_id"].unique and model["course_id"].unique
+    assert columns["digest"].type.length == model["digest"].type.length == 64
+
+
+def test_108_downgrade_drops_the_table():
+    recorder = _RecordingOp()
+    module = _load(MIGRATION_108, "migration_108_down")
+    module.op = recorder  # type: ignore[attr-defined]
+    module.downgrade()
+    assert recorder.calls == [("drop_table", "story_course_bibles")]
+
+
+def test_108_on_postgres_upgrades_cascades_and_downgrades(monkeypatch):
+    """107 -> 108: one bible per course, deleted with its course; then downgrade."""
+    from alembic import command
+
+    from app.infrastructure.config.settings import settings
+
+    with scratch_database("story_mig108") as url:
+        create_tables(url, story_tables(without={"story_courses", "story_course_bibles"}))
+        monkeypatch.setattr(settings, "database_url", url)
+        config = _alembic_config()
+        command.stamp(config, "104_add_ai_usage_events")
+        command.upgrade(config, "head")
+
+        engine = sync_engine(url)
+        tables = Base.metadata.tables
+        course_id = uuid.uuid4()
+        try:
+            with engine.begin() as conn:
+                version = conn.execute(sa.text("SELECT version_num FROM alembic_version"))
+                assert version.scalar_one() == "108_story_course_bible"
+                conn.execute(
+                    tables["courses"]
+                    .insert()
+                    .values(id=course_id, slug="c-108", title_fr="C", title_en="C")
+                )
+                row = {"content": {"cast": []}, "digest": "0" * 64, "course_id": course_id}
+                conn.execute(tables["story_course_bibles"].insert().values(id=uuid.uuid4(), **row))
+            with pytest.raises(sa.exc.IntegrityError), engine.begin() as conn:
+                conn.execute(tables["story_course_bibles"].insert().values(id=uuid.uuid4(), **row))
+            with engine.begin() as conn:
+                conn.execute(tables["courses"].delete().where(tables["courses"].c.id == course_id))
+                left = conn.execute(sa.text("SELECT count(*) FROM story_course_bibles"))
+                assert left.scalar_one() == 0
+
+            command.downgrade(config, "107_story_module_binding")
+            assert "story_course_bibles" not in sa.inspect(engine).get_table_names()
+            command.upgrade(config, "head")
+            assert "story_course_bibles" in sa.inspect(engine).get_table_names()
         finally:
             engine.dispose()

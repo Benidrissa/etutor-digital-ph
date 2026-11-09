@@ -18,10 +18,12 @@ Pipeline of one chapter:
    of the module's quiz unit that covers the lesson
    (:func:`covering_quiz_unit`) — never the lesson unit's own quiz, which an
    offline download can create, and never a quiz generated here;
-2. one model call for the *spine* (pedagogy and translations only);
+2. one model call for the chapter's *screenplay* — scenes at the course
+   bible's places, the characters teaching through dialogue — and the
+   pedagogy around it (#2674);
 3. :func:`app.domain.services.story_repair.build_story_document` — the
-   deterministic layer that builds everything structural and normalises the
-   spine;
+   deterministic layer that checks the screenplay against the bible, numbers
+   its ids and resolves its question refs;
 4. :func:`validate_story_course` (Appendix C), plus the generator's own checks
    (question floor, stem leaks, copy-fallbacks);
 5. a bounded repair loop — at most :data:`MAX_REPAIR_CALLS` extra model calls,
@@ -64,6 +66,12 @@ from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.story_course import StoryCourseRecord
 from app.domain.services import story_repair as repair
+from app.domain.services.story_bible import (
+    StoryBible,
+    default_bible,
+    find_bible,
+    mission_for,
+)
 from app.domain.services.story_course_validator import validate_story_course
 
 logger = structlog.get_logger(__name__)
@@ -327,13 +335,25 @@ def _chapter_builder(record: StoryCourseRecord) -> Any:
     return content.get("sira_builder") if isinstance(content, dict) else None
 
 
+def chapter_marker_matches(marker: Any, bible_digest: str | None, arc: str | None) -> bool:
+    """Whether a chapter's ``sira_chapter`` says it was told with this bible and arc.
+
+    ``arc=None`` checks the bible only.
+    """
+    if not isinstance(marker, dict) or bible_digest is None:
+        return False
+    if marker.get("bible") != bible_digest:
+        return False
+    return arc is None or marker.get("arc") == arc
+
+
 def _chapter_can_be_fresh(record: StoryCourseRecord, builder: Any) -> bool:
     """What a chapter row must carry before its sources are worth reading."""
     if record.module_unit_id is None or record.module_id is None or not record.language:
         return False
     if builder != repair.CHAPTER_BUILDER_VERSION:
-        # Built by an older chapter builder (no frame markers, no derived_from,
-        # the spine's own cast): rebuild it once.
+        # Built by an older generator (before #2674: code-assembled scenes
+        # around a model "spine", no course bible): rebuild it once.
         return False
     if (
         record.source_lesson_content_id is None
@@ -548,7 +568,7 @@ def validate_document(doc: dict[str, Any]) -> ValidationReport:
                 )
             ],
         )
-    return repair.publishable(validate_story_course(course), doc)
+    return repair.publishable(validate_story_course(course, generated=True), doc)
 
 
 def _parses(doc: dict[str, Any]) -> bool:
@@ -611,7 +631,7 @@ def attempt_rank(report: ValidationReport, *, authored: bool = True) -> tuple[in
     attempt whose only errors are copies publishes and must beat one with any
     other error, however many copies it carries.
     """
-    copies = sum(1 for issue in report.errors if issue.code == repair.MISSING_TRANSLATION)
+    copies = sum(1 for issue in report.errors if issue.code in repair.SETTLEABLE)
     return (0 if authored else 1), len(report.errors) - copies, copies, len(report.warnings)
 
 
@@ -656,7 +676,7 @@ def outcome_rank(generation: StoryGeneration) -> tuple[int, int, int]:
     repaired beats salvaging the one before it.
     """
     warnings = generation.report.warnings
-    copies = sum(1 for issue in warnings if issue.code == repair.MISSING_TRANSLATION)
+    copies = sum(1 for issue in warnings if issue.code in repair.SETTLEABLE)
     dropped = sum(len(ids) for ids in generation.dropped.values())
     return copies, dropped, len(warnings) - copies
 
@@ -668,13 +688,19 @@ def build_context(
     lesson_content: dict[str, Any],
     quiz_row: GeneratedContent | None,
     quiz_unit: Any | None = None,
+    *,
+    bible: StoryBible | None = None,
+    arc: str = repair.ARC_CONTINUES,
+    country: str = "",
 ) -> repair.LessonStoryContext:
     """Everything the deterministic layer needs, read once from the ORM rows.
 
     ``quiz_unit`` is the covering quiz unit ``quiz_row`` belongs to; its MCQs
     are candidates the model picks from. ``None`` (a quiz scoped to the unit
     itself, every MCQ a question) is kept for direct callers: the pipeline
-    never reads a lesson unit's own quiz any more.
+    never reads a lesson unit's own quiz any more. ``bible`` is the course's
+    (the audience's default when ``None``) and ``arc`` the chapter's part in
+    the module's mission.
     """
     from app.ai.prompts.audience import detect_audience
 
@@ -686,6 +712,8 @@ def build_context(
     mcqs: list[repair.QuizMcq] = []
     if quiz_row is not None:
         mcqs, _dropped = repair.parse_quiz_mcqs((quiz_row.content or {}).get("questions"))
+    is_kids = detect_audience(course).is_kids
+    bible = bible or default_bible(is_kids)
     return repair.LessonStoryContext(
         module_unit_id=unit.id,
         language=language,
@@ -697,9 +725,18 @@ def build_context(
         lesson=dict(lesson_content or {}),
         mcqs=mcqs,
         has_quiz=bool(mcqs),
-        is_kids=detect_audience(course).is_kids,
+        is_kids=is_kids,
         quiz_scope="covering" if quiz_unit is not None else "unit",
         quiz_unit_number=str(quiz_unit.unit_number) if quiz_unit is not None else None,
+        bible=bible.content,
+        mission=mission_for(
+            bible.content,
+            module.id,
+            module.module_number,
+            pair(module.title_en, module.title_fr),
+        ),
+        arc=arc,
+        country=country,
     )
 
 
@@ -922,11 +959,48 @@ class StoryFromLessonService:
         """
         report = repair.settle_translations(attempt.report)
         if report.ok:
-            return StoryGeneration(doc=attempt.build.doc, report=report, model_calls=0)
-        salvaged = self._salvage(ctx, attempt.spine, attempt.build, report)
-        if salvaged is None or salvaged.doc == empty_doc:
-            return None
-        return salvaged
+            result: StoryGeneration | None = StoryGeneration(
+                doc=attempt.build.doc, report=report, model_calls=0
+            )
+        else:
+            result = self._salvage(ctx, attempt.spine, attempt.build, report)
+            if result is None or result.doc == empty_doc:
+                return None
+        return self._with_fallback_cards(ctx, attempt.spine, result)
+
+    def _with_fallback_cards(
+        self, ctx: repair.LessonStoryContext, spine: dict[str, Any], result: StoryGeneration
+    ) -> StoryGeneration:
+        """``result`` with a card from the lesson for each concept it never taught.
+
+        Once the repair budget is spent a missed concept is only a warning, but
+        the chapter completes its lesson unit: the learner must see every
+        concept, so the lesson's own text stands in for the missing card.
+        """
+        if not any(w.code == repair.CONCEPT_NOT_COVERED for w in result.report.warnings):
+            return result
+        dropped = result.dropped
+        attempted = self._build_and_validate(
+            ctx,
+            spine,
+            drop_question_ids=dropped.get("questions", []),
+            drop_exercise_ids=dropped.get("exercises", []),
+            drop_minigame=bool(dropped.get("minigames")),
+            cover_missing_concepts=True,
+        )
+        if attempted is None:
+            return result
+        build, report = attempted
+        report = repair.settle_translations(report)
+        if not report.ok:
+            return result
+        return StoryGeneration(
+            doc=build.doc,
+            report=report,
+            model_calls=0,
+            salvaged=result.salvaged,
+            dropped=dict(dropped),
+        )
 
     def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:
         """The draft stored when no attempt could be built; it is never served.
@@ -1047,13 +1121,21 @@ class StoryFromLessonService:
         level: int = 1,
         country: str = "CI",
         force_regenerate: bool = False,
+        bible: StoryBible | None = None,
+        arc: str | None = None,
     ) -> StoryCourseRecord:
         """Return the unit's chapter, generating and caching it when needed.
 
         A cached chapter is returned as-is while it is fresh — valid or not,
         so a chapter that could not be made valid is not regenerated (and paid
         for) on every view; it is retried when the lesson or quiz changes, when
-        the chapter builder changes, or when an admin forces it.
+        the generator, the course bible or the chapter's part in the module's
+        mission changes, or when an admin forces it.
+
+        ``bible`` and ``arc`` are given by the module story, which makes the
+        bible first. Without a bible, the course's stored one (else the
+        audience's default) is used; without an arc, the cached chapter's own
+        is accepted and a new one is told as a middle chapter.
 
         Raises :class:`NotALessonUnit` for a quiz, case-study or scenario unit
         before anything is generated.
@@ -1079,17 +1161,34 @@ class StoryFromLessonService:
         if not is_lesson_unit(unit.unit_type):
             raise NotALessonUnit(f"Unit {unit_id} is a {unit.unit_type} unit, not a lesson")
 
+        if bible is None:
+            bible = await self._stored_bible(session, module)
+
         existing = await find_unit_story(session, unit.id, language)
         if (
             existing is not None
             and not force_regenerate
+            and chapter_marker_matches(
+                (existing.content or {}).get("sira_chapter"), bible.digest, arc
+            )
             and await story_sources_are_fresh(session, existing)
         ):
             return existing
+        arc = arc or repair.ARC_CONTINUES
 
         lesson_row = await self._lesson_row(session, module, unit, language, level, country)
         quiz_row, quiz_unit = await self._quiz_source(session, unit, language, lesson_row)
-        ctx = build_context(module, unit, language, lesson_row.content or {}, quiz_row, quiz_unit)
+        ctx = build_context(
+            module,
+            unit,
+            language,
+            lesson_row.content or {},
+            quiz_row,
+            quiz_unit,
+            bible=bible,
+            arc=arc,
+            country=lesson_row.country_context or country,
+        )
 
         course = module.course
 
@@ -1128,6 +1227,16 @@ class StoryFromLessonService:
             quiz_digest=content_digest(quiz_row.content) if quiz_row is not None else None,
         )
         return await self._persist(session, generation, binding, module.course_id)
+
+    @staticmethod
+    async def _stored_bible(session: AsyncSession, module: Module) -> StoryBible:
+        """The course's stored bible, else the audience's default (never written here)."""
+        from app.ai.prompts.audience import detect_audience
+
+        row = await find_bible(session, module.course_id) if module.course_id else None
+        if row is not None:
+            return StoryBible(content=row.content, digest=row.digest)
+        return default_bible(detect_audience(module.course).is_kids)
 
     async def _quiz_source(
         self,

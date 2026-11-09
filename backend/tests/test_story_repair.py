@@ -1,9 +1,12 @@
-"""Unit tests for the deterministic layer of lesson-story generation.
+"""Unit tests for the deterministic layer of story generation.
 
-Each test pins one rule the builder enforces so the model does not have to:
-the int-answer coercion that otherwise costs two validator errors, C2 line
-lengths, the ``{child}`` placeholder, ask spacing, the catch mini-game shape,
-image-only visuals, misconception declaration and the answer-leak guard.
+Each test pins one rule the builder enforces on the model's screenplay
+(#2674): the int-answer coercion that otherwise costs two validator errors,
+line lengths per language, the ``{child}`` placeholder, speakers, moods and
+places from the course bible, name labels stripped, every question asked
+after a concept card and never more than 3 in a row, every lesson concept
+taught, the catch mini-game shape, lesson figures, misconception declaration
+and the answer-leak guard — and that every fix it makes is reported.
 """
 
 from __future__ import annotations
@@ -298,40 +301,40 @@ class TestStoryLines:
 
     @pytest.mark.parametrize("language", ["en", "fr"])
     def test_child_is_addressed_in_both_languages(self, raw, language):
-        doc = repair.build_story_document(make_ctx(raw, language), {}).doc
+        doc = repair.build_story_document(make_ctx(raw, language), spine_for(raw, language)).doc
         lines = [s for s in all_steps(doc) if s["type"] in ("narrate", "say")]
         assert any("{child}" in s["en"] for s in lines)
         assert any("{child}" in s["fr"] for s in lines)
+        assert any("{friend}" in s["en"] for s in lines)
 
-    def test_every_story_line_is_capped_at_100_in_both_languages(self, raw):
+    def test_every_story_line_is_cut_to_its_languages_limit_and_reported(self, raw):
         spine = spine_for(raw)
         long_en = "You walk " + "very " * 60 + "far, {child}."
         long_fr = "Tu marches " + "très " * 60 + "loin, {child}."
-        for key in ("opening", "mentor_intro", "example_intro", "wrap_up"):
-            spine["story"][key] = {"en": long_en, "fr": long_fr}
-        spine["story"]["example_dialogue"] = [{"who": "peer", "en": long_en, "fr": long_fr}]
-        doc = repair.build_story_document(make_ctx(raw), spine).doc
-        lines = [s for s in all_steps(doc) if s["type"] in ("narrate", "say")]
-        truncated = [s for s in lines if s["en"].endswith("…")]
-        assert truncated, "the long lines must have been cut"
+        spine["scenes"][0]["steps"][0] = {"type": "narrate", "en": long_en, "fr": long_fr}
+        build = repair.build_story_document(make_ctx(raw), spine)
+        lines = [s for s in all_steps(build.doc) if s["type"] in ("narrate", "say")]
+        assert lines[0]["en"].endswith("…") and lines[0]["fr"].endswith("…")
         for step in lines:
-            assert len(step["en"]) <= repair.STORY_LINE_LIMIT
-            assert len(step["fr"]) <= repair.STORY_LINE_LIMIT
-        assert validate(doc).ok
+            assert len(step["en"]) <= 100
+            assert len(step["fr"]) <= 118
+        assert len(lines[0]["fr"]) > 100  # French has its own, longer limit
+        assert {(i.code, i.path) for i in build.issues} == {
+            ("line_cut", "scenes[0].steps[0].en"),
+            ("line_cut", "scenes[0].steps[0].fr"),
+        }
+        assert validate(build.doc).ok
 
     def test_lines_are_language_keyed_for_a_french_target(self, raw):
         """C1: "en" holds English even when French is the target."""
         doc = repair.build_story_document(make_ctx(raw, "fr"), spine_for(raw, "fr")).doc
         assert doc["languages"] == {"target": "fr", "home": "en"}
         opener = all_steps(doc)[0]
-        assert opener["en"] == "This story is about you, {child}."
-        assert opener["fr"] == "Cette histoire parle de toi, {child}."
-        key_points = next(
-            s for s in all_steps(doc) if s["type"] == "concept" and s["title"]["en"] == "Key points"
-        )
-        # The French target rows are the lesson's own key points, verbatim.
-        assert key_points["fr"] == raw["fr"]["lesson"]["key_points"]
-        assert key_points["en"] == raw["fr"]["spine"]["key_points_home"]
+        written = raw["fr"]["spine"]["scenes"][0]["steps"][0]
+        assert (opener["en"], opener["fr"]) == (written["en"], written["fr"])
+        card = next(s for s in all_steps(doc) if s["type"] == "concept")
+        assert card["en"] == raw["fr"]["spine"]["scenes"][0]["steps"][5]["en"]
+        assert card["fr"] == raw["fr"]["spine"]["scenes"][0]["steps"][5]["fr"]
 
     def test_ai_disclosure_is_added_to_every_intro_language(self, raw):
         spine = spine_for(raw)
@@ -365,24 +368,43 @@ def _many_mcqs(count: int) -> list[dict[str, Any]]:
     ]
 
 
+def _longest_ask_run(doc: dict[str, Any]) -> int:
+    run = longest = 0
+    for step in all_steps(doc):
+        run = run + 1 if step["type"] == "ask" else 0
+        longest = max(longest, run)
+    return longest
+
+
 class TestLayout:
-    def test_never_more_than_two_asks_in_a_row(self, raw):
-        mcqs, _ = repair.parse_quiz_mcqs(_many_mcqs(12))
-        ctx = make_ctx(raw, mcqs=mcqs)
-        ctx.lesson["concepts"] = []
-        doc = repair.build_story_document(ctx, {}).doc
-        run = longest = 0
-        for step in all_steps(doc):
-            run = run + 1 if step["type"] == "ask" else 0
-            longest = max(longest, run)
-        assert longest <= repair.MAX_ASKS_IN_A_ROW
+    def test_never_more_than_three_asks_in_a_row(self, raw):
+        """A run the model wrote too long loses its extra questions, reported."""
+        spine = spine_for(raw)
+        scene = spine["scenes"][0]["steps"]
+        scene += [{"type": "ask", "ref": "q2"}, {"type": "ask", "ref": "q4"}]
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert _longest_ask_run(build.doc) <= repair.MAX_ASKS_IN_A_ROW == 3
+        asked = [s["ref"] for s in all_steps(build.doc) if s["type"] == "ask"]
+        assert sorted(asked) == sorted(q["id"] for q in build.doc["questions"])
+        assert "ask_run_too_long" in {i.code for i in build.issues}
 
     def test_every_question_is_asked_exactly_once(self, raw):
-        mcqs, _ = repair.parse_quiz_mcqs(_many_mcqs(9))
-        doc = repair.build_story_document(make_ctx(raw, mcqs=mcqs), {}).doc
-        asked = [s["ref"] for s in all_steps(doc) if s["type"] == "ask"]
-        assert sorted(asked) == sorted(q["id"] for q in doc["questions"])
+        """An ask the model repeats is dropped; a question it never asks is placed."""
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"].remove({"type": "ask", "ref": "x1"})
+        spine["scenes"][2]["steps"].insert(0, {"type": "ask", "ref": "q1"})
+        build = repair.build_story_document(make_ctx(raw), spine)
+        asked = [s["ref"] for s in all_steps(build.doc) if s["type"] == "ask"]
+        assert sorted(asked) == sorted(q["id"] for q in build.doc["questions"])
         assert len(asked) == len(set(asked))
+        codes = {(i.code, i.path) for i in build.issues}
+        assert ("question_asked_twice", "scenes[2].steps[0].ref") in codes
+        assert ("question_not_asked", "scenes") in codes
+        # Placed right after a concept card that had room for it.
+        steps = all_steps(build.doc)
+        index = steps.index({"type": "ask", "ref": "x1"})
+        assert steps[index - 1]["type"] in ("concept", "ask")
+        assert validate(build.doc).ok
 
     def test_only_image_visuals_backed_by_a_lesson_figure(self, raw):
         doc = repair.build_story_document(make_ctx(raw), spine_for(raw)).doc
@@ -409,13 +431,26 @@ class TestLayout:
         assert situation["id"] == "situation-q3"
         assert situation["en"] == [raw["en"]["quiz"]["questions"][2]["question"]]
 
-    def test_unknown_place_falls_back_to_the_catalog(self, raw):
+    def test_unknown_place_falls_back_to_the_bibles_first_place(self, raw):
         spine = spine_for(raw)
-        spine["example"]["place"] = "hospital_ward"
+        spine["scenes"][1]["place"] = "hospital_ward"
+        build = repair.build_story_document(make_ctx(raw), spine)
+        places = [s["place"] for c in build.doc["chapters"] for s in c["scenes"]]
+        assert places == ["desk", "desk", "market"]
+        assert [(i.code, i.path) for i in build.issues] == [
+            ("place_not_in_bible", "scenes[1].place")
+        ]
+        assert validate(build.doc).ok
+
+    def test_every_scene_names_the_cast_on_stage(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][0]["cast"] = ["teacher"]  # an alias, and a speaker left out
         doc = repair.build_story_document(make_ctx(raw), spine).doc
-        places = {s["place"] for c in doc["chapters"] for s in c["scenes"]}
-        assert "hospital_ward" not in places
-        assert validate(doc).ok
+        scenes = doc["chapters"][0]["scenes"]
+        assert scenes[0]["cast"] == ["mentor", "hero"]
+        for scene in scenes:
+            speakers = {s["who"] for s in scene["steps"] if s["type"] == "say"}
+            assert speakers <= set(scene["cast"])
 
     def test_week_course_and_unit_are_set(self, raw):
         doc = repair.build_story_document(make_ctx(raw), spine_for(raw)).doc
@@ -471,12 +506,15 @@ class TestMinigame:
         report = validate(doc)
         assert report.ok and not report.warnings
 
-    def test_falls_back_to_the_lesson_key_points(self, raw):
-        doc = repair.build_story_document(make_ctx(raw), {}).doc
+    def test_falls_back_to_the_chapters_concept_rows(self, raw):
+        spine = spine_for(raw)
+        spine.pop("minigame")
+        doc = repair.build_story_document(make_ctx(raw), spine).doc
         (game,) = doc["minigames"]
         labels = [i["label"]["en"] for r in game["rounds"] for i in r["items"]]
-        assert labels[0] == raw["en"]["lesson"]["key_points"][0]
+        assert labels[0] == spine["scenes"][0]["steps"][6]["en"][0]
         assert all(i["correct"] for r in game["rounds"] for i in r["items"])
+        assert sum(1 for s in all_steps(doc) if s["type"] == "game") == 1
 
 
 class TestMisconceptions:
@@ -705,12 +743,19 @@ class TestShapeHardening:
             ("objectives",),
             ("misconceptions",),
             ("characters",),
-            ("chapter_titles",),
-            ("story",),
-            ("story", "example_dialogue"),
-            ("concepts",),
-            ("example",),
-            ("key_points_home",),
+            ("scenes",),
+            ("scenes", 0),
+            ("scenes", 0, "cast"),
+            ("scenes", 0, "place"),
+            ("scenes", 0, "steps"),
+            ("scenes", 0, "steps", 0),
+            ("scenes", 0, "steps", 1, "who"),
+            ("scenes", 0, "steps", 1, "mood"),
+            ("scenes", 0, "steps", 4, "figure"),
+            ("scenes", 0, "steps", 6, "teaches"),
+            ("scenes", 0, "steps", 6, "en"),
+            ("scenes", 0, "steps", 7, "ref"),
+            ("facts",),
             ("derived",),
             ("derived", 0, "distractors"),
             ("derived", 0, "options_home"),
@@ -747,7 +792,9 @@ class TestShapeHardening:
 
 
 def _issue_paths(build: repair.StoryBuild) -> set[str]:
-    assert all(i.code == "missing_translation" for i in build.issues)
+    assert all(i.code == "missing_translation" for i in build.issues), [
+        (i.code, i.path) for i in build.issues
+    ]
     return {i.path for i in build.issues}
 
 
@@ -779,9 +826,9 @@ class TestMissingTranslations:
 
     def test_story_line_without_its_english_on_a_french_story(self, raw):
         spine = spine_for(raw, "fr")
-        spine["story"]["opening"].pop("en")
+        spine["scenes"][0]["steps"][0].pop("en")
         build = repair.build_story_document(make_ctx(raw, "fr"), spine)
-        assert _issue_paths(build) == {"story.opening.en"}
+        assert _issue_paths(build) == {"scenes[0].steps[0].en"}
 
     @pytest.mark.parametrize(
         ("field", "value", "path"),
@@ -821,28 +868,12 @@ class TestMissingTranslations:
         next(d for d in spine["derived"] if d["ref"] == "q4")["distractors"] = []
         assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == set()
 
-    def test_key_points_without_their_translation(self, raw):
-        spine = spine_for(raw)
-        spine["key_points_home"] = spine["key_points_home"][:1]
-        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {
-            "key_points_home"
-        }
-
-    def test_concepts_fall_back_to_the_lessons_own_prose(self, raw):
-        spine = spine_for(raw)
-        spine["concepts"] = []
-        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {"concepts"}
-
     def test_concept_rows_missing_one_language(self, raw):
         spine = spine_for(raw)
-        spine["concepts"][1]["fr"] = []
-        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {"concepts[1].fr"}
-
-    def test_example_falls_back_to_the_lessons_own(self, raw):
-        spine = spine_for(raw)
-        spine["example"].pop("en")
-        spine["example"].pop("fr")
-        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {"example"}
+        spine["scenes"][1]["steps"][4]["fr"] = []
+        assert _issue_paths(repair.build_story_document(make_ctx(raw), spine)) == {
+            "scenes[1].steps[4].fr"
+        }
 
     def test_a_dropped_extra_question_reports_nothing(self, raw):
         spine = spine_for(raw)
@@ -881,42 +912,6 @@ class TestMissingTranslations:
         assert [o["id"] for o in build.doc["objectives"]] == ["o1", "o2"]
         assert _issue_paths(build) == {"objectives[1].fr"}
 
-    @staticmethod
-    def _without_an_example(raw):
-        spine = spine_for(raw)
-        spine.pop("example")
-        ctx = make_ctx(raw)
-        ctx.lesson.pop("aof_example", None)
-        return ctx, spine
-
-    def test_example_lines_of_a_story_without_an_example_report_nothing(self, raw):
-        ctx, spine = self._without_an_example(raw)
-        spine["story"]["example_intro"].pop("fr")
-        spine["story"]["example_dialogue"][0].pop("fr")
-        build = repair.build_story_document(ctx, spine)
-        shown = json.dumps(build.doc, ensure_ascii=False)
-        assert spine["story"]["example_intro"]["en"][:40] not in shown
-        assert build.issues == []
-        # The lines the story does show are still reported.
-        spine["story"]["opening"].pop("fr")
-        assert _issue_paths(repair.build_story_document(ctx, spine)) == {"story.opening.fr"}
-
-    def test_example_lines_shown_in_the_field_scene_are_reported(self, raw):
-        spine = spine_for(raw)
-        spine["story"]["example_intro"].pop("fr")
-        build = repair.build_story_document(make_ctx(raw), spine)
-        assert _issue_paths(build) == {"story.example_intro.fr"}
-
-    def test_a_chapter_the_layout_never_opens_reports_nothing(self, raw):
-        ctx, spine = self._without_an_example(raw)
-        spine["concepts"] = spine["concepts"][:1]  # one concept: chapter 2 is never opened
-        spine["chapter_titles"][1] = {"en": "Out in the field"}
-        build = repair.build_story_document(ctx, spine)
-        assert "Out in the field" not in json.dumps(build.doc)
-        assert build.issues == []
-        spine["chapter_titles"][2] = {"en": "Over to you"}
-        assert _issue_paths(repair.build_story_document(ctx, spine)) == {"chapter_titles[2].fr"}
-
     def test_settling_turns_copies_into_warnings_and_keeps_other_errors(self):
         from app.api.v1.schemas.story_course import Checks, ValidationIssue
 
@@ -925,7 +920,7 @@ class TestMissingTranslations:
 
         report = ValidationReport(
             ok=False,
-            errors=[issue("missing_translation"), issue("missing_translation")],
+            errors=[issue("missing_translation"), issue("line_labelled")],
             checks=Checks(errors=2),
         )
         settled = repair.settle_translations(report)
@@ -933,9 +928,21 @@ class TestMissingTranslations:
         assert [w.severity for w in settled.warnings] == ["warning", "warning"]
         assert (settled.checks.errors, settled.checks.warnings) == (0, 2)
         mixed = repair.settle_translations(
-            report.model_copy(update={"errors": [*report.errors, issue("answer_leak")]})
+            report.model_copy(
+                update={"errors": [*report.errors, issue("answer_leak"), issue("speaker_prefix")]}
+            )
         )
-        assert not mixed.ok and [e.code for e in mixed.errors] == ["answer_leak"]
+        # A validator error is never settled, even one the builder also fixes.
+        assert not mixed.ok and [e.code for e in mixed.errors] == ["answer_leak", "speaker_prefix"]
+
+    def test_no_builder_code_is_a_validator_code(self):
+        import inspect
+
+        from app.domain.services import story_course_validator
+
+        source = inspect.getsource(story_course_validator)
+        for code in repair.SETTLEABLE | {repair.NO_SCENES}:
+            assert f'"{code}"' not in source, code
 
 
 # --------------------------------------------------------------------------
@@ -983,3 +990,263 @@ class TestLongStem:
             (e.code, e.path) for e in report.errors
         }
         assert repair.implicated_items(report)[0] == {"q3"}
+
+
+# --------------------------------------------------------------------------
+# The screenplay: what the builder checks, and every fix reported (#2674)
+# --------------------------------------------------------------------------
+
+
+def _codes(build: repair.StoryBuild) -> set[tuple[str, str]]:
+    return {(i.code, i.path) for i in build.issues}
+
+
+class TestScreenplay:
+    @pytest.mark.parametrize(
+        ("line", "spoken"),
+        [
+            ("Kaboré: With the night, {child}.", "With the night, {child}."),
+            ("M. Kaboré dit : « Par la nuit. »", "Par la nuit."),
+            ("Mr Kaboré says: 'With the night.'", "With the night."),
+            ("mentor: With the night.", "With the night."),
+        ],
+    )
+    def test_a_speaker_label_is_stripped_and_reported(self, raw, line, spoken):
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][3]["en"] = line
+        build = repair.build_story_document(make_ctx(raw), spine)
+        step = build.doc["chapters"][0]["scenes"][0]["steps"][3]
+        assert step["en"] == spoken
+        assert _codes(build) == {("line_labelled", "scenes[0].steps[3].en")}
+        assert validate(build.doc).ok
+
+    def test_a_line_that_only_mentions_a_name_is_left_alone(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][3]["en"] = "Kaboré is right, {child}: look at the clock."
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.issues == []
+
+    def test_a_speaker_who_is_not_in_the_cast_loses_the_line(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][1]["who"] = "the_mayor"
+        build = repair.build_story_document(make_ctx(raw), spine)
+        lines = [s["en"] for s in all_steps(build.doc) if s["type"] == "say"]
+        assert spine["scenes"][0]["steps"][1]["en"] not in lines
+        assert _codes(build) == {("speaker_not_in_cast", "scenes[0].steps[1].who")}
+
+    @pytest.mark.parametrize(
+        ("who", "resolved"),
+        [("peer", "friend"), ("Teacher", "mentor"), ("{child}", "hero"), ("Margo", "margo")],
+    )
+    def test_speaker_aliases_and_names_resolve_to_cast_ids(self, raw, who, resolved):
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][1]["who"] = who
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.doc["chapters"][0]["scenes"][0]["steps"][1]["who"] == resolved
+        assert not {i.code for i in build.issues} - {"scene_cast_size"}
+
+    @pytest.mark.parametrize(
+        ("mood", "kept", "reported"),
+        [
+            (None, "talk", False),
+            ("excited", "happy", False),
+            ("confused", "think", False),
+            ("furious", "talk", True),
+        ],
+    )
+    def test_moods_come_from_the_list(self, raw, mood, kept, reported):
+        spine = spine_for(raw)
+        step = spine["scenes"][0]["steps"][1]
+        if mood is None:
+            step.pop("mood")
+        else:
+            step["mood"] = mood
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.doc["chapters"][0]["scenes"][0]["steps"][1]["mood"] == kept
+        assert bool(build.issues) is reported
+
+    def test_a_ref_to_nothing_is_dropped_and_reported(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"].append({"type": "ask", "ref": "q99"})
+        spine["scenes"][1]["steps"].append({"type": "photo", "ref": "E9"})
+        spine["scenes"][0]["steps"].append({"type": "show", "figure": 4})
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert _codes(build) == {
+            ("ref_not_found", "scenes[0].steps[9].ref"),
+            ("ref_not_found", "scenes[1].steps[9].ref"),
+            ("ref_not_found", "scenes[0].steps[10]"),
+        }
+        assert validate(build.doc).ok
+
+    def test_only_a_visual_the_player_draws_is_kept(self, raw):
+        spine = spine_for(raw)
+        steps = spine["scenes"][2]["steps"]
+        steps[1:1] = [
+            {"type": "show", "visual": "factor_tree", "params": {"n": 12, "first_split": [3, 4]}},
+            {"type": "show", "visual": "timeline", "params": {"events": ["June", "Sept"]}},
+            {"type": "show", "visual": "factor_tree", "params": {"n": 12, "first_split": [5, 7]}},
+            {"type": "show", "visual": "hundred_square", "params": {"highlight": "evens"}},
+            {"type": "show", "visual": "venn_primes", "params": {"a": 12}},
+            {"type": "show", "visual": "hologram"},
+        ]
+        build = repair.build_story_document(make_ctx(raw), spine)
+        visuals = [s["visual"] for s in all_steps(build.doc) if s["type"] == "show"]
+        assert visuals == ["image", "factor_tree"]
+        assert _codes(build) == {
+            ("visual_not_usable", f"scenes[2].steps[{index}]") for index in range(2, 7)
+        }
+        assert validate(build.doc).ok
+
+    def test_every_lesson_concept_must_be_taught(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][1]["steps"][4].pop("teaches")
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert _codes(build) == {("concept_not_covered", "lesson.concepts[2]")}
+        (issue,) = build.issues
+        assert "Test before you treat" in issue.message
+
+    def test_a_concept_card_has_at_most_four_rows(self, raw):
+        spine = spine_for(raw)
+        card = spine["scenes"][0]["steps"][6]
+        card["en"] = card["en"] + ["Row four.", "Row five."]
+        card["fr"] = card["fr"] + ["Ligne quatre.", "Ligne cinq."]
+        build = repair.build_story_document(make_ctx(raw), spine)
+        built = next(s for s in all_steps(build.doc) if s.get("id") == "c1")
+        assert len(built["en"]) == len(built["fr"]) == 4
+        assert _codes(build) == {("concept_card_too_long", "scenes[0].steps[6]")}
+
+    def test_two_to_four_scenes(self, raw):
+        spine = spine_for(raw)
+        merged = [step for scene in spine["scenes"] for step in scene["steps"]]
+        spine["scenes"] = [{**spine["scenes"][0], "steps": merged}]
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert ("scene_count", "scenes") in _codes(build)
+
+    def test_a_line_told_twice_is_dropped(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][2]["steps"].insert(1, copy.deepcopy(spine["scenes"][0]["steps"][1]))
+        build = repair.build_story_document(make_ctx(raw), spine)
+        lines = [s["en"] for s in all_steps(build.doc) if s["type"] == "say"]
+        assert len(lines) == len(set(lines))
+        assert ("line_told_twice", "scenes") in _codes(build)
+
+    def test_items_the_model_never_placed_go_at_the_end_reported(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][2]["steps"] = [
+            s for s in spine["scenes"][2]["steps"] if s["type"] not in ("game", "photo")
+        ]
+        build = repair.build_story_document(make_ctx(raw), spine)
+        last = build.doc["chapters"][0]["scenes"][-1]["steps"]
+        assert [s["type"] for s in last[-2:]] == ["game", "photo"]
+        assert last[-1]["ref"] == "E1"
+        assert _codes(build) == {
+            ("item_not_placed", "minigame"),
+            ("item_not_placed", "exercises[0]"),
+        }
+
+    def test_scene_objectives_follow_a_merged_objective(self, raw):
+        spine = spine_for(raw)
+        spine["objectives"].insert(0, {"id": "o0", "en": "Something nobody asks", "fr": "Rien"})
+        spine["scenes"][0]["objective"] = "o0"
+        build = repair.build_story_document(make_ctx(raw), spine)
+        ids = {o["id"] for o in build.doc["objectives"]}
+        assert {s.get("objective") for s in build.doc["chapters"][0]["scenes"]} <= ids | {None}
+        assert validate(build.doc).ok
+
+    def test_no_readable_scene_is_never_publishable(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"] = [{"place": "desk", "steps": [{"type": "dance"}]}]
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.doc["chapters"] == []
+        assert "no_scenes" in {i.code for i in build.issues}
+        assert "no_scenes" not in repair.SETTLEABLE
+        report = repair.settle_translations(
+            repair.with_generator_issues(validate(build.doc), build)
+        )
+        assert not report.ok
+
+
+# --------------------------------------------------------------------------
+# Review of #2678: labels, honorifics, missing concepts, prompts
+# --------------------------------------------------------------------------
+
+
+class TestReviewFixes:
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Kaboré dit que la nuit est longue.",
+            "Kaboré dit qu'il faut un test.",
+            "Margo says the answer is near, {child}.",
+            "Kaboré asks a good question.",
+            "Kaboré: no, wait.",  # in a narrate step, never stripped
+        ],
+    )
+    def test_reported_speech_is_not_a_label(self, raw, line):
+        spine = spine_for(raw)
+        index = 3 if not line.endswith("wait.") else 0
+        spine["scenes"][0]["steps"][index]["en"] = line
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.doc["chapters"][0]["scenes"][0]["steps"][index]["en"] == line
+        assert build.issues == []
+        assert validate_story_course(StoryCourse.model_validate(build.doc), generated=True).ok
+
+    @pytest.mark.parametrize(
+        ("line", "spoken"),
+        [
+            ("Kaboré says « Look at the clock. »", "Look at the clock."),
+            ("Teacher Kaboré: look at the clock.", "look at the clock."),
+            ('{friend} says: "Look!"', "Look!"),
+        ],
+    )
+    def test_what_the_validator_flags_the_builder_strips(self, raw, line, spoken):
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][3]["en"] = line
+        build = repair.build_story_document(make_ctx(raw), spine)
+        assert build.doc["chapters"][0]["scenes"][0]["steps"][3]["en"] == spoken
+        assert _codes(build) == {("line_labelled", "scenes[0].steps[3].en")}
+        assert validate_story_course(StoryCourse.model_validate(build.doc), generated=True).ok
+
+    def test_a_concept_never_taught_gets_a_card_from_the_lesson_once_the_budget_is_spent(self, raw):
+        spine = spine_for(raw)
+        spine["scenes"][1]["steps"][4].pop("teaches")
+        plain = repair.build_story_document(make_ctx(raw), spine)
+        covered = repair.build_story_document(make_ctx(raw), spine, cover_missing_concepts=True)
+        assert not [s for s in all_steps(plain.doc) if s.get("teaches") == 2]
+        (card,) = [s for s in all_steps(covered.doc) if s.get("teaches") == 2]
+        assert card["en"][0].startswith("Test before you treat.")
+        assert len(card["en"]) == len(card["fr"]) <= repair.MAX_CONCEPT_ROWS
+        # Before the card of the next concept.
+        steps = all_steps(covered.doc)
+        assert steps.index(card) < next(i for i, s in enumerate(steps) if s.get("teaches") == 3)
+        (issue,) = covered.issues
+        assert issue.code == "concept_not_covered" and "was added" in issue.message
+        assert validate(covered.doc).ok
+
+    def test_the_prompt_offers_only_the_visuals_the_player_draws(self, raw):
+        message = build_story_user_message(make_ctx(raw))
+        for name in ("hundred_square", "factor_tree", "division_ladder", "venn_primes"):
+            assert f'"{name}"' in message
+        for name in ("timeline", "number_line", "place_value", "thermometer"):
+            assert name not in message
+        assert '"multiples:N"' in message and "first_split" in message
+
+    def test_the_prompt_keeps_both_children_gender_neutral(self, raw):
+        message = build_story_user_message(make_ctx(raw, "fr"))
+        assert "he/she/him/her/his or il/elle" in message
+        assert "« J'ai fait une erreur » (not « Je me suis trompé »)" in message
+        from app.ai.prompts.story_from_lesson import get_story_system_prompt
+
+        for course in (None, _kids_course()):
+            system = get_story_system_prompt("fr", "BF", 1, "", course=course)
+            assert "il/elle" in system and "J'ai fait une erreur" in system
+
+
+def _kids_course():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        taxonomy_categories=[SimpleNamespace(type="audience", slug="primary_school")],
+        title_en="Science (Ages 8-10)",
+        title_fr="Sciences",
+    )

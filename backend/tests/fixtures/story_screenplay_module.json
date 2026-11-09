@@ -1,0 +1,2947 @@
+{
+ "_comment": "Story mode screenplay fixture (#2674): a kids module of three lessons, a case study and a quiz unit, told by one course bible. 'bible' is the model's bible answer; each lesson's screenplay and the rally's are what the model answers; the derived entries are built from the bilingual 'quiz' by the test helpers (tests/test_story_screenplay_module.py).",
+ "course": {
+  "title": {
+   "en": "Life detectives",
+   "fr": "Les détectives du vivant"
+  },
+  "country": "BF",
+  "is_kids": true
+ },
+ "module": {
+  "module_id": "aab749f1-fba3-45d3-bcff-e0f4f925475a",
+  "module_number": 1,
+  "module_title": {
+   "en": "Life detectives: what is alive?",
+   "fr": "Les détectives du vivant : qu'est-ce qui est vivant ?"
+  },
+  "course_title": {
+   "en": "Life detectives",
+   "fr": "Les détectives du vivant"
+  },
+  "previous_module": null,
+  "is_kids": true
+ },
+ "units": [
+  {
+   "module_unit_id": "32caf326-7a4c-4886-8dfe-147c0acf5f9d",
+   "unit_number": "1.1",
+   "unit_type": "lesson",
+   "order_index": 0,
+   "title": {
+    "en": "The signs of life",
+    "fr": "Les signes du vivant"
+   }
+  },
+  {
+   "module_unit_id": "240cb10e-e97b-4350-82e2-455f8f153d57",
+   "unit_number": "1.2",
+   "unit_type": "lesson",
+   "order_index": 1,
+   "title": {
+    "en": "From cell to organism",
+    "fr": "De la cellule à l'organisme"
+   }
+  },
+  {
+   "module_unit_id": "97e9060b-6e2f-4f9e-b176-c0e44e31061d",
+   "unit_number": "1.3",
+   "unit_type": "lesson",
+   "order_index": 2,
+   "title": {
+    "en": "Run the investigation",
+    "fr": "Mène l'enquête"
+   }
+  },
+  {
+   "module_unit_id": "4b71fe4c-d446-49ce-98e0-a0bc79574678",
+   "unit_number": "1.4",
+   "unit_type": "case-study",
+   "order_index": 3,
+   "title": {
+    "en": "Mystery at the market",
+    "fr": "Mystère au marché"
+   }
+  },
+  {
+   "module_unit_id": "c325f5ec-1690-4680-a013-7698ac881217",
+   "unit_number": "1.5",
+   "unit_type": "quiz",
+   "order_index": 4,
+   "title": {
+    "en": "Quiz: life detectives",
+    "fr": "Quiz : les détectives du vivant"
+   }
+  }
+ ],
+ "bible": {
+  "cast": [
+   {
+    "id": "hero",
+    "about": "the learner: curious, brave, says what they think, sometimes wrong",
+    "variants": [
+     {
+      "id": "girl",
+      "look": "an 11-year-old Burkinabe girl, slim, dark brown skin, hair in two puffs with yellow bands, white school shirt and navy skirt, a small red backpack"
+     },
+     {
+      "id": "boy",
+      "look": "an 11-year-old Burkinabe boy, slim, dark brown skin, short black hair, white school shirt and navy shorts, a small red backpack"
+     }
+    ],
+    "voice": {
+     "pitch": 1.4,
+     "rate": 1.0
+    }
+   },
+   {
+    "id": "friend",
+    "default_name": "Awa",
+    "about": "best friend: funny, jumps to conclusions, loves riddles",
+    "look": "an 11-year-old Burkinabe child, round face, medium brown skin, short braids, orange patterned top, a yellow bracelet",
+    "voice": {
+     "pitch": 1.5,
+     "rate": 1.05
+    }
+   },
+   {
+    "id": "mentor",
+    "name": "Mr Kaboré",
+    "about": "the science teacher: patient, asks questions back, loves his microscope",
+    "look": "a Burkinabe teacher in his forties, tall and lean, dark skin, short grey hair, light blue shirt and red tie, round glasses",
+    "voice": {
+     "pitch": 0.85,
+     "rate": 0.95
+    }
+   },
+   {
+    "id": "family",
+    "name": "Mariam",
+    "about": "the hero's grandmother: sells fruit at Rood Woko market, teases kindly",
+    "look": "a Burkinabe grandmother in her sixties, warm smile, dark skin, purple head wrap and a blue-and-yellow Faso Dan Fani dress, a woven basket",
+    "voice": {
+     "pitch": 0.95,
+     "rate": 0.9
+    }
+   },
+   {
+    "id": "margo",
+    "about": "the AI tutor: a cheerful margouillat who whispers hints, never answers",
+    "look": "a friendly cartoon margouillat lizard with an orange head, blue body, big round eyes and a tiny green satchel",
+    "voice": {
+     "pitch": 1.8,
+     "rate": 1.05
+    }
+   }
+  ],
+  "places": [
+   {
+    "id": "rood_woko_market",
+    "title": {
+     "en": "Rood Woko market",
+     "fr": "Le marché Rood Woko"
+    },
+    "look": "a busy covered market in Ouagadougou, stalls of mangoes, baskets and fabrics, warm morning light"
+   },
+   {
+    "id": "courtyard",
+    "title": {
+     "en": "Grandma's courtyard",
+     "fr": "La cour de Mamie"
+    },
+    "look": "a family courtyard with a big néré tree, clay walls, a wooden bench and cooking pots"
+   },
+   {
+    "id": "classroom",
+    "title": {
+     "en": "The classroom",
+     "fr": "La classe"
+    },
+    "look": "a bright primary classroom, green chalkboard, wooden desks, a microscope on the teacher's table"
+   },
+   {
+    "id": "school_garden",
+    "title": {
+     "en": "The school garden",
+     "fr": "Le jardin de l'école"
+    },
+    "look": "a small school garden with rows of bean plants, a big mango tree and a watering can"
+   },
+   {
+    "id": "science_fair",
+    "title": {
+     "en": "The science fair",
+     "fr": "La foire scientifique"
+    },
+    "look": "a school yard set with tables, colourful posters and bunting for a science fair"
+   },
+   {
+    "id": "tanghin_dam",
+    "title": {
+     "en": "Tanghin dam",
+     "fr": "Le barrage de Tanghin"
+    },
+    "look": "the shore of a calm reservoir at sunset, reeds, a dirt path and a few fishing boats"
+   }
+  ],
+  "facts": [
+   {
+    "en": "Rood Woko is the central market of Ouagadougou.",
+    "fr": "Rood Woko est le grand marché central de Ouagadougou.",
+    "source": "Wikipedia: Rood Woko",
+    "place": "rood_woko_market"
+   },
+   {
+    "en": "Ouagadougou has reservoirs, such as the one at Tanghin.",
+    "fr": "Ouagadougou a des barrages, comme celui de Tanghin.",
+    "source": "Wikipedia: Ouagadougou",
+    "place": "tanghin_dam"
+   },
+   {
+    "en": "Néré seeds are fermented to make soumbala.",
+    "fr": "Les graines de néré fermentées donnent le soumbala.",
+    "source": "FAO: Parkia biglobosa"
+   },
+   {
+    "en": "Grandma Mariam's stall has the sweetest mangoes.",
+    "fr": "L'étal de Mamie Mariam a les mangues les plus sucrées.",
+    "invented": true
+   }
+  ],
+  "missions": [
+   {
+    "module": 1,
+    "en": "Find out which treasures in Grandma's basket are alive before Friday's science fair",
+    "fr": "Découvrir quels trésors du panier de Mamie sont vivants avant la foire scientifique de vendredi"
+   }
+  ]
+ },
+ "quiz": [
+  {
+   "id": "q1",
+   "question": {
+    "en": "Which of these is a sign that something is alive?",
+    "fr": "Lequel de ces signes montre qu'une chose est vivante ?"
+   },
+   "options": {
+    "en": [
+     "It reacts to what happens around it",
+     "It has a bright colour",
+     "It is very heavy",
+     "It is made of shiny metal"
+    ],
+    "fr": [
+     "Elle réagit à ce qui se passe autour",
+     "Elle a une couleur vive",
+     "Elle est très lourde",
+     "Elle est en métal brillant"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "Living things sense and react, like the mimosa closing its leaves.",
+    "fr": "Le vivant sent et réagit, comme le mimosa qui ferme ses feuilles."
+   },
+   "hint": {
+    "en": "Think of the mimosa leaf.",
+    "fr": "Pense à la feuille de mimosa."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_colour_alive",
+      "en": "Thinks a bright colour is a sign of life.",
+      "fr": "Pense qu'une couleur vive est un signe de vie."
+     },
+     "hint": {
+      "en": "A painted stone is bright too.",
+      "fr": "Un caillou peint est vif lui aussi."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_heavy_alive",
+      "en": "Thinks big or heavy things are alive.",
+      "fr": "Pense que ce qui est gros ou lourd est vivant."
+     },
+     "hint": {
+      "en": "A big rock is heavy and still lifeless.",
+      "fr": "Un gros rocher est lourd et pourtant sans vie."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_shiny_alive",
+      "en": "Thinks shiny things like metal can be alive.",
+      "fr": "Pense que ce qui brille, comme le métal, peut être vivant."
+     },
+     "hint": {
+      "en": "A spoon shines but never reacts.",
+      "fr": "Une cuillère brille mais ne réagit jamais."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q2",
+   "question": {
+    "en": "What does a mimosa leaf do when you touch it?",
+    "fr": "Que fait une feuille de mimosa quand on la touche ?"
+   },
+   "options": {
+    "en": [
+     "It folds shut",
+     "It changes colour",
+     "It grows faster",
+     "Nothing happens"
+    ],
+    "fr": [
+     "Elle se referme",
+     "Elle change de couleur",
+     "Elle pousse plus vite",
+     "Il ne se passe rien"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "The mimosa senses the touch and answers by folding its leaves.",
+    "fr": "Le mimosa sent le toucher et répond en refermant ses feuilles."
+   },
+   "hint": {
+    "en": "Remember the market stall.",
+    "fr": "Souviens-toi de l'étal du marché."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_colour_alive",
+      "en": "Thinks a bright colour is a sign of life.",
+      "fr": "Pense qu'une couleur vive est un signe de vie."
+     },
+     "hint": {
+      "en": "Watch its shape, not its colour.",
+      "fr": "Regarde sa forme, pas sa couleur."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_moves_alive",
+      "en": "Thinks anything that moves is alive.",
+      "fr": "Pense que tout ce qui bouge est vivant."
+     },
+     "hint": {
+      "en": "Growing takes days, not a second.",
+      "fr": "Grandir prend des jours, pas une seconde."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_hard_not_alive",
+      "en": "Thinks a thing is lifeless only because it is hard.",
+      "fr": "Pense qu'une chose est sans vie seulement parce qu'elle est dure."
+     },
+     "hint": {
+      "en": "Something did happen, very fast.",
+      "fr": "Il s'est passé quelque chose, très vite."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q3",
+   "question": {
+    "en": "Why is a pebble not alive?",
+    "fr": "Pourquoi un caillou n'est-il pas vivant ?"
+   },
+   "options": {
+    "en": [
+     "It never feeds, grows or reproduces",
+     "It is too hard",
+     "It is grey",
+     "It is too small"
+    ],
+    "fr": [
+     "Il ne se nourrit, ne grandit et ne se reproduit jamais",
+     "Il est trop dur",
+     "Il est gris",
+     "Il est trop petit"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "Living things feed, grow and reproduce; a pebble does none of these.",
+    "fr": "Le vivant se nourrit, grandit et se reproduit ; un caillou ne fait rien de cela."
+   },
+   "hint": {
+    "en": "Check the signs of life one by one.",
+    "fr": "Vérifie les signes du vivant un par un."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_hard_not_alive",
+      "en": "Thinks a thing is lifeless only because it is hard.",
+      "fr": "Pense qu'une chose est sans vie seulement parce qu'elle est dure."
+     },
+     "hint": {
+      "en": "A snail's shell is hard, and the snail lives.",
+      "fr": "La coquille d'un escargot est dure, et l'escargot vit."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_colour_not_alive",
+      "en": "Thinks grey or dull things cannot be alive.",
+      "fr": "Pense que ce qui est gris ou terne ne peut pas être vivant."
+     },
+     "hint": {
+      "en": "Many living things are grey.",
+      "fr": "Beaucoup d'êtres vivants sont gris."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_small_not_alive",
+      "en": "Thinks very small things cannot be alive.",
+      "fr": "Pense que les choses très petites ne peuvent pas être vivantes."
+     },
+     "hint": {
+      "en": "Some living things are far smaller than a pebble.",
+      "fr": "Certains êtres vivants sont bien plus petits qu'un caillou."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q4",
+   "question": {
+    "en": "What is the smallest unit of life?",
+    "fr": "Quelle est la plus petite unité du vivant ?"
+   },
+   "options": {
+    "en": [
+     "The cell",
+     "The organ",
+     "The tissue",
+     "The atom"
+    ],
+    "fr": [
+     "La cellule",
+     "L'organe",
+     "Le tissu",
+     "L'atome"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "A cell is the smallest part that is alive on its own.",
+    "fr": "La cellule est la plus petite partie vivante à elle seule."
+   },
+   "hint": {
+    "en": "Think of the tiny rooms under the microscope.",
+    "fr": "Pense aux toutes petites pièces sous le microscope."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_organ_smallest",
+      "en": "Thinks the organ is the smallest unit of life.",
+      "fr": "Pense que l'organe est la plus petite unité du vivant."
+     },
+     "hint": {
+      "en": "An organ is made of many cells.",
+      "fr": "Un organe est fait de nombreuses cellules."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_tissue_smallest",
+      "en": "Thinks the tissue is the smallest unit of life.",
+      "fr": "Pense que le tissu est la plus petite unité du vivant."
+     },
+     "hint": {
+      "en": "A tissue is a team of cells.",
+      "fr": "Un tissu est une équipe de cellules."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_atom_alive",
+      "en": "Thinks an atom is alive on its own.",
+      "fr": "Pense qu'un atome est vivant à lui seul."
+     },
+     "hint": {
+      "en": "An atom is smaller, but is it alive?",
+      "fr": "Un atome est plus petit, mais est-il vivant ?"
+     }
+    }
+   ]
+  },
+  {
+   "id": "q5",
+   "question": {
+    "en": "What do many similar cells working together form?",
+    "fr": "Que forment de nombreuses cellules semblables qui travaillent ensemble ?"
+   },
+   "options": {
+    "en": [
+     "A tissue",
+     "A whole organism",
+     "A planet",
+     "A molecule"
+    ],
+    "fr": [
+     "Un tissu",
+     "Un organisme entier",
+     "Une planète",
+     "Une molécule"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "A team of similar cells is a tissue; tissues then build organs.",
+    "fr": "Une équipe de cellules semblables est un tissu ; les tissus forment ensuite des organes."
+   },
+   "hint": {
+    "en": "It is the next step up from the cell.",
+    "fr": "C'est la marche juste au-dessus de la cellule."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_cells_make_organism_directly",
+      "en": "Thinks similar cells together already make a whole organism.",
+      "fr": "Pense que des cellules semblables forment déjà un organisme entier."
+     },
+     "hint": {
+      "en": "Organs and systems come before the whole.",
+      "fr": "Les organes et les systèmes viennent avant l'ensemble."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_mixes_scales",
+      "en": "Mixes the levels of life with things far bigger or smaller.",
+      "fr": "Confond les niveaux du vivant avec des choses bien plus grandes ou plus petites."
+     },
+     "hint": {
+      "en": "That is far too big a step.",
+      "fr": "C'est une marche bien trop grande."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_atom_alive",
+      "en": "Thinks an atom is alive on its own.",
+      "fr": "Pense qu'un atome est vivant à lui seul."
+     },
+     "hint": {
+      "en": "A molecule is smaller than a cell.",
+      "fr": "Une molécule est plus petite qu'une cellule."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q6",
+   "question": {
+    "en": "The heart, the lungs and the stomach are...",
+    "fr": "Le cœur, les poumons et l'estomac sont..."
+   },
+   "options": {
+    "en": [
+     "Organs",
+     "Single cells",
+     "Tissues only",
+     "Ecosystems"
+    ],
+    "fr": [
+     "Des organes",
+     "Des cellules uniques",
+     "Seulement des tissus",
+     "Des écosystèmes"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "Each is made of several tissues and has one job: it is an organ.",
+    "fr": "Chacun est fait de plusieurs tissus et a une tâche : c'est un organe."
+   },
+   "hint": {
+    "en": "Each one has its own job in the body.",
+    "fr": "Chacun a sa propre tâche dans le corps."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_organ_is_cell",
+      "en": "Thinks organs like the heart are single cells.",
+      "fr": "Pense que des organes comme le cœur sont des cellules uniques."
+     },
+     "hint": {
+      "en": "A heart holds billions of cells.",
+      "fr": "Un cœur contient des milliards de cellules."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_organ_is_tissue",
+      "en": "Mixes up organs and tissues.",
+      "fr": "Confond les organes et les tissus."
+     },
+     "hint": {
+      "en": "They are made of several tissues together.",
+      "fr": "Ils sont faits de plusieurs tissus ensemble."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_organ_is_ecosystem",
+      "en": "Thinks body organs form an ecosystem.",
+      "fr": "Pense que les organes du corps forment un écosystème."
+     },
+     "hint": {
+      "en": "An ecosystem is a whole place full of life.",
+      "fr": "Un écosystème est tout un lieu plein de vie."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q7",
+   "question": {
+    "en": "What is a hypothesis?",
+    "fr": "Qu'est-ce qu'une hypothèse ?"
+   },
+   "options": {
+    "en": [
+     "An explanation you can test",
+     "A final proof",
+     "A random guess",
+     "A measurement"
+    ],
+    "fr": [
+     "Une explication que l'on peut tester",
+     "Une preuve finale",
+     "Un hasard",
+     "Une mesure"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "A hypothesis comes from an observation and must be testable.",
+    "fr": "Une hypothèse vient d'une observation et doit pouvoir être testée."
+   },
+   "hint": {
+    "en": "It comes before the experiment.",
+    "fr": "Elle vient avant l'expérience."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_hypothesis_is_proof",
+      "en": "Thinks a hypothesis is already proven.",
+      "fr": "Pense qu'une hypothèse est déjà prouvée."
+     },
+     "hint": {
+      "en": "Nothing is proven before the test.",
+      "fr": "Rien n'est prouvé avant le test."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_hypothesis_is_guess",
+      "en": "Thinks a hypothesis is a random guess.",
+      "fr": "Pense qu'une hypothèse est un hasard."
+     },
+     "hint": {
+      "en": "It starts from what you observed.",
+      "fr": "Elle part de ce que tu as observé."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_hypothesis_is_measure",
+      "en": "Confuses a hypothesis with a measurement.",
+      "fr": "Confond une hypothèse avec une mesure."
+     },
+     "hint": {
+      "en": "You measure later, during the test.",
+      "fr": "On mesure plus tard, pendant le test."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q8",
+   "question": {
+    "en": "In a fair experiment, how many things do you change at a time?",
+    "fr": "Dans une expérience juste, combien de choses changes-tu à la fois ?"
+   },
+   "options": {
+    "en": [
+     "Only one",
+     "All of them",
+     "None at all",
+     "As many as you can"
+    ],
+    "fr": [
+     "Une seule",
+     "Toutes",
+     "Aucune",
+     "Autant que possible"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "Change one thing and keep the rest the same, so you know what made the difference.",
+    "fr": "On change une chose et on garde le reste pareil, pour savoir ce qui a fait la différence."
+   },
+   "hint": {
+    "en": "Think of the two pots and the calabash.",
+    "fr": "Pense aux deux pots et à la calebasse."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_change_all",
+      "en": "Thinks a test can change everything at once.",
+      "fr": "Pense qu'un test peut tout changer à la fois."
+     },
+     "hint": {
+      "en": "Then you could not tell what worked.",
+      "fr": "Alors on ne saurait pas ce qui a marché."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_change_nothing",
+      "en": "Thinks an experiment changes nothing.",
+      "fr": "Pense qu'une expérience ne change rien."
+     },
+     "hint": {
+      "en": "Without a change there is nothing to compare.",
+      "fr": "Sans changement, il n'y a rien à comparer."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_change_all",
+      "en": "Thinks a test can change everything at once.",
+      "fr": "Pense qu'un test peut tout changer à la fois."
+     },
+     "hint": {
+      "en": "More changes make the answer harder to read.",
+      "fr": "Plus de changements rendent la réponse plus difficile à lire."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q9",
+   "question": {
+    "en": "What is the first step of a scientific investigation?",
+    "fr": "Quelle est la première étape d'une enquête scientifique ?"
+   },
+   "options": {
+    "en": [
+     "Observing something",
+     "Writing the conclusion",
+     "Buying equipment",
+     "Telling everyone the answer"
+    ],
+    "fr": [
+     "Observer quelque chose",
+     "Écrire la conclusion",
+     "Acheter du matériel",
+     "Dire la réponse à tout le monde"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "Science starts when you notice something and ask about it.",
+    "fr": "La science commence quand on remarque quelque chose et qu'on s'interroge."
+   },
+   "hint": {
+    "en": "Think of the sleeping seeds in the garden.",
+    "fr": "Pense aux graines endormies du jardin."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_conclusion_first",
+      "en": "Thinks an investigation starts with the conclusion.",
+      "fr": "Pense qu'une enquête commence par la conclusion."
+     },
+     "hint": {
+      "en": "The conclusion comes at the very end.",
+      "fr": "La conclusion vient tout à la fin."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_equipment_first",
+      "en": "Thinks science starts with buying equipment.",
+      "fr": "Pense que la science commence par l'achat de matériel."
+     },
+     "hint": {
+      "en": "A detective first uses their eyes.",
+      "fr": "Un détective utilise d'abord ses yeux."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_answer_first",
+      "en": "Thinks you announce the answer before looking.",
+      "fr": "Pense qu'on annonce la réponse avant de regarder."
+     },
+     "hint": {
+      "en": "You cannot know the answer yet.",
+      "fr": "On ne peut pas encore connaître la réponse."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q10",
+   "question": {
+    "en": "Which of these is NOT alive?",
+    "fr": "Lequel de ces éléments n'est PAS vivant ?"
+   },
+   "options": {
+    "en": [
+     "A pebble",
+     "A snail",
+     "A bean plant",
+     "A bacterium"
+    ],
+    "fr": [
+     "Un caillou",
+     "Un escargot",
+     "Un plant de haricot",
+     "Une bactérie"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "Snails, plants and bacteria feed, grow and reproduce; a pebble does not.",
+    "fr": "Escargots, plantes et bactéries se nourrissent, grandissent et se reproduisent ; pas le caillou."
+   },
+   "hint": {
+    "en": "Which one never grows?",
+    "fr": "Lequel ne grandit jamais ?"
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_shell_not_alive",
+      "en": "Thinks an animal with a shell is not alive.",
+      "fr": "Pense qu'un animal à coquille n'est pas vivant."
+     },
+     "hint": {
+      "en": "Its shell hides a living animal.",
+      "fr": "Sa coquille cache un animal vivant."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_plants_not_alive",
+      "en": "Thinks plants are not alive because they do not walk.",
+      "fr": "Pense que les plantes ne sont pas vivantes car elles ne marchent pas."
+     },
+     "hint": {
+      "en": "Plants grow and make seeds.",
+      "fr": "Les plantes grandissent et font des graines."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_invisible_not_alive",
+      "en": "Thinks what you cannot see is not alive.",
+      "fr": "Pense que ce qu'on ne voit pas n'est pas vivant."
+     },
+     "hint": {
+      "en": "A bacterium is one living cell.",
+      "fr": "Une bactérie est une cellule vivante."
+     }
+    }
+   ]
+  },
+  {
+   "id": "q11",
+   "question": {
+    "en": "Which list goes from the smallest level of life to the biggest?",
+    "fr": "Quelle liste va du plus petit niveau du vivant au plus grand ?"
+   },
+   "options": {
+    "en": [
+     "Cell, tissue, organ, organism",
+     "Organ, cell, tissue, organism",
+     "Organism, organ, tissue, cell",
+     "Tissue, cell, organism, organ"
+    ],
+    "fr": [
+     "Cellule, tissu, organe, organisme",
+     "Organe, cellule, tissu, organisme",
+     "Organisme, organe, tissu, cellule",
+     "Tissu, cellule, organisme, organe"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "Cells form tissues, tissues form organs, and organs build the organism.",
+    "fr": "Les cellules forment des tissus, les tissus des organes, et les organes l'organisme."
+   },
+   "hint": {
+    "en": "Start with what you saw under the microscope.",
+    "fr": "Commence par ce que tu as vu au microscope."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_starts_with_organ",
+      "en": "Starts the levels of life with the organ.",
+      "fr": "Commence les niveaux du vivant par l'organe."
+     },
+     "hint": {
+      "en": "The organ is not the first step.",
+      "fr": "L'organe n'est pas la première marche."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_reversed_levels",
+      "en": "Lists the levels from the biggest to the smallest.",
+      "fr": "Range les niveaux du plus grand au plus petit."
+     },
+     "hint": {
+      "en": "Read it again: smallest first.",
+      "fr": "Relis : le plus petit d'abord."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_mixed_levels",
+      "en": "Mixes up the order of tissue and cell.",
+      "fr": "Mélange l'ordre du tissu et de la cellule."
+     },
+     "hint": {
+      "en": "Which comes first, the cell or the tissue?",
+      "fr": "Qui vient d'abord, la cellule ou le tissu ?"
+     }
+    }
+   ]
+  },
+  {
+   "id": "q12",
+   "question": {
+    "en": "A fair test shows your hypothesis was wrong. What do you do?",
+    "fr": "Un test juste montre que ton hypothèse était fausse. Que fais-tu ?"
+   },
+   "options": {
+    "en": [
+     "Write a new hypothesis and test it",
+     "Hide the results",
+     "Change the results",
+     "Stop the investigation"
+    ],
+    "fr": [
+     "Écrire une nouvelle hypothèse et la tester",
+     "Cacher les résultats",
+     "Modifier les résultats",
+     "Arrêter l'enquête"
+    ]
+   },
+   "correct_answer": 0,
+   "explanation": {
+    "en": "A wrong hypothesis is still progress: you learn and try a new one.",
+    "fr": "Une hypothèse fausse fait quand même avancer : on apprend et on en essaie une autre."
+   },
+   "hint": {
+    "en": "Real detectives keep going.",
+    "fr": "Les vrais détectives continuent."
+   },
+   "distractors": [
+    {
+     "option": "b",
+     "misconception": {
+      "id": "m_hide_wrong_result",
+      "en": "Thinks a wrong hypothesis should be hidden.",
+      "fr": "Pense qu'une hypothèse fausse doit être cachée."
+     },
+     "hint": {
+      "en": "Every result teaches something.",
+      "fr": "Chaque résultat apprend quelque chose."
+     }
+    },
+    {
+     "option": "c",
+     "misconception": {
+      "id": "m_change_results",
+      "en": "Thinks results can be changed to fit the idea.",
+      "fr": "Pense qu'on peut changer les résultats pour qu'ils collent à l'idée."
+     },
+     "hint": {
+      "en": "Science only works with true results.",
+      "fr": "La science ne marche qu'avec de vrais résultats."
+     }
+    },
+    {
+     "option": "d",
+     "misconception": {
+      "id": "m_stop_when_wrong",
+      "en": "Thinks a wrong hypothesis ends the investigation.",
+      "fr": "Pense qu'une hypothèse fausse arrête l'enquête."
+     },
+     "hint": {
+      "en": "One wrong idea is not the end.",
+      "fr": "Une idée fausse n'est pas la fin."
+     }
+    }
+   ]
+  }
+ ],
+ "lessons": {
+  "1.1": {
+   "title": {
+    "en": "The signs of life",
+    "fr": "Les signes du vivant"
+   },
+   "lesson": {
+    "introduction": {
+     "en": "How can you tell a living thing from a thing that is not alive?",
+     "fr": "Comment distinguer un être vivant d'une chose qui ne l'est pas ?"
+    },
+    "concepts": {
+     "en": [
+      "Living things react to what happens around them: a mimosa folds its leaves when touched.",
+      "Living things feed, grow and reproduce: a néré seed becomes a tree that makes new seeds.",
+      "All living things are made of one or more cells; a pebble has none."
+     ],
+     "fr": [
+      "Le vivant réagit à ce qui se passe autour de lui : le mimosa referme ses feuilles quand on le touche.",
+      "Le vivant se nourrit, grandit et se reproduit : une graine de néré devient un arbre qui fait de nouvelles graines.",
+      "Tous les êtres vivants sont faits d'une ou de plusieurs cellules ; un caillou n'en a aucune."
+     ]
+    },
+    "key_points": {
+     "en": [
+      "React, feed, grow, reproduce: the signs of life.",
+      "Every living thing is made of cells."
+     ],
+     "fr": [
+      "Réagir, se nourrir, grandir, se reproduire : les signes du vivant.",
+      "Tout être vivant est fait de cellules."
+     ]
+    }
+   },
+   "objectives": [
+    {
+     "id": "o1",
+     "en": "Recognise the signs that something is alive",
+     "fr": "Reconnaître les signes qui montrent qu'une chose est vivante"
+    },
+    {
+     "id": "o2",
+     "en": "Explain why something is not alive",
+     "fr": "Expliquer pourquoi une chose n'est pas vivante"
+    }
+   ],
+   "picks": [
+    [
+     "q2",
+     "o1"
+    ],
+    [
+     "q1",
+     "o1"
+    ],
+    [
+     "q3",
+     "o2"
+    ]
+   ],
+   "misconceptions": [
+    {
+     "id": "m_moves_alive",
+     "en": "Thinks anything that moves is alive.",
+     "fr": "Pense que tout ce qui bouge est vivant."
+    },
+    {
+     "id": "m_pebble_grows",
+     "en": "Thinks a pebble can grow like a seed.",
+     "fr": "Pense qu'un caillou peut pousser comme une graine."
+    },
+    {
+     "id": "m_dead_leaf_grows",
+     "en": "Thinks a dry leaf can still grow into a tree.",
+     "fr": "Pense qu'une feuille sèche peut encore devenir un arbre."
+    },
+    {
+     "id": "m_sand_is_cells",
+     "en": "Mistakes grains of sand for cells.",
+     "fr": "Confond des grains de sable avec des cellules."
+    },
+    {
+     "id": "m_oil_is_cells",
+     "en": "Mistakes drops of oil for cells.",
+     "fr": "Confond des gouttes d'huile avec des cellules."
+    }
+   ],
+   "questions": [
+    {
+     "id": "x1",
+     "type": "choice",
+     "objective": "o1",
+     "prompt": {
+      "en": "Which treasure in the basket can grow into a tree?",
+      "fr": "Quel trésor du panier peut devenir un arbre ?"
+     },
+     "choices": [
+      {
+       "id": "a",
+       "en": "The néré seed",
+       "fr": "La graine de néré"
+      },
+      {
+       "id": "b",
+       "en": "The pebble",
+       "fr": "Le caillou",
+       "misconception": "m_pebble_grows"
+      },
+      {
+       "id": "c",
+       "en": "The dry leaf",
+       "fr": "La feuille sèche",
+       "misconception": "m_dead_leaf_grows"
+      }
+     ],
+     "answer": "a",
+     "hints": [
+      {
+       "en": "Which one did Grandma talk about?",
+       "fr": "De laquelle Mamie a-t-elle parlé ?"
+      }
+     ],
+     "traps": [
+      {
+       "answer": "b",
+       "misconception": "m_pebble_grows",
+       "hint": {
+        "en": "Has a pebble ever sprouted?",
+        "fr": "Un caillou a-t-il déjà germé ?"
+       }
+      },
+      {
+       "answer": "c",
+       "misconception": "m_dead_leaf_grows",
+       "hint": {
+        "en": "A dry leaf has stopped living.",
+        "fr": "Une feuille sèche a cessé de vivre."
+       }
+      }
+     ],
+     "explanation": {
+      "en": "A seed is alive and grows into a new plant.",
+      "fr": "Une graine est vivante et devient une nouvelle plante."
+     }
+    },
+    {
+     "id": "x2",
+     "type": "choice",
+     "objective": "o2",
+     "prompt": {
+      "en": "Under the magnifying glass, what did the onion skin show?",
+      "fr": "Sous la loupe, que montrait la peau d'oignon ?"
+     },
+     "choices": [
+      {
+       "id": "a",
+       "en": "Tiny cells",
+       "fr": "De minuscules cellules"
+      },
+      {
+       "id": "b",
+       "en": "Grains of sand",
+       "fr": "Des grains de sable",
+       "misconception": "m_sand_is_cells"
+      },
+      {
+       "id": "c",
+       "en": "Drops of oil",
+       "fr": "Des gouttes d'huile",
+       "misconception": "m_oil_is_cells"
+      }
+     ],
+     "answer": "a",
+     "hints": [
+      {
+       "en": "Remember the tiny bricks.",
+       "fr": "Souviens-toi des minuscules briques."
+      }
+     ],
+     "traps": [
+      {
+       "answer": "b",
+       "misconception": "m_sand_is_cells",
+       "hint": {
+        "en": "Sand is not part of an onion.",
+        "fr": "Le sable ne fait pas partie de l'oignon."
+       }
+      },
+      {
+       "answer": "c",
+       "misconception": "m_oil_is_cells",
+       "hint": {
+        "en": "The bricks had walls.",
+        "fr": "Les briques avaient des murs."
+       }
+      }
+     ],
+     "explanation": {
+      "en": "The onion skin is made of cells, like every living thing.",
+      "fr": "La peau d'oignon est faite de cellules, comme tout être vivant."
+     }
+    }
+   ],
+   "exercises": [
+    {
+     "objective": "o1",
+     "prompt": {
+      "en": "Sort the basket into 'alive' and 'not alive'. Give one sign for each living thing.",
+      "fr": "Trie le panier en « vivant » et « pas vivant ». Donne un signe pour chaque être vivant."
+     },
+     "working": {
+      "en": [
+       "Alive: the snail (it eats and hides), the néré seed (it grows).",
+       "Not alive now: the pebble, the dry leaf."
+      ],
+      "fr": [
+       "Vivants : l'escargot (il mange et se cache), la graine de néré (elle pousse).",
+       "Pas vivants maintenant : le caillou, la feuille sèche."
+      ]
+     },
+     "mark_scheme": {
+      "en": "Both lists right, with one sign for each living thing",
+      "fr": "Les deux listes justes, avec un signe pour chaque être vivant"
+     }
+    },
+    {
+     "objective": "o2",
+     "prompt": {
+      "en": "In two sentences, explain why a pebble is not alive.",
+      "fr": "En deux phrases, explique pourquoi un caillou n'est pas vivant."
+     },
+     "working": {
+      "en": [
+       "A pebble never reacts, feeds, grows or reproduces.",
+       "It is not made of cells."
+      ],
+      "fr": [
+       "Un caillou ne réagit pas, ne se nourrit pas, ne grandit pas et ne se reproduit pas.",
+       "Il n'est pas fait de cellules."
+      ]
+     },
+     "mark_scheme": {
+      "en": "Two signs of life the pebble lacks",
+      "fr": "Deux signes du vivant qui manquent au caillou"
+     }
+    }
+   ],
+   "minigame": {
+    "title": {
+     "en": "Signs of life catch",
+     "fr": "Attrape les signes du vivant"
+    },
+    "instruction": {
+     "en": "Catch what is true. Let the traps fall!",
+     "fr": "Attrape ce qui est vrai. Laisse tomber les pièges !"
+    },
+    "hint_after_wrong": {
+     "en": "React, feed, grow, reproduce.",
+     "fr": "Réagir, se nourrir, grandir, se reproduire."
+    },
+    "rounds": [
+     {
+      "prompt": {
+       "en": "Catch the signs of life!",
+       "fr": "Attrape les signes du vivant !"
+      },
+      "items": [
+       {
+        "label": {
+         "en": "It reacts when touched",
+         "fr": "Il réagit quand on le touche"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "It grows",
+         "fr": "Il grandit"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "It makes young",
+         "fr": "Il a des petits"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "It is shiny",
+         "fr": "Il brille"
+        },
+        "correct": false,
+        "trap": "m_colour_alive"
+       },
+       {
+        "label": {
+         "en": "It is heavy",
+         "fr": "Il est lourd"
+        },
+        "correct": false,
+        "trap": "m_heavy_alive"
+       }
+      ]
+     },
+     {
+      "prompt": {
+       "en": "Catch the living things!",
+       "fr": "Attrape les êtres vivants !"
+      },
+      "items": [
+       {
+        "label": {
+         "en": "A snail",
+         "fr": "Un escargot"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A néré seed",
+         "fr": "Une graine de néré"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A mango tree",
+         "fr": "Un manguier"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A pebble",
+         "fr": "Un caillou"
+        },
+        "correct": false,
+        "trap": "m_pebble_grows"
+       },
+       {
+        "label": {
+         "en": "The wind",
+         "fr": "Le vent"
+        },
+        "correct": false,
+        "trap": "m_moves_alive"
+       }
+      ]
+     }
+    ]
+   },
+   "extra_misconceptions_for_game": [
+    {
+     "id": "m_colour_alive",
+     "en": "Thinks a bright colour is a sign of life.",
+     "fr": "Pense qu'une couleur vive est un signe de vie."
+    },
+    {
+     "id": "m_heavy_alive",
+     "en": "Thinks big or heavy things are alive.",
+     "fr": "Pense que ce qui est gros ou lourd est vivant."
+    }
+   ],
+   "scenes": [
+    {
+     "place": "rood_woko_market",
+     "cast": [
+      "family",
+      "hero",
+      "friend"
+     ],
+     "objective": "o1",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Saturday morning at Rood Woko market. Grandma Mariam's stall smells of mango and soumbala.",
+       "fr": "Samedi matin au marché Rood Woko. L'étal de Mamie Mariam sent la mangue et le soumbala."
+      },
+      {
+       "type": "say",
+       "who": "family",
+       "mood": "happy",
+       "en": "Your class must show what is alive at Friday's science fair. Take my basket!",
+       "fr": "Ta classe doit montrer ce qui est vivant à la foire scientifique de vendredi. Prends mon panier !"
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "surprised",
+       "en": "A seed, a pebble, a snail, a dry leaf... How do I know which ones are alive?",
+       "fr": "Une graine, un caillou, un escargot, une feuille sèche... Comment savoir lesquels sont vivants ?"
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "think",
+       "en": "Easy! Whatever moves is alive.",
+       "fr": "Facile ! Tout ce qui bouge est vivant."
+      },
+      {
+       "type": "say",
+       "who": "family",
+       "mood": "talk",
+       "en": "Then the wind is alive? Watch my mimosa instead. Touch a leaf.",
+       "fr": "Alors le vent est vivant ? Regarde plutôt mon mimosa. Touche une feuille."
+      },
+      {
+       "type": "narrate",
+       "en": "{child} brushes a leaf. It folds shut in a second.",
+       "fr": "{child} effleure une feuille. Elle se referme en une seconde."
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "surprised",
+       "en": "It closed! The plant felt my finger and answered.",
+       "fr": "Elle s'est fermée ! La plante a senti mon doigt et elle a répondu."
+      },
+      {
+       "type": "concept",
+       "teaches": 1,
+       "title": {
+        "en": "Living things react",
+        "fr": "Le vivant réagit"
+       },
+       "en": [
+        "A living thing senses what happens around it.",
+        "It answers: a mimosa folds, a snail hides in its shell.",
+        "A pebble never reacts, whatever you do."
+       ],
+       "fr": [
+        "Un être vivant sent ce qui se passe autour de lui.",
+        "Il répond : le mimosa se ferme, l'escargot rentre dans sa coquille.",
+        "Un caillou ne réagit jamais, quoi que tu fasses."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "q2"
+      },
+      {
+       "type": "ask",
+       "ref": "q1"
+      }
+     ]
+    },
+    {
+     "place": "courtyard",
+     "cast": [
+      "hero",
+      "friend",
+      "margo"
+     ],
+     "objective": "o2",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Back home, the basket waits under the néré tree. {friend} lines up the treasures.",
+       "fr": "À la maison, le panier attend sous le néré. {friend} aligne les trésors."
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "think",
+       "en": "The snail eats the lettuce and leaves a trail. The pebble eats nothing.",
+       "fr": "L'escargot mange la salade et laisse une trace. Le caillou ne mange rien."
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "talk",
+       "en": "And the seed? It eats nothing, but Grandma says it becomes a whole néré tree.",
+       "fr": "Et la graine ? Elle ne mange rien, mais Mamie dit qu'elle devient un néré entier."
+      },
+      {
+       "type": "say",
+       "who": "margo",
+       "mood": "happy",
+       "en": "Good clue! Think about growing and having young. I'm Margo, an AI: I give hints.",
+       "fr": "Bon indice ! Pense à grandir et à avoir des petits. Je suis Margo, une IA : je donne des indices."
+      },
+      {
+       "type": "concept",
+       "teaches": 2,
+       "title": {
+        "en": "Feed, grow, reproduce",
+        "fr": "Se nourrir, grandir, se reproduire"
+       },
+       "en": [
+        "Living things take in food or light for energy.",
+        "They grow, like the néré seed that becomes a tree.",
+        "They make new living things: seeds, eggs, babies."
+       ],
+       "fr": [
+        "Les êtres vivants prennent nourriture ou lumière pour avoir de l'énergie.",
+        "Ils grandissent, comme la graine de néré qui devient un arbre.",
+        "Ils fabriquent de nouveaux êtres vivants : graines, œufs, bébés."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "q3"
+      },
+      {
+       "type": "ask",
+       "ref": "x1"
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "happy",
+       "en": "So the snail and the seed go in the 'alive' pile. The pebble stays out!",
+       "fr": "Donc l'escargot et la graine vont dans le tas « vivant ». Le caillou reste dehors !"
+      },
+      {
+       "type": "game"
+      }
+     ]
+    },
+    {
+     "place": "classroom",
+     "cast": [
+      "mentor",
+      "hero",
+      "friend"
+     ],
+     "objective": "o2",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Monday. Mr Kaboré sets a magnifying glass and an onion skin on {child}'s desk.",
+       "fr": "Lundi. M. Kaboré pose une loupe et une peau d'oignon sur la table de {child}."
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "talk",
+       "en": "You found things that react, feed and grow. What are they made of?",
+       "fr": "Vous avez trouvé des choses qui réagissent, se nourrissent et grandissent. De quoi sont-elles faites ?"
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "think",
+       "en": "Under the glass, the onion skin looks like tiny bricks!",
+       "fr": "Sous la loupe, la peau d'oignon ressemble à de minuscules briques !"
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "happy",
+       "en": "Those bricks are cells. Every living thing has at least one.",
+       "fr": "Ces briques sont des cellules. Tout être vivant en a au moins une."
+      },
+      {
+       "type": "concept",
+       "teaches": 3,
+       "title": {
+        "en": "Made of cells",
+        "fr": "Fait de cellules"
+       },
+       "en": [
+        "Every living thing is made of one or more cells.",
+        "Some living things are one cell, too small to see.",
+        "A pebble has no cells at all."
+       ],
+       "fr": [
+        "Tout être vivant est fait d'une ou de plusieurs cellules.",
+        "Certains êtres vivants sont une seule cellule, trop petite pour être vue.",
+        "Un caillou n'a aucune cellule."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "x2"
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "talk",
+       "en": "Write your 'alive or not' list on paper. The fair jury will read it.",
+       "fr": "Écris ta liste « vivant ou pas » sur papier. Le jury de la foire la lira."
+      },
+      {
+       "type": "photo",
+       "ref": "E1"
+      },
+      {
+       "type": "photo",
+       "ref": "E2"
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "think",
+       "en": "One treasure is still a puzzle: the dry leaf. Was it ever alive?",
+       "fr": "Un trésor reste une énigme : la feuille sèche. A-t-elle été vivante un jour ?"
+      }
+     ]
+    }
+   ],
+   "facts": [
+    {
+     "en": "Rood Woko is the central market of Ouagadougou.",
+     "fr": "Rood Woko est le grand marché central de Ouagadougou.",
+     "source": "Wikipedia: Rood Woko"
+    }
+   ]
+  },
+  "1.2": {
+   "title": {
+    "en": "From cell to organism",
+    "fr": "De la cellule à l'organisme"
+   },
+   "lesson": {
+    "introduction": {
+     "en": "How do tiny cells build a whole living thing?",
+     "fr": "Comment de minuscules cellules construisent-elles un être vivant entier ?"
+    },
+    "concepts": {
+     "en": [
+      "The cell is the smallest unit of life: it is alive on its own.",
+      "Similar cells form tissues, and tissues together form organs such as a leaf or a heart.",
+      "Organs work together in systems, and the systems make a whole organism."
+     ],
+     "fr": [
+      "La cellule est la plus petite unité du vivant : elle vit à elle seule.",
+      "Des cellules semblables forment des tissus, et des tissus ensemble forment des organes comme une feuille ou un cœur.",
+      "Les organes travaillent ensemble en systèmes, et les systèmes forment un organisme entier."
+     ]
+    },
+    "key_points": {
+     "en": [
+      "Cell, tissue, organ, system, organism."
+     ],
+     "fr": [
+      "Cellule, tissu, organe, système, organisme."
+     ]
+    }
+   },
+   "objectives": [
+    {
+     "id": "o1",
+     "en": "Name the cell as the smallest unit of life and say what cells build",
+     "fr": "Nommer la cellule comme plus petite unité du vivant et dire ce que les cellules construisent"
+    },
+    {
+     "id": "o2",
+     "en": "Put the levels of life in order, from cell to organism",
+     "fr": "Ranger les niveaux du vivant dans l'ordre, de la cellule à l'organisme"
+    }
+   ],
+   "picks": [
+    [
+     "q4",
+     "o1"
+    ],
+    [
+     "q5",
+     "o1"
+    ],
+    [
+     "q6",
+     "o2"
+    ]
+   ],
+   "misconceptions": [
+    {
+     "id": "m_cell_biggest",
+     "en": "Thinks the cell is the biggest level of life.",
+     "fr": "Pense que la cellule est le plus grand niveau du vivant."
+    },
+    {
+     "id": "m_organ_is_whole",
+     "en": "Thinks one organ is a whole living thing.",
+     "fr": "Pense qu'un seul organe est un être vivant entier."
+    },
+    {
+     "id": "m_cell_is_organ",
+     "en": "Thinks a single cell is an organ.",
+     "fr": "Pense qu'une cellule unique est un organe."
+    },
+    {
+     "id": "m_molecule_alive",
+     "en": "Thinks a molecule is alive.",
+     "fr": "Pense qu'une molécule est vivante."
+    },
+    {
+     "id": "m_water_alive",
+     "en": "Thinks water is alive because life needs it.",
+     "fr": "Pense que l'eau est vivante car la vie en a besoin."
+    }
+   ],
+   "questions": [
+    {
+     "id": "x1",
+     "type": "choice",
+     "objective": "o2",
+     "prompt": {
+      "en": "Which is the biggest level: a cell, an organ or an organism?",
+      "fr": "Quel est le plus grand niveau : une cellule, un organe ou un organisme ?"
+     },
+     "choices": [
+      {
+       "id": "a",
+       "en": "The organism",
+       "fr": "L'organisme"
+      },
+      {
+       "id": "b",
+       "en": "The cell",
+       "fr": "La cellule",
+       "misconception": "m_cell_biggest"
+      },
+      {
+       "id": "c",
+       "en": "The organ",
+       "fr": "L'organe",
+       "misconception": "m_organ_is_whole"
+      }
+     ],
+     "answer": "a",
+     "hints": [
+      {
+       "en": "Which one is a whole living thing?",
+       "fr": "Lequel est un être vivant entier ?"
+      }
+     ],
+     "traps": [
+      {
+       "answer": "b",
+       "misconception": "m_cell_biggest",
+       "hint": {
+        "en": "The cell is the very first step.",
+        "fr": "La cellule est la toute première marche."
+       }
+      },
+      {
+       "answer": "c",
+       "misconception": "m_organ_is_whole",
+       "hint": {
+        "en": "A stomach alone cannot live.",
+        "fr": "Un estomac seul ne peut pas vivre."
+       }
+      }
+     ],
+     "explanation": {
+      "en": "Cells build tissues, tissues build organs, organs build the organism.",
+      "fr": "Les cellules forment les tissus, les tissus les organes, les organes l'organisme."
+     }
+    }
+   ],
+   "exercises": [
+    {
+     "objective": "o1",
+     "prompt": {
+      "en": "Explain in two sentences why a cell is alive but a molecule is not.",
+      "fr": "Explique en deux phrases pourquoi une cellule est vivante mais pas une molécule."
+     },
+     "working": {
+      "en": [
+       "A cell feeds, grows and divides on its own.",
+       "A molecule is only a piece of matter: it does none of these."
+      ],
+      "fr": [
+       "Une cellule se nourrit, grandit et se divise toute seule.",
+       "Une molécule n'est qu'un morceau de matière : elle ne fait rien de cela."
+      ]
+     },
+     "mark_scheme": {
+      "en": "One sign of life for the cell, and why the molecule has none",
+      "fr": "Un signe du vivant pour la cellule, et pourquoi la molécule n'en a pas"
+     }
+    },
+    {
+     "objective": "o2",
+     "prompt": {
+      "en": "Write the five levels from cell to organism, with one example of each.",
+      "fr": "Écris les cinq niveaux de la cellule à l'organisme, avec un exemple pour chacun."
+     },
+     "working": {
+      "en": [
+       "Cell: a leaf cell. Tissue: the skin of a leaf.",
+       "Organ: the leaf. System: the shoot. Organism: the bean plant."
+      ],
+      "fr": [
+       "Cellule : une cellule de feuille. Tissu : la peau de la feuille.",
+       "Organe : la feuille. Système : la tige et ses feuilles. Organisme : le plant de haricot."
+      ]
+     },
+     "mark_scheme": {
+      "en": "The five levels in order, each with an example",
+      "fr": "Les cinq niveaux dans l'ordre, chacun avec un exemple"
+     }
+    }
+   ],
+   "minigame": {
+    "title": {
+     "en": "The ladder of life",
+     "fr": "L'échelle du vivant"
+    },
+    "instruction": {
+     "en": "Catch the right ones. Let the traps fall!",
+     "fr": "Attrape les bons. Laisse tomber les pièges !"
+    },
+    "hint_after_wrong": {
+     "en": "Cell, tissue, organ, system, organism.",
+     "fr": "Cellule, tissu, organe, système, organisme."
+    },
+    "rounds": [
+     {
+      "prompt": {
+       "en": "Catch the organs!",
+       "fr": "Attrape les organes !"
+      },
+      "items": [
+       {
+        "label": {
+         "en": "A heart",
+         "fr": "Un cœur"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A leaf",
+         "fr": "Une feuille"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A root",
+         "fr": "Une racine"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A single cell",
+         "fr": "Une cellule seule"
+        },
+        "correct": false,
+        "trap": "m_cell_is_organ"
+       },
+       {
+        "label": {
+         "en": "A water molecule",
+         "fr": "Une molécule d'eau"
+        },
+        "correct": false,
+        "trap": "m_molecule_alive"
+       }
+      ]
+     },
+     {
+      "prompt": {
+       "en": "Catch what is alive on its own!",
+       "fr": "Attrape ce qui vit tout seul !"
+      },
+      "items": [
+       {
+        "label": {
+         "en": "A bacterium",
+         "fr": "Une bactérie"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A frog",
+         "fr": "Une grenouille"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A bean plant",
+         "fr": "Un plant de haricot"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "A carbon atom",
+         "fr": "Un atome de carbone"
+        },
+        "correct": false,
+        "trap": "m_atom_alive"
+       },
+       {
+        "label": {
+         "en": "A drop of water",
+         "fr": "Une goutte d'eau"
+        },
+        "correct": false,
+        "trap": "m_water_alive"
+       }
+      ]
+     }
+    ]
+   },
+   "extra_misconceptions_for_game": [
+    {
+     "id": "m_atom_alive",
+     "en": "Thinks an atom is alive on its own.",
+     "fr": "Pense qu'un atome est vivant à lui seul."
+    }
+   ],
+   "scenes": [
+    {
+     "place": "classroom",
+     "cast": [
+      "mentor",
+      "hero",
+      "friend"
+     ],
+     "objective": "o1",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Tuesday. The dry leaf from the basket lies under the school microscope.",
+       "fr": "Mardi. La feuille sèche du panier est sous le microscope de l'école."
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "think",
+       "en": "I see little boxes, but they look empty and broken.",
+       "fr": "Je vois des petites boîtes, mais elles ont l'air vides et cassées."
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "talk",
+       "en": "Those cells are dead. Now try a fresh leaf from the school garden.",
+       "fr": "Ces cellules sont mortes. Essaie maintenant une feuille fraîche du jardin de l'école."
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "surprised",
+       "en": "These boxes are full and green! Each one is like a tiny room.",
+       "fr": "Ces boîtes sont pleines et vertes ! Chacune est comme une toute petite pièce."
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "happy",
+       "en": "Each room is a cell. Nothing smaller than a cell lives on its own.",
+       "fr": "Chaque pièce est une cellule. Rien de plus petit qu'une cellule ne vit tout seul."
+      },
+      {
+       "type": "concept",
+       "teaches": 1,
+       "title": {
+        "en": "The smallest unit of life",
+        "fr": "La plus petite unité du vivant"
+       },
+       "en": [
+        "The cell is the smallest part that is alive on its own.",
+        "A bacterium is one cell; a person has billions.",
+        "Atoms and molecules are smaller, but they are not alive."
+       ],
+       "fr": [
+        "La cellule est la plus petite partie vivante à elle seule.",
+        "Une bactérie est une seule cellule ; une personne en a des milliards.",
+        "Les atomes et les molécules sont plus petits, mais ils ne vivent pas."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "q4"
+      }
+     ]
+    },
+    {
+     "place": "school_garden",
+     "cast": [
+      "hero",
+      "friend",
+      "mentor"
+     ],
+     "objective": "o1",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "In the school garden, {friend} pulls up a bean plant, roots and all.",
+       "fr": "Au jardin de l'école, {friend} arrache un plant de haricot avec ses racines."
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "talk",
+       "en": "Root, stem, leaf: they don't look alike at all.",
+       "fr": "Racine, tige, feuille : elles ne se ressemblent pas du tout."
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "think",
+       "en": "Maybe each part has its own kind of cells, working as a team?",
+       "fr": "Peut-être que chaque partie a son type de cellules, qui travaillent en équipe ?"
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "happy",
+       "en": "Yes! A team of similar cells is a tissue. Tissues together make an organ.",
+       "fr": "Oui ! Une équipe de cellules semblables est un tissu. Des tissus ensemble forment un organe."
+      },
+      {
+       "type": "concept",
+       "teaches": 2,
+       "title": {
+        "en": "Tissues and organs",
+        "fr": "Tissus et organes"
+       },
+       "en": [
+        "Similar cells working together form a tissue.",
+        "Several tissues together form an organ: a leaf, a root, a heart.",
+        "Each organ has a job to do."
+       ],
+       "fr": [
+        "Des cellules semblables qui travaillent ensemble forment un tissu.",
+        "Plusieurs tissus ensemble forment un organe : une feuille, une racine, un cœur.",
+        "Chaque organe a une tâche à accomplir."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "q5"
+      },
+      {
+       "type": "ask",
+       "ref": "q6"
+      },
+      {
+       "type": "game"
+      }
+     ]
+    },
+    {
+     "place": "courtyard",
+     "cast": [
+      "family",
+      "hero",
+      "friend"
+     ],
+     "objective": "o2",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Evening. Grandma Mariam stirs the pot while {child} draws the bean plant.",
+       "fr": "Le soir. Mamie Mariam remue la marmite pendant que {child} dessine le plant de haricot."
+      },
+      {
+       "type": "say",
+       "who": "family",
+       "mood": "think",
+       "en": "So my stomach is an organ too? It has plenty of work tonight!",
+       "fr": "Alors mon estomac est un organe aussi ? Il a du travail ce soir !"
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "happy",
+       "en": "Yes! Mouth, stomach and intestines work together: that's a system.",
+       "fr": "Oui ! La bouche, l'estomac et l'intestin travaillent ensemble : c'est un système."
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "talk",
+       "en": "And all the systems together make a whole living thing: you, Grandma!",
+       "fr": "Et tous les systèmes ensemble forment un être vivant entier : toi, Mamie !"
+      },
+      {
+       "type": "concept",
+       "teaches": 3,
+       "title": {
+        "en": "From cell to organism",
+        "fr": "De la cellule à l'organisme"
+       },
+       "en": [
+        "Organs that work together form a system, like digestion.",
+        "All the systems together make an organism.",
+        "Cell, tissue, organ, system, organism: each level builds the next."
+       ],
+       "fr": [
+        "Des organes qui travaillent ensemble forment un système, comme la digestion.",
+        "Tous les systèmes ensemble forment un organisme.",
+        "Cellule, tissu, organe, système, organisme : chaque niveau construit le suivant."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "x1"
+      },
+      {
+       "type": "say",
+       "who": "family",
+       "mood": "happy",
+       "en": "Then put your drawing in the basket. The fair needs it!",
+       "fr": "Alors mets ton dessin dans le panier. La foire en a besoin !"
+      },
+      {
+       "type": "photo",
+       "ref": "E1"
+      },
+      {
+       "type": "photo",
+       "ref": "E2"
+      }
+     ]
+    }
+   ],
+   "facts": []
+  },
+  "1.3": {
+   "title": {
+    "en": "Run the investigation",
+    "fr": "Mène l'enquête"
+   },
+   "lesson": {
+    "introduction": {
+     "en": "How do scientists find answers they can trust?",
+     "fr": "Comment les scientifiques trouvent-ils des réponses fiables ?"
+    },
+    "concepts": {
+     "en": [
+      "Science starts by observing something and asking a clear question about it.",
+      "A hypothesis is a possible explanation, based on what you observed, that you can test.",
+      "A fair experiment changes only one thing and keeps the rest the same, then compares the results."
+     ],
+     "fr": [
+      "La science commence par observer quelque chose et poser une question claire à son sujet.",
+      "Une hypothèse est une explication possible, fondée sur ce qu'on a observé, que l'on peut tester.",
+      "Une expérience juste ne change qu'une chose, garde le reste pareil, puis compare les résultats."
+     ]
+    },
+    "key_points": {
+     "en": [
+      "Observe, ask, guess wisely, test one change."
+     ],
+     "fr": [
+      "Observer, demander, supposer avec soin, tester un seul changement."
+     ]
+    }
+   },
+   "objectives": [
+    {
+     "id": "o1",
+     "en": "Observe, ask a question and write a hypothesis",
+     "fr": "Observer, poser une question et écrire une hypothèse"
+    },
+    {
+     "id": "o2",
+     "en": "Plan a fair experiment that changes one thing",
+     "fr": "Prévoir une expérience juste qui ne change qu'une chose"
+    }
+   ],
+   "picks": [
+    [
+     "q9",
+     "o1"
+    ],
+    [
+     "q7",
+     "o1"
+    ],
+    [
+     "q8",
+     "o2"
+    ]
+   ],
+   "misconceptions": [
+    {
+     "id": "m_tests_water",
+     "en": "Thinks the test is about water when only light changes.",
+     "fr": "Pense que le test porte sur l'eau alors que seule la lumière change."
+    },
+    {
+     "id": "m_tests_soil",
+     "en": "Thinks the test is about soil when only light changes.",
+     "fr": "Pense que le test porte sur la terre alors que seule la lumière change."
+    },
+    {
+     "id": "m_guess_is_science",
+     "en": "Thinks guessing the answer is enough.",
+     "fr": "Pense que deviner la réponse suffit."
+    },
+    {
+     "id": "m_no_control",
+     "en": "Thinks a test needs nothing to compare with.",
+     "fr": "Pense qu'un test n'a besoin de rien pour comparer."
+    }
+   ],
+   "questions": [
+    {
+     "id": "x1",
+     "type": "choice",
+     "objective": "o2",
+     "prompt": {
+      "en": "Two pots get the same seeds, soil and water, but one is kept in the dark. What is being tested?",
+      "fr": "Deux pots ont les mêmes graines, la même terre et la même eau, mais l'un reste dans le noir. Que teste-t-on ?"
+     },
+     "choices": [
+      {
+       "id": "a",
+       "en": "Whether light matters",
+       "fr": "Si la lumière compte"
+      },
+      {
+       "id": "b",
+       "en": "Whether water matters",
+       "fr": "Si l'eau compte",
+       "misconception": "m_tests_water"
+      },
+      {
+       "id": "c",
+       "en": "Whether soil matters",
+       "fr": "Si la terre compte",
+       "misconception": "m_tests_soil"
+      }
+     ],
+     "answer": "a",
+     "hints": [
+      {
+       "en": "Find the one thing that is different.",
+       "fr": "Trouve la seule chose qui change."
+      }
+     ],
+     "traps": [
+      {
+       "answer": "b",
+       "misconception": "m_tests_water",
+       "hint": {
+        "en": "Both pots get the same water.",
+        "fr": "Les deux pots reçoivent la même eau."
+       }
+      },
+      {
+       "answer": "c",
+       "misconception": "m_tests_soil",
+       "hint": {
+        "en": "Both pots have the same soil.",
+        "fr": "Les deux pots ont la même terre."
+       }
+      }
+     ],
+     "explanation": {
+      "en": "Only the light changes, so the test is about light.",
+      "fr": "Seule la lumière change : le test porte donc sur la lumière."
+     }
+    }
+   ],
+   "exercises": [
+    {
+     "objective": "o1",
+     "prompt": {
+      "en": "Write one observation, one question and one hypothesis about plants near your home.",
+      "fr": "Écris une observation, une question et une hypothèse sur les plantes près de chez toi."
+     },
+     "working": {
+      "en": [
+       "Observation: the plants by the wall are yellow.",
+       "Question: why are they yellow? Hypothesis: they get too little water."
+      ],
+      "fr": [
+       "Observation : les plantes près du mur sont jaunes.",
+       "Question : pourquoi sont-elles jaunes ? Hypothèse : elles reçoivent trop peu d'eau."
+      ]
+     },
+     "mark_scheme": {
+      "en": "An observation, a matching question and a testable hypothesis",
+      "fr": "Une observation, une question qui va avec et une hypothèse testable"
+     }
+    },
+    {
+     "objective": "o2",
+     "prompt": {
+      "en": "Plan a fair test of whether water helps seeds sprout. What changes, what stays the same?",
+      "fr": "Prévois un test juste : l'eau aide-t-elle les graines à germer ? Qu'est-ce qui change, qu'est-ce qui reste pareil ?"
+     },
+     "working": {
+      "en": [
+       "Change: one pot is watered, the other is not.",
+       "Same: the seeds, the soil, the light, the pots."
+      ],
+      "fr": [
+       "Change : un pot est arrosé, l'autre non.",
+       "Pareil : les graines, la terre, la lumière, les pots."
+      ]
+     },
+     "mark_scheme": {
+      "en": "One change named, and at least two things kept the same",
+      "fr": "Un seul changement nommé, et au moins deux choses gardées pareilles"
+     }
+    }
+   ],
+   "minigame": {
+    "title": {
+     "en": "Detective steps",
+     "fr": "Les étapes du détective"
+    },
+    "instruction": {
+     "en": "Catch the good detective moves!",
+     "fr": "Attrape les bons gestes de détective !"
+    },
+    "hint_after_wrong": {
+     "en": "Observe, ask, hypothesise, test one change.",
+     "fr": "Observer, demander, supposer, tester un changement."
+    },
+    "rounds": [
+     {
+      "prompt": {
+       "en": "Catch the steps of an investigation!",
+       "fr": "Attrape les étapes d'une enquête !"
+      },
+      "items": [
+       {
+        "label": {
+         "en": "Observe",
+         "fr": "Observer"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "Ask a question",
+         "fr": "Poser une question"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "Write a hypothesis",
+         "fr": "Écrire une hypothèse"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "Guess the answer and stop",
+         "fr": "Deviner la réponse et s'arrêter"
+        },
+        "correct": false,
+        "trap": "m_guess_is_science"
+       },
+       {
+        "label": {
+         "en": "Change everything at once",
+         "fr": "Tout changer à la fois"
+        },
+        "correct": false,
+        "trap": "m_change_all"
+       }
+      ]
+     },
+     {
+      "prompt": {
+       "en": "Catch the fair tests!",
+       "fr": "Attrape les tests justes !"
+      },
+      "items": [
+       {
+        "label": {
+         "en": "Same soil, only the light changes",
+         "fr": "Même terre, seule la lumière change"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "Same seeds, only the water changes",
+         "fr": "Mêmes graines, seule l'eau change"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "Two pots with one difference",
+         "fr": "Deux pots avec une seule différence"
+        },
+        "correct": true
+       },
+       {
+        "label": {
+         "en": "One pot and nothing to compare",
+         "fr": "Un seul pot et rien à comparer"
+        },
+        "correct": false,
+        "trap": "m_no_control"
+       }
+      ]
+     }
+    ]
+   },
+   "extra_misconceptions_for_game": [
+    {
+     "id": "m_change_all",
+     "en": "Thinks a test can change everything at once.",
+     "fr": "Pense qu'un test peut tout changer à la fois."
+    }
+   ],
+   "scenes": [
+    {
+     "place": "school_garden",
+     "cast": [
+      "hero",
+      "friend",
+      "mentor"
+     ],
+     "objective": "o1",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Wednesday. In the school garden, half the bean seeds have sprouted. The rest have not.",
+       "fr": "Mercredi. Au jardin de l'école, la moitié des graines de haricot ont germé. Les autres non."
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "sad",
+       "en": "Mine are still asleep. Maybe they don't like me!",
+       "fr": "Les miennes dorment encore. Peut-être qu'elles ne m'aiment pas !"
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "think",
+       "en": "Look, {friend}: all the sleeping ones are under the big mango tree.",
+       "fr": "Regarde, {friend} : toutes les endormies sont sous le grand manguier."
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "happy",
+       "en": "You have just observed something. A good detective now asks a question.",
+       "fr": "Tu viens d'observer quelque chose. Un bon détective pose maintenant une question."
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "talk",
+       "en": "Why did the seeds in the shade not sprout?",
+       "fr": "Pourquoi les graines à l'ombre n'ont-elles pas germé ?"
+      },
+      {
+       "type": "concept",
+       "teaches": 1,
+       "title": {
+        "en": "Observe, then ask",
+        "fr": "Observer, puis demander"
+       },
+       "en": [
+        "Science starts when you notice something.",
+        "Then you ask a clear question about it.",
+        "Here: why did the seeds in the shade not sprout?"
+       ],
+       "fr": [
+        "La science commence quand tu remarques quelque chose.",
+        "Ensuite, tu poses une question claire à son sujet.",
+        "Ici : pourquoi les graines à l'ombre n'ont-elles pas germé ?"
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "q9"
+      }
+     ]
+    },
+    {
+     "place": "classroom",
+     "cast": [
+      "mentor",
+      "hero",
+      "margo"
+     ],
+     "objective": "o1",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Back in class, {child} writes the question on the board.",
+       "fr": "En classe, {child} écrit la question au tableau."
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "think",
+       "en": "I think the shade is too cold for them. Or too dark?",
+       "fr": "Je pense que l'ombre est trop froide pour elles. Ou trop sombre ?"
+      },
+      {
+       "type": "say",
+       "who": "mentor",
+       "mood": "talk",
+       "en": "Each idea is a hypothesis: a possible answer you can put to the test.",
+       "fr": "Chaque idée est une hypothèse : une réponse possible que l'on peut mettre à l'épreuve."
+      },
+      {
+       "type": "say",
+       "who": "margo",
+       "mood": "happy",
+       "en": "Psst! A hypothesis never comes from nowhere. It starts from what you saw.",
+       "fr": "Psst ! Une hypothèse ne sort jamais de nulle part. Elle part de ce que tu as vu."
+      },
+      {
+       "type": "concept",
+       "teaches": 2,
+       "title": {
+        "en": "The hypothesis",
+        "fr": "L'hypothèse"
+       },
+       "en": [
+        "A hypothesis is a possible explanation.",
+        "It comes from what you observed.",
+        "You must be able to test it."
+       ],
+       "fr": [
+        "Une hypothèse est une explication possible.",
+        "Elle vient de ce que tu as observé.",
+        "On doit pouvoir la tester."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "q7"
+      }
+     ]
+    },
+    {
+     "place": "courtyard",
+     "cast": [
+      "hero",
+      "friend",
+      "family"
+     ],
+     "objective": "o2",
+     "steps": [
+      {
+       "type": "narrate",
+       "en": "Thursday at home. Two pots of néré seeds sit side by side in the courtyard.",
+       "fr": "Jeudi à la maison. Deux pots de graines de néré attendent côte à côte dans la cour."
+      },
+      {
+       "type": "say",
+       "who": "family",
+       "mood": "surprised",
+       "en": "Why cover one pot with my old calabash?",
+       "fr": "Pourquoi couvrir un pot avec ma vieille calebasse ?"
+      },
+      {
+       "type": "say",
+       "who": "friend",
+       "mood": "talk",
+       "en": "Same soil, same water, same seeds. Only the light changes.",
+       "fr": "Même terre, même eau, mêmes graines. Seule la lumière change."
+      },
+      {
+       "type": "say",
+       "who": "hero",
+       "mood": "happy",
+       "en": "If only the covered pot stays bare, light was the answer!",
+       "fr": "Si seul le pot couvert reste nu, la réponse était la lumière !"
+      },
+      {
+       "type": "concept",
+       "teaches": 3,
+       "title": {
+        "en": "A fair experiment",
+        "fr": "Une expérience juste"
+       },
+       "en": [
+        "An experiment tests one hypothesis.",
+        "Change only one thing and keep the rest the same.",
+        "Compare the results, then conclude."
+       ],
+       "fr": [
+        "Une expérience teste une hypothèse.",
+        "On ne change qu'une chose et on garde le reste pareil.",
+        "On compare les résultats, puis on conclut."
+       ]
+      },
+      {
+       "type": "ask",
+       "ref": "q8"
+      },
+      {
+       "type": "ask",
+       "ref": "x1"
+      },
+      {
+       "type": "game"
+      },
+      {
+       "type": "say",
+       "who": "family",
+       "mood": "happy",
+       "en": "Tomorrow is the fair. I'll bring the pots and the basket myself.",
+       "fr": "Demain, c'est la foire. J'apporterai moi-même les pots et le panier."
+      },
+      {
+       "type": "photo",
+       "ref": "E1"
+      },
+      {
+       "type": "photo",
+       "ref": "E2"
+      }
+     ]
+    }
+   ],
+   "facts": [
+    {
+     "en": "Néré seeds are fermented to make soumbala, a seasoning.",
+     "fr": "Les graines de néré fermentées donnent le soumbala, un condiment.",
+     "source": "FAO: Parkia biglobosa"
+    }
+   ]
+  }
+ },
+ "rally": {
+  "chapter_title": {
+   "en": "The science fair rally",
+   "fr": "Le rallye de la foire scientifique"
+  },
+  "objectives": [
+   {
+    "id": "o1",
+    "en": "Use the module's three detective skills together",
+    "fr": "Utiliser ensemble les trois compétences de détective du module"
+   }
+  ],
+  "picks": [
+   [
+    "q10",
+    "o1"
+   ],
+   [
+    "q11",
+    "o1"
+   ],
+   [
+    "q12",
+    "o1"
+   ],
+   [
+    "q8",
+    "o1"
+   ]
+  ],
+  "misconceptions": [],
+  "questions": [],
+  "exercises": [
+   {
+    "objective": "o1",
+    "prompt": {
+     "en": "Write the three detective rules you used for the fair, with one example each.",
+     "fr": "Écris les trois règles de détective utilisées pour la foire, avec un exemple pour chacune."
+    },
+    "working": {
+     "en": [
+      "Alive: it reacts, feeds, grows, reproduces (the snail).",
+      "Levels: cell, tissue, organ, system, organism (the bean plant).",
+      "Fair test: change one thing (the covered pot)."
+     ],
+     "fr": [
+      "Vivant : il réagit, se nourrit, grandit, se reproduit (l'escargot).",
+      "Niveaux : cellule, tissu, organe, système, organisme (le haricot).",
+      "Test juste : un seul changement (le pot couvert)."
+     ]
+    },
+    "mark_scheme": {
+     "en": "Three rules, each with a fitting example",
+     "fr": "Trois règles, chacune avec un exemple juste"
+    }
+   }
+  ],
+  "minigame": {
+   "title": {
+    "en": "The detectives' final catch",
+    "fr": "La dernière prise des détectives"
+   },
+   "instruction": {
+    "en": "Catch every true answer before the bell!",
+    "fr": "Attrape toutes les bonnes réponses avant la cloche !"
+   },
+   "hint_after_wrong": {
+    "en": "Think back to the basket, the leaf and the pots.",
+    "fr": "Repense au panier, à la feuille et aux pots."
+   },
+   "rounds": [
+    {
+     "prompt": {
+      "en": "Catch what is alive!",
+      "fr": "Attrape ce qui est vivant !"
+     },
+     "items": [
+      {
+       "label": {
+        "en": "A sprouting néré seed",
+        "fr": "Une graine de néré qui germe"
+       },
+       "correct": true
+      },
+      {
+       "label": {
+        "en": "A bean plant",
+        "fr": "Un plant de haricot"
+       },
+       "correct": true
+      },
+      {
+       "label": {
+        "en": "A frog",
+        "fr": "Une grenouille"
+       },
+       "correct": true
+      },
+      {
+       "label": {
+        "en": "The wind",
+        "fr": "Le vent"
+       },
+       "correct": false,
+       "trap": "m_moves_alive"
+      },
+      {
+       "label": {
+        "en": "A shiny bead",
+        "fr": "Une perle brillante"
+       },
+       "correct": false,
+       "trap": "m_colour_alive"
+      }
+     ]
+    },
+    {
+     "prompt": {
+      "en": "Catch the fair-test rules!",
+      "fr": "Attrape les règles du test juste !"
+     },
+     "items": [
+      {
+       "label": {
+        "en": "Change one thing",
+        "fr": "Changer une seule chose"
+       },
+       "correct": true
+      },
+      {
+       "label": {
+        "en": "Compare the results",
+        "fr": "Comparer les résultats"
+       },
+       "correct": true
+      },
+      {
+       "label": {
+        "en": "Keep the rest the same",
+        "fr": "Garder le reste pareil"
+       },
+       "correct": true
+      },
+      {
+       "label": {
+        "en": "Change everything",
+        "fr": "Tout changer"
+       },
+       "correct": false,
+       "trap": "m_change_all"
+      }
+     ]
+    }
+   ]
+  },
+  "extra_misconceptions_for_game": [
+   {
+    "id": "m_moves_alive",
+    "en": "Thinks anything that moves is alive.",
+    "fr": "Pense que tout ce qui bouge est vivant."
+   },
+   {
+    "id": "m_colour_alive",
+    "en": "Thinks a bright colour is a sign of life.",
+    "fr": "Pense qu'une couleur vive est un signe de vie."
+   },
+   {
+    "id": "m_change_all",
+    "en": "Thinks a test can change everything at once.",
+    "fr": "Pense qu'un test peut tout changer à la fois."
+   }
+  ],
+  "scenes": [
+   {
+    "place": "science_fair",
+    "cast": [
+     "mentor",
+     "hero",
+     "friend"
+    ],
+    "objective": "o1",
+    "steps": [
+     {
+      "type": "narrate",
+      "en": "Friday. The school yard is full of tables, posters and parents. The fair begins!",
+      "fr": "Vendredi. La cour de l'école est pleine de tables, d'affiches et de parents. La foire commence !"
+     },
+     {
+      "type": "say",
+      "who": "mentor",
+      "mood": "happy",
+      "en": "Each team faces the detectives' rally: four challenges, then the jury decides.",
+      "fr": "Chaque équipe affronte le rallye des détectives : quatre défis, puis le jury décide."
+     },
+     {
+      "type": "say",
+      "who": "friend",
+      "mood": "surprised",
+      "en": "Four? My heart is beating like a djembe!",
+      "fr": "Quatre ? Mon cœur bat comme un djembé !"
+     },
+     {
+      "type": "say",
+      "who": "hero",
+      "mood": "talk",
+      "en": "Then let's start with the basket. I know which treasures are alive.",
+      "fr": "Alors commençons par le panier. Je sais quels trésors sont vivants."
+     },
+     {
+      "type": "ask",
+      "ref": "q10"
+     },
+     {
+      "type": "say",
+      "who": "mentor",
+      "mood": "talk",
+      "en": "Now climb the ladder of life, from the smallest step to the biggest.",
+      "fr": "Maintenant, grimpe l'échelle du vivant, de la plus petite marche à la plus grande."
+     },
+     {
+      "type": "ask",
+      "ref": "q11"
+     }
+    ]
+   },
+   {
+    "place": "science_fair",
+    "cast": [
+     "hero",
+     "friend",
+     "family"
+    ],
+    "objective": "o1",
+    "steps": [
+     {
+      "type": "narrate",
+      "en": "Grandma Mariam arrives with the two pots. One is green, the other bare.",
+      "fr": "Mamie Mariam arrive avec les deux pots. L'un est vert, l'autre nu."
+     },
+     {
+      "type": "say",
+      "who": "family",
+      "mood": "happy",
+      "en": "Look! The covered pot stayed bare. Your hypothesis was right.",
+      "fr": "Regarde ! Le pot couvert est resté nu. Ton hypothèse était juste."
+     },
+     {
+      "type": "say",
+      "who": "friend",
+      "mood": "think",
+      "en": "But what if it had been wrong? Would we have lost?",
+      "fr": "Mais si elle avait été fausse ? On aurait perdu ?"
+     },
+     {
+      "type": "ask",
+      "ref": "q12"
+     },
+     {
+      "type": "ask",
+      "ref": "q8"
+     },
+     {
+      "type": "say",
+      "who": "hero",
+      "mood": "happy",
+      "en": "Alive or not, cell to organism, one change at a time: the basket mystery is solved!",
+      "fr": "Vivant ou pas, de la cellule à l'organisme, un seul changement à la fois : le mystère du panier est résolu !"
+     },
+     {
+      "type": "narrate",
+      "en": "The jury pins a green ribbon on the basket. Grandma Mariam claps the loudest.",
+      "fr": "Le jury épingle un ruban vert sur le panier. Mamie Mariam applaudit plus fort que tout le monde."
+     },
+     {
+      "type": "game"
+     },
+     {
+      "type": "photo",
+      "ref": "E1"
+     }
+    ]
+   }
+  ],
+  "facts": []
+ }
+}
