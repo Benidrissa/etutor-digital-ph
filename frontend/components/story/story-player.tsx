@@ -349,7 +349,7 @@ export function StoryPlayer({
           onClick={toggleBilingual}
           aria-pressed={bilingual}
           title={t("bilingualToggle")}
-          className="mt-2 min-h-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+          className="mt-2 min-h-11 min-w-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700 hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
         >
           <span className="sr-only">{t("bilingualToggle")}: </span>
           {bilingual

@@ -251,6 +251,14 @@ describe("StoryPlayer — bilingual default", () => {
     expect(screen.getByText("Awa walks into the health centre.")).toBeInTheDocument();
   });
 
+  it("gives the toggle a 44x44 touch target, even when it reads only 'FR'", () => {
+    renderPlayer(frenchStory());
+    const toggle = screen.getByRole("button", { name: /Afficher les deux langues/ });
+    expect(toggle).toHaveTextContent(/FR$/);
+    expect(toggle.className).toMatch(/\bmin-h-11\b/);
+    expect(toggle.className).toMatch(/\bmin-w-11\b/);
+  });
+
   it("falls back to off when storage is unavailable", async () => {
     const user = userEvent.setup();
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
