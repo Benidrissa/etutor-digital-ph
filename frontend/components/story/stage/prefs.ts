@@ -8,7 +8,13 @@
 
 import { useSyncExternalStore } from "react";
 
+/** Sound effects: on unless the learner turned them off. */
 export const SOUND_KEY = "sira.story.sound";
+/**
+ * Read-aloud: off unless the learner turned it on. A screen reader already
+ * speaks every new line, and two voices at once is worse than none.
+ */
+export const READ_ALOUD_KEY = "sira.story.readAloud";
 export const CHOICES_KEY_PREFIX = "sira.story.choices:";
 
 export interface StoryChoices {
@@ -16,21 +22,42 @@ export interface StoryChoices {
   variant?: string;
 }
 
-/** Sound is on unless the learner turned it off. */
-export function readSoundOn(): boolean {
+/** The key a course's start-card choices are stored under. */
+export function choicesKeyFor(course: { course?: string; id?: string }): string {
+  return course.course || course.id || "";
+}
+
+function readSwitch(key: string, fallback: boolean): boolean {
   try {
-    return window.localStorage.getItem(SOUND_KEY) !== "off";
+    const value = window.localStorage.getItem(key);
+    return value === null ? fallback : value === "on";
   } catch {
-    return true;
+    return fallback;
   }
 }
 
-export function writeSoundOn(on: boolean): void {
+function writeSwitch(key: string, on: boolean): void {
   try {
-    window.localStorage.setItem(SOUND_KEY, on ? "on" : "off");
+    window.localStorage.setItem(key, on ? "on" : "off");
   } catch {
     // Not remembered; the switch still works for this visit.
   }
+}
+
+export function readSoundOn(): boolean {
+  return readSwitch(SOUND_KEY, true);
+}
+
+export function writeSoundOn(on: boolean): void {
+  writeSwitch(SOUND_KEY, on);
+}
+
+export function readReadAloud(): boolean {
+  return readSwitch(READ_ALOUD_KEY, false);
+}
+
+export function writeReadAloud(on: boolean): void {
+  writeSwitch(READ_ALOUD_KEY, on);
 }
 
 export function readChoices(courseKey: string): StoryChoices | null {

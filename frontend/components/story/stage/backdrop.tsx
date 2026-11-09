@@ -3,7 +3,10 @@
  * slowly panned across the 4:3 stage), or a painted placeholder in the
  * Scratch prototype's style — a gradient sky over orange laterite, or a wall
  * over a floor indoors — with a few props that say where we are, and cheap
- * ambient motion: drifting clouds, a bird, a ticking clock.
+ * ambient motion: drifting clouds and a bird.
+ *
+ * Everything that moves is an HTML layer moved by `transform`, which the
+ * compositor runs without repainting the picture underneath.
  */
 
 import { memo, useState, type CSSProperties, type ReactNode } from "react";
@@ -26,14 +29,17 @@ function BackdropView({ placeId, theme, url }: BackdropProps) {
   if (url && failed !== url) {
     return (
       <div className="absolute inset-0 overflow-hidden bg-[#f6d7b0]" aria-hidden="true">
-        {/* eslint-disable-next-line @next/next/no-img-element -- a same-origin API image, sized by CSS */}
-        <img
-          src={url}
-          alt=""
-          className={`absolute inset-0 h-full w-full object-cover ${styles.pan}`}
-          onError={() => setFailed(url)}
-          draggable={false}
-        />
+        {/* 12% wider than the stage, the extra width of a 3:2 picture. */}
+        <div className={`absolute inset-y-0 left-0 w-[112%] ${styles.pan}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a same-origin API image, sized by CSS */}
+          <img
+            src={url}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={() => setFailed(url)}
+            draggable={false}
+          />
+        </div>
       </div>
     );
   }
@@ -65,11 +71,11 @@ function PlaceholderBackdrop({ placeId, theme }: { placeId: string; theme: Place
   const sky = SKIES[skyFor(placeId)];
   const uid = `bd-${hashOf(placeId)}`;
   return (
+    <div className="absolute inset-0" aria-hidden="true">
     <svg
       viewBox="0 0 480 360"
       preserveAspectRatio="xMidYMid slice"
       className="absolute inset-0 h-full w-full"
-      aria-hidden="true"
       focusable="false"
     >
       <defs>
@@ -89,6 +95,8 @@ function PlaceholderBackdrop({ placeId, theme }: { placeId: string; theme: Place
       </defs>
       {indoor ? <Indoor theme={theme} uid={uid} /> : <Outdoor theme={theme} uid={uid} placeId={placeId} mood={skyFor(placeId)} />}
     </svg>
+    {indoor ? null : <AmbientSky />}
+    </div>
   );
 }
 
@@ -121,8 +129,6 @@ function Outdoor({
       <rect width="480" height="360" fill={`url(#${uid}-sky)`} />
       <circle cx={sunX} cy={sunY} r="46" fill="#fff3b0" opacity="0.45" />
       <circle cx={sunX} cy={sunY} r="28" fill={mood === "evening" ? "#ffb347" : "#ffd36b"} />
-      <Clouds />
-      <Bird />
       {/* Far hills. */}
       <path
         d={`M0,${horizon - 18} Q60,${horizon - 44} 130,${horizon - 22} T270,${horizon - 26} T400,${horizon - 30} T480,${horizon - 20} L480,${horizon + 4} L0,${horizon + 4} Z`}
@@ -139,43 +145,37 @@ function Outdoor({
   );
 }
 
-function Clouds() {
-  const cloud = (scale: number) => (
-    <g transform={`scale(${scale})`}>
-      <ellipse cx="40" cy="20" rx="28" ry="15" fill="#fff" />
-      <ellipse cx="66" cy="24" rx="22" ry="12" fill="#fff" />
-      <ellipse cx="20" cy="26" rx="18" ry="10" fill="#fff" />
-      <rect x="10" y="24" width="72" height="12" rx="6" fill="#fff" />
-    </g>
-  );
-  return (
-    <g opacity="0.9">
-      <g className={styles.drift} style={{ "--drift-s": "80s", "--drift-delay": "-20s" } as CSSProperties}>
-        <g transform="translate(0,34)">{cloud(1)}</g>
-      </g>
-      <g className={styles.drift} style={{ "--drift-s": "120s", "--drift-delay": "-75s" } as CSSProperties}>
-        <g transform="translate(0,92)">{cloud(0.7)}</g>
-      </g>
-      <g className={styles.drift} style={{ "--drift-s": "95s", "--drift-delay": "-50s" } as CSSProperties}>
-        <g transform="translate(0,20)">{cloud(0.55)}</g>
-      </g>
-    </g>
-  );
-}
+const CLOUDS: Array<{ top: string; width: string; seconds: string; delay: string }> = [
+  { top: "9%", width: "19%", seconds: "80s", delay: "-20s" },
+  { top: "25%", width: "13%", seconds: "120s", delay: "-75s" },
+  { top: "5%", width: "10%", seconds: "95s", delay: "-50s" },
+];
 
-function Bird() {
-  const wing = (
-    <path d="M0,0 Q6,-6 12,0 Q18,-6 24,0" stroke="#3b2a2a" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-  );
+/** Clouds and a bird crossing the sky: HTML layers, moved by transform. */
+function AmbientSky() {
   return (
-    <g className={styles.fly} style={{ "--fly-delay": "-6s" } as CSSProperties}>
-      <g transform="translate(0,120)">
-        <g className={styles.flap}>{wing}</g>
-      </g>
-      <g transform="translate(30,108) scale(0.75)">
-        <g className={styles.flap}>{wing}</g>
-      </g>
-    </g>
+    <>
+      {CLOUDS.map((cloud, i) => (
+        <div
+          key={i}
+          className={`${styles.drift} absolute inset-x-0`}
+          style={{ top: cloud.top, "--drift-s": cloud.seconds, "--drift-delay": cloud.delay } as CSSProperties}
+        >
+          <svg viewBox="0 0 90 40" style={{ width: cloud.width, opacity: 0.9 }} focusable="false">
+            <ellipse cx="40" cy="18" rx="28" ry="15" fill="#fff" />
+            <ellipse cx="66" cy="22" rx="22" ry="12" fill="#fff" />
+            <ellipse cx="20" cy="24" rx="18" ry="10" fill="#fff" />
+            <rect x="10" y="22" width="72" height="12" rx="6" fill="#fff" />
+          </svg>
+        </div>
+      ))}
+      <div className={`${styles.fly} absolute inset-x-0 top-[30%]`} style={{ "--fly-delay": "-6s" } as CSSProperties}>
+        <svg viewBox="0 0 60 20" style={{ width: "7%" }} focusable="false">
+          <path d="M2,10 Q8,4 14,10 Q20,4 26,10" stroke="#3b2a2a" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+          <path d="M34,6 Q38,2 42,6 Q46,2 50,6" stroke="#3b2a2a" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+        </svg>
+      </div>
+    </>
   );
 }
 
@@ -455,14 +455,7 @@ function Clock({ x, y }: { x: number; y: number }) {
     <g transform={`translate(${x},${y})`}>
       <circle r="15" fill="#fff" stroke={O} strokeWidth="2.4" />
       <path d="M0,0 L0,-9" stroke={O} strokeWidth="2.4" strokeLinecap="round" />
-      <path
-        className={styles.spin}
-        d="M0,0 L0,-12"
-        stroke="#c1272d"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        style={{ transformBox: "fill-box", transformOrigin: "50% 100%" }}
-      />
+      <path d="M0,0 L-4,-11" stroke="#c1272d" strokeWidth="1.4" strokeLinecap="round" />
       <path d="M0,0 L7,3" stroke={O} strokeWidth="2.4" strokeLinecap="round" />
     </g>
   );

@@ -25,7 +25,7 @@
 
 "use client";
 
-import { Volume2, VolumeX } from "lucide-react";
+import { Speech, Volume2, VolumeX } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   useCallback,
@@ -52,23 +52,44 @@ import { ConceptVisual } from "./concept-visual";
 import { MinigameView } from "./minigame";
 import { QuestionCard } from "./question-card";
 import { Backdrop } from "./stage/backdrop";
-import { artFor, buildActors, heroVariants, poseFor, safeArtUrl, slotsFor, type Pose } from "./stage/cast";
+import {
+  FIGURE_HEIGHT,
+  GROUND,
+  artFor,
+  buildActors,
+  heroVariants,
+  poseFor,
+  safeArtUrl,
+  slotsFor,
+  type Pose,
+} from "./stage/cast";
 import { Confetti, StarRow } from "./stage/confetti";
-import { CaptionBar, Chalkboard, SpeechBubble, StageCard, VisualPanel, type SkipHandle } from "./stage/panels";
+import {
+  CaptionBar,
+  Chalkboard,
+  SpeechBubble,
+  StageCard,
+  VisualPanel,
+  type SkipHandle,
+  type Standing,
+} from "./stage/panels";
 import { PaperExercise } from "./stage/paper-exercise";
 import { placeLook, placeTheme, placeTitle } from "./stage/places";
 import {
+  choicesKeyFor,
   readChoices,
+  readReadAloud,
   readSoundOn,
   useReducedMotion,
   writeChoices,
+  writeReadAloud,
   writeSoundOn,
   type StoryChoices,
 } from "./stage/prefs";
 import { planSteps, presenterOf, reactorOf, type PlannedStep } from "./stage/scene-plan";
 import { playSfx, unlockAudio, type Sfx } from "./stage/sound";
 import { speak, stopSpeaking, type SpeechVoice } from "./stage/speech";
-import { StageCharacter, type Gesture } from "./stage/stage-character";
+import { StageCharacter, preloadPoses, type Gesture } from "./stage/stage-character";
 import styles from "./stage/stage.module.css";
 import { PlaceRibbon, PlayIcon, StartCard, TitleCard } from "./stage/title-card";
 import type { TypedHandle } from "./stage/typed-text";
@@ -83,6 +104,12 @@ const TAP_THROUGH: ReadonlySet<string> = new Set(["say", "narrate", "concept", "
 const POP_STEPS: ReadonlySet<string> = new Set(["concept", "show", "ask", "game", "photo", "video"]);
 
 const NARRATOR: SpeechVoice = { pitch: 1, rate: 0.95 };
+
+/**
+ * How long a chapter's title card stays up on its own before the first line,
+ * when that line would otherwise appear under or over it.
+ */
+export const TITLE_BEAT_MS = 1700;
 
 /** Where the embedded player (the module story panel) keeps the bilingual toggle, per browser. */
 export const EMBEDDED_BILINGUAL_KEY = "sira.story.bilingual";
@@ -184,6 +211,12 @@ export interface StoryPlayerProps {
    * shows its own. `onComplete` still fires once, and the stage still cheers.
    */
   hideFinishSummary?: boolean;
+  /**
+   * Fires when the learner starts the story from the start card, with their
+   * choices (the friend's name, the hero's look). The module story panel uses
+   * it to put the friend's name in its own headings.
+   */
+  onStart?: (choices: StoryChoices) => void;
 }
 
 export function StoryPlayer({
@@ -194,6 +227,7 @@ export function StoryPlayer({
   chapterId,
   maxPoints: maxPointsOverride,
   hideFinishSummary = false,
+  onStart,
 }: StoryPlayerProps) {
   const t = useTranslations("Story");
   const target = course.languages?.target ?? "en";
@@ -214,8 +248,10 @@ export function StoryPlayer({
     if (embedded) writeEmbeddedBilingual(next);
   };
 
-  // One switch for read-aloud and sound effects, remembered per browser.
+  // Two switches, remembered per browser: sound effects (on by default) and
+  // read-aloud (off by default: a screen reader already speaks each line).
   const [soundOn, setSoundOn] = useState(readSoundOn);
+  const [readAloud, setReadAloud] = useState(readReadAloud);
   const soundRef = useRef(soundOn);
   useEffect(() => {
     soundRef.current = soundOn;
@@ -228,12 +264,17 @@ export function StoryPlayer({
     setSoundOn(next);
     writeSoundOn(next);
     if (next) unlockAudio();
-    else stopSpeaking();
+  };
+  const toggleReadAloud = () => {
+    const next = !readAloud;
+    setReadAloud(next);
+    writeReadAloud(next);
+    if (!next) stopSpeaking();
   };
 
   // The learner's choices at the start of a course's story (#2672): the
   // friend's name and which hero they are. Asked once per course and browser.
-  const courseKey = course.course || course.id;
+  const courseKey = choicesKeyFor(course);
   const variants = useMemo(() => heroVariants(course), [course]);
   const asksFriend = useMemo(() => asksFriendName(course), [course]);
   const [choices, setChoices] = useState<StoryChoices | null>(() =>
@@ -287,24 +328,55 @@ export function StoryPlayer({
   const [reaction, setReaction] = useState<{ index: number; correct: boolean; n: number } | null>(null);
   const [bursts, setBursts] = useState(0);
 
+  // A chapter's title card is a beat of its own when its first line is not a
+  // narrator's caption (which sits clear of it): the card shows alone, then
+  // fades on a timer or at the first Next, and only then does the line come.
+  const beatAt = useCallback(
+    (stepIndex: number) => {
+      const item = flat[stepIndex];
+      return item?.startsChapter && item.step.type !== "narrate" ? stepIndex : null;
+    },
+    [flat],
+  );
+  const [titleBeat, setTitleBeat] = useState<number | null>(() => (choices === null ? null : beatAt(0)));
+  // Started from the start card: the title was on screen with it already.
+  const [startedFromIntro, setStartedFromIntro] = useState(false);
+  useEffect(() => {
+    if (titleBeat === null) return;
+    const timer = setTimeout(() => setTitleBeat(null), TITLE_BEAT_MS);
+    return () => clearTimeout(timer);
+  }, [titleBeat]);
+
   const rootRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const dialogueRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
+  const nextButtonRef = useRef<HTMLButtonElement | null>(null);
   const typedRef = useRef<TypedHandle | null>(null);
   const boardRef = useRef<SkipHandle | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   const advance = useCallback(() => {
-    setIndex((current) => Math.min(current + 1, flat.length - 1));
+    // During a title beat, Next only ends the beat: the first line comes up.
+    if (titleBeat !== null) {
+      setTitleBeat(null);
+      return;
+    }
+    const next = Math.min(index + 1, flat.length - 1);
+    setIndex(next);
+    setTitleBeat(beatAt(next));
     requestAnimationFrame(() =>
-      // Keep the stage and the Next button in view on a phone. (Optional
-      // call: jsdom and some old WebViews lack scrollIntoView.)
-      (embedded ? controlsRef : frameRef).current?.scrollIntoView?.({
+      // Bring the new step's text into view. Embedded, that is the Next
+      // button and the box above it, clear of the phone's bottom nav; on the
+      // page, the text itself, clear of the sticky header, the fixed Next bar
+      // and the nav (scroll margins on each). (Optional call: jsdom and some
+      // old WebViews lack scrollIntoView.)
+      (embedded ? controlsRef : dialogueRef).current?.scrollIntoView?.({
         behavior: reducedMotion ? "auto" : "smooth",
         block: "nearest",
       }),
     );
-  }, [flat.length, embedded, reducedMotion]);
+  }, [titleBeat, index, flat.length, beatAt, embedded, reducedMotion]);
 
   const settle = useCallback((stepIndex: number, earned: number) => {
     if (settledRef.current.has(stepIndex)) return;
@@ -319,6 +391,10 @@ export function StoryPlayer({
   const lastIndex = flat.length - 1;
   const atEnd = index >= lastIndex;
   const canContinue = !introOpen && !atEnd && (!currentIsBlocking || currentSettled);
+  const beatOn = titleBeat !== null && titleBeat === index;
+  // Next works during a title beat (it brings the first line up), even when
+  // that line is a question still to answer.
+  const nextEnabled = beatOn || canContinue;
   // The end is reached once the last step is on screen and, if it asks
   // something of the learner, answered.
   const finished =
@@ -349,14 +425,25 @@ export function StoryPlayer({
     sfx("fanfare");
   }, [celebrating, sfx]);
 
-  // A whoosh for a new place, a pop for a card.
+  // A whoosh for a new place, a pop for a card (once the title beat is over).
   const lastPlaceRun = useRef<number | null>(null);
   useEffect(() => {
-    if (!current || introOpen) return;
+    if (!current || introOpen || beatOn) return;
     if (lastPlaceRun.current !== null && lastPlaceRun.current !== current.placeRun) sfx("whoosh");
     else if (POP_STEPS.has(current.step.type)) sfx("pop");
     lastPlaceRun.current = current.placeRun;
-  }, [current, introOpen, sfx]);
+  }, [current, introOpen, beatOn, sfx]);
+
+  // Ambient motion stands still while the stage is out of sight.
+  const [onScreen, setOnScreen] = useState(true);
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setOnScreen(entry?.isIntersecting ?? true));
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
+  const paused = !active || !onScreen;
 
   // Who is on stage now, and who does what.
   const cast = current?.cast ?? [];
@@ -366,54 +453,84 @@ export function StoryPlayer({
   const step = current?.step;
   const speakerId = step?.type === "say" ? step.who : step?.type === "concept" ? presenter : undefined;
 
-  // Read-aloud: the step's target-language text, in its speaker's voice.
-  const speech = useMemo(() => {
+  // Read-aloud: the step's target-language text, in its speaker's voice. It
+  // is keyed as a string (with the step's index, so a repeated line is read
+  // again) and parsed back in the effect, which then runs once per step.
+  const speechKey = (() => {
     if (!step) return null;
     const targetLine = lineOf(stepText(step, target));
     const homeLine = lineOf(stepText(step, home));
     const lang = targetLine ? target : home;
     const voiceOf = (id: string | undefined) => (id ? actors.get(id)?.voice : undefined) ?? NARRATOR;
+    let speech: { lines: string[]; lang: string; voice: SpeechVoice } | null = null;
     switch (step.type) {
       case "say":
-        return { lines: [targetLine || homeLine], lang, voice: voiceOf(step.who) };
+        speech = { lines: [targetLine || homeLine], lang, voice: voiceOf(step.who) };
+        break;
       case "narrate":
-        return { lines: [targetLine || homeLine], lang, voice: NARRATOR };
+        speech = { lines: [targetLine || homeLine], lang, voice: NARRATOR };
+        break;
       case "concept": {
         const rows = rowsOf(step, target).length ? rowsOf(step, target) : rowsOf(step, home);
         const title = step.title ? text(step.title, target, home) : "";
-        return { lines: [title, ...rows], lang, voice: voiceOf(presenter) };
+        speech = { lines: [title, ...rows], lang, voice: voiceOf(presenter) };
+        break;
       }
       case "show":
-        return step.caption ? { lines: [text(step.caption, target, home)], lang: target, voice: NARRATOR } : null;
+        if (step.caption) speech = { lines: [text(step.caption, target, home)], lang: target, voice: NARRATOR };
+        break;
       case "ask": {
         const question = step.ref ? questions.get(step.ref) : undefined;
-        return question ? { lines: [text(question.prompt, target, home)], lang: target, voice: NARRATOR } : null;
+        if (question) speech = { lines: [text(question.prompt, target, home)], lang: target, voice: NARRATOR };
+        break;
       }
       case "game": {
         const game = step.ref ? games.get(step.ref) : undefined;
-        return game
-          ? { lines: [text(game.title, target, home), text(game.instruction, target, home)], lang: target, voice: NARRATOR }
-          : null;
+        if (game) {
+          speech = {
+            lines: [text(game.title, target, home), text(game.instruction, target, home)],
+            lang: target,
+            voice: NARRATOR,
+          };
+        }
+        break;
       }
-      default:
-        return null;
     }
-  }, [step, target, home, actors, presenter, questions, games]);
+    return speech ? JSON.stringify({ index, ...speech }) : null;
+  })();
 
   useEffect(() => {
-    if (!soundOn || !active || introOpen || !speech) return;
+    if (!readAloud || !active || introOpen || beatOn || !speechKey) return;
+    const speech = JSON.parse(speechKey) as { lines: string[]; lang: string; voice: SpeechVoice };
     speak(speech.lines, speech.lang, speech.voice);
     return () => stopSpeaking();
-  }, [speech, soundOn, active, introOpen]);
+  }, [speechKey, readAloud, active, introOpen, beatOn]);
+
+  // Only the poses of the cast on stage are fetched ahead: the whole story's
+  // art is too much for a 3G link.
+  const stageIds = (introOpen ? flat[0]?.cast : current?.cast) ?? [];
+  const stageKey = stageIds.join(",");
+  useEffect(() => {
+    const urls: Array<string | undefined> = [];
+    for (const id of stageKey ? stageKey.split(",") : []) {
+      const actor = actors.get(id);
+      if (!actor) continue;
+      for (const pose of ["idle", "talk", "happy", "think"] as const) urls.push(artFor(story.art, actor.artKey, pose));
+    }
+    preloadPoses(urls);
+  }, [stageKey, actors, story.art]);
 
   // Space and → move on, like the Next button, when the story has the focus
-  // (or nothing does) and the key is not meant for a field or a button.
-  const tryAdvanceRef = useRef<() => void>(() => {});
+  // (or nothing does) and the key is not meant for a field or a button. The
+  // key is only taken from the page when it did move the story on.
+  const tryAdvanceRef = useRef<() => boolean>(() => false);
   useEffect(() => {
     tryAdvanceRef.current = () => {
-      if (canContinue) advance();
+      if (!nextEnabled) return false;
+      advance();
+      return true;
     };
-  }, [canContinue, advance]);
+  }, [nextEnabled, advance]);
   useEffect(() => {
     if (!active) return;
     const onKey = (event: KeyboardEvent) => {
@@ -424,8 +541,7 @@ export function StoryPlayer({
       // A focused button already answers Space itself.
       if (event.key === " " && target?.closest("button, a, summary, [role=button]")) return;
       if (target && target !== document.body && !rootRef.current?.contains(target)) return;
-      event.preventDefault();
-      tryAdvanceRef.current();
+      if (tryAdvanceRef.current()) event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -434,8 +550,13 @@ export function StoryPlayer({
   // A tap on the stage finishes the line being typed, then moves on. Never
   // while a question, a game or a paper exercise is waiting.
   const onStageTap = (event: MouseEvent) => {
-    if (introOpen || finished || !current || !TAP_THROUGH.has(current.step.type)) return;
+    if (introOpen || !current) return;
     if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, label")) return;
+    if (beatOn) {
+      advance();
+      return;
+    }
+    if (finished || !TAP_THROUGH.has(current.step.type)) return;
     if (typedRef.current?.skip() || boardRef.current?.skip()) return;
     if (canContinue) advance();
   };
@@ -448,7 +569,16 @@ export function StoryPlayer({
     };
     writeChoices(courseKey, next);
     setChoices(next);
+    setStartedFromIntro(true);
     sfx("whoosh");
+    onStart?.(next);
+    // The start card is gone: carry the keyboard on to the Next button, or to
+    // the first step when it is a question (Next waits for the answer).
+    requestAnimationFrame(() => {
+      const button = nextButtonRef.current;
+      if (button && !button.disabled) button.focus();
+      else dialogueRef.current?.focus();
+    });
   };
 
   const onAttempt = (stepIndex: number) => (outcome: { correct: boolean }) => {
@@ -477,7 +607,13 @@ export function StoryPlayer({
   const backdropUrl = safeArtUrl(story.art?.places?.[placeId]);
   const stageCast = introOpen ? (firstStep?.cast ?? []) : cast;
   const stageSlots = introOpen ? slotsFor(stageCast.length) : slots;
-  const showTitle = introOpen || !!current?.startsChapter;
+  // The title card never shares the stage with a speech bubble or a card:
+  // with the start card, alone during its beat, or above a narrator's caption
+  // (which sits at the bottom). After the start card it has been seen.
+  const showTitle =
+    introOpen ||
+    beatOn ||
+    (!!current?.startsChapter && step?.type === "narrate" && !(startedFromIntro && index === 0));
   const titleCard = (() => {
     const chapterItem = current ?? firstStep;
     if (!showTitle || !chapterItem) return null;
@@ -520,13 +656,13 @@ export function StoryPlayer({
   };
 
   const speakingLine = step && speakerId ? lineOf(stepText(step, target)) || lineOf(stepText(step, home)) : "";
-  const speakBeats = Math.max(2, Math.min(40, Math.round(lineSeconds(speakingLine, soundOn) / 0.42)));
+  const speakBeats = Math.max(2, Math.min(40, Math.round(lineSeconds(speakingLine, readAloud) / 0.42)));
 
   const characters = stageCast.map((id, slot) => {
     const actor = actors.get(id);
     if (!actor) return null;
-    const pose = poseOf(id);
-    const speaking = !introOpen && !celebrating && id === speakerId;
+    const pose = beatOn ? "idle" : poseOf(id);
+    const speaking = !introOpen && !beatOn && !celebrating && id === speakerId;
     const reacting = reaction && reaction.index === index && id === reactor && !celebrating;
     const gesture: Gesture = celebrating
       ? "jump"
@@ -550,9 +686,29 @@ export function StoryPlayer({
         beats={speaking ? speakBeats : 0}
         enterDelay={0.25 + slot * 0.3}
         speaking={speaking && step?.type === "say"}
+        still={reducedMotion || paused}
       />
     );
   });
+
+  // Where everyone stands, for the bubble to keep clear of other faces.
+  const standing = (id: string): Standing | undefined => {
+    const slot = cast.indexOf(id);
+    const actor = actors.get(id);
+    return slot >= 0 && actor ? { x: slots[slot], height: FIGURE_HEIGHT[actor.figure] } : undefined;
+  };
+  // The chalkboard hangs away from the teacher presenting it; a teacher in
+  // the middle gets a board that stops above their head.
+  const presenterSlot = step?.type === "concept" && presenter ? standing(presenter) : undefined;
+  const boardSide: "left" | "right" | "center" = !presenterSlot
+    ? "center"
+    : presenterSlot.x < 38
+      ? "right"
+      : presenterSlot.x > 62
+        ? "left"
+        : "center";
+  const boardMax =
+    presenterSlot && boardSide === "center" ? Math.max(30, 100 - GROUND - presenterSlot.height - 6) : undefined;
 
   /* ---- The step's panel ------------------------------------------------ */
 
@@ -579,14 +735,14 @@ export function StoryPlayer({
         );
       case "say": {
         const actor = step.who ? actors.get(step.who) : undefined;
-        const slot = step.who ? cast.indexOf(step.who) : -1;
         return (
           <SpeechBubble
             key={index}
             name={actor?.name ?? step.who ?? ""}
             aiLabel={actor?.isTutor ? t("aiLabel") : undefined}
             actor={actor}
-            x={slot >= 0 ? slots[slot] : undefined}
+            speaker={step.who ? standing(step.who) : undefined}
+            others={cast.filter((id) => id !== step.who).flatMap((id) => standing(id) ?? [])}
             primary={primary}
             primaryLang={primaryLang}
             secondary={secondary}
@@ -611,7 +767,9 @@ export function StoryPlayer({
             rowsLang={targetRows.length ? target : home}
             homeRows={bilingual && targetRows.length ? homeRows : []}
             homeLang={home}
-            rowDelays={reducedMotion ? rows.map(() => 0) : rowDelays(rows, title, soundOn)}
+            rowDelays={reducedMotion ? rows.map(() => 0) : rowDelays(rows, title, readAloud)}
+            side={boardSide}
+            maxHeight={boardMax}
           />
         );
       }
@@ -762,12 +920,13 @@ export function StoryPlayer({
   const nextButton =
     finished || introOpen ? null : (
       <button
+        ref={nextButtonRef}
         type="button"
         onClick={advance}
-        disabled={!canContinue}
-        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-6 text-lg font-extrabold text-white shadow-[0_5px_0_rgba(0,0,0,0.25)] transition hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffd23f]/60 disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-700 disabled:shadow-none"
+        disabled={!nextEnabled}
+        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-6 text-lg font-extrabold text-white shadow-[0_5px_0_rgba(0,0,0,0.25)] transition hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1d6fb8] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-700 disabled:shadow-none"
       >
-        {currentIsBlocking && !currentSettled ? (
+        {currentIsBlocking && !currentSettled && !beatOn ? (
           t("answerToContinue")
         ) : (
           <>
@@ -782,7 +941,12 @@ export function StoryPlayer({
     !singleChapter && current ? text(current.chapterTitle, target, home) : undefined;
 
   return (
-    <div ref={rootRef} className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-2xl px-4 pb-32"}>
+    <div
+      ref={rootRef}
+      // On the page, room under the last step for the fixed Next bar and,
+      // on phones, the bottom navigation under it.
+      className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-2xl px-4 pb-44 md:pb-28"}
+    >
       {/* Header: title, chapter, running score and the two switches. */}
       <header
         className={
@@ -814,7 +978,7 @@ export function StoryPlayer({
             <p className="text-xs text-gray-700">{unitLabel}</p>
           </div>
         </div>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={toggleBilingual}
@@ -824,6 +988,17 @@ export function StoryPlayer({
           >
             <span className="sr-only">{t("bilingualToggle")}: </span>
             {bilingual ? `${target.toUpperCase()} + ${home.toUpperCase()}` : target.toUpperCase()}
+          </button>
+          <button
+            type="button"
+            onClick={toggleReadAloud}
+            aria-pressed={readAloud}
+            className={`flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg border px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+              readAloud ? "border-[#1d2b4f] bg-[#fff8db] text-[#1d2b4f]" : "border-gray-300 text-gray-700 hover:border-teal-400"
+            }`}
+          >
+            <Speech className="h-5 w-5" aria-hidden="true" />
+            <span>{t("readAloudToggle")}</span>
           </button>
           <button
             type="button"
@@ -839,7 +1014,11 @@ export function StoryPlayer({
       </header>
 
       {/* The stage, and under it (or on it, when there is room) the step. */}
-      <div ref={frameRef} className={styles.frame} data-testid="story-stage">
+      <div
+        ref={frameRef}
+        className={`${styles.frame} ${paused ? styles.paused : ""}`}
+        data-testid="story-stage"
+      >
         <div className={`${styles.box} shadow-[0_6px_0_rgba(29,43,79,0.18)]`} onClick={onStageTap}>
           <div key={`${current?.chapterId ?? ""}:${current?.placeRun ?? 0}`} className={`${styles.scene} ${styles.iris}`}>
             <Backdrop placeId={placeId} theme={theme} url={backdropUrl} />
@@ -865,7 +1044,17 @@ export function StoryPlayer({
             </p>
           ) : null}
         </div>
-        <div className={styles.dialogue} aria-live="polite" onClick={onStageTap}>
+        <div
+          ref={dialogueRef}
+          tabIndex={-1}
+          // A timed game sits under the stage at every width (see the stylesheet).
+          className={`${styles.dialogue} ${step?.type === "game" && !introOpen ? styles.dialogueFlow : ""} scroll-mt-[9.5rem] scroll-mb-[10rem] focus:outline-none md:scroll-mb-[6rem]`}
+          // Read aloud, the line is spoken already: no second voice from the
+          // screen reader. During a title beat the first line waits, unseen.
+          aria-live={readAloud ? "off" : "polite"}
+          style={beatOn ? { visibility: "hidden" } : undefined}
+          onClick={onStageTap}
+        >
           {startCard ?? panel}
         </div>
       </div>
@@ -873,7 +1062,11 @@ export function StoryPlayer({
       {finishSummary}
 
       {embedded ? (
-        <div ref={controlsRef} className={nextButton ? "mt-4" : ""}>
+        <div
+          ref={controlsRef}
+          // Clear of the phone's bottom navigation when scrolled into view.
+          className={`${nextButton ? "mt-4" : ""} scroll-mb-20 md:scroll-mb-4`}
+        >
           {nextButton}
         </div>
       ) : nextButton ? (

@@ -20,20 +20,26 @@ interface FigureProps {
   pose: Pose;
   /** Mouth flaps while a line is being said. */
   talkBeats?: number;
+  /**
+   * A new value restarts the mouth flaps for a new line. Only the drawing is
+   * redrawn: it is inline SVG, so nothing is fetched again.
+   */
+  talkKey?: string;
   className?: string;
 }
 
-function PlaceholderFigureView({ actor, pose, talkBeats = 0, className }: FigureProps) {
+function PlaceholderFigureView({ actor, pose, talkBeats = 0, talkKey, className }: FigureProps) {
   const rawId = useId();
   const uid = rawId.replace(/[^a-zA-Z0-9_-]/g, "");
   const style = { "--talk-count": talkBeats } as CSSProperties;
   if (actor.figure === "gecko") {
     return (
-      <Gecko uid={uid} pose={pose} style={style} className={className} tan={!actor.isTutor} />
+      <Gecko key={talkKey} uid={uid} pose={pose} style={style} className={className} tan={!actor.isTutor} />
     );
   }
   return (
     <Person
+      key={talkKey}
       uid={uid}
       look={actor.look}
       adult={actor.figure === "adult"}

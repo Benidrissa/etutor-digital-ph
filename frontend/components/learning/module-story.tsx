@@ -13,10 +13,11 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { choicesKeyFor, readChoices } from '@/components/story/stage/prefs';
 import { StoryPlayer } from '@/components/story/story-player';
 import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { Link } from '@/i18n/routing';
-import { ApiError, apiFetch, getModuleDetailWithProgress } from '@/lib/api';
+import { ApiError, apiFetch, getModuleDetailWithProgress, type UnitProgressDetail } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-current-user';
 import { completeLessonUnit } from '@/lib/learning/complete-lesson';
 import { OfflineContentNotAvailable } from '@/lib/offline/content-loader';
@@ -78,6 +79,16 @@ interface ContentStatus {
 
 type UnitKind = 'lesson' | 'quiz' | 'case';
 
+/** How the chapter list names a chapter: the rally has its own name. */
+function chapterKind(covers: ChapterCovers | undefined): UnitKind | 'rally' {
+  return covers?.rally ? 'rally' : unitKind(covers);
+}
+
+/**
+ * The kind of unit a chapter stands for. The rally (#2674) is played in the
+ * story but stands for the module's quiz unit, which it does not complete:
+ * its link sends the learner to the quiz.
+ */
 function unitKind(covers: ChapterCovers | undefined): UnitKind {
   if (covers?.role === 'quiz_checkpoint') return 'quiz';
   if (covers?.role === 'case_checkpoint') return 'case';
@@ -289,6 +300,7 @@ export function ModuleStory({ moduleId, language }: ModuleStoryProps) {
         userId={user?.id ?? null}
         story={personalized}
         moduleId={moduleId}
+        language={language}
       />
     );
   }
@@ -381,9 +393,13 @@ interface ReaderProps {
   storyId: string;
   /** The signed-in learner; without one, progress is neither read nor saved. */
   userId: string | null;
-  /** The story, personalised for this learner. */
+  /**
+   * The story, personalised for this learner, with `{friend}` still in it:
+   * the player asks for the friend's name and fills it in itself.
+   */
   story: StoryCourse;
   moduleId: string;
+  language: 'fr' | 'en';
 }
 
 /** The chapter that was just played to its end. */
@@ -398,11 +414,24 @@ interface FinishedChapter {
  * resume from this browser's progress, per-chapter lesson completion, and
  * the end-of-module summary.
  */
-function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
+function ModuleStoryReader({ storyId, userId, story, moduleId, language }: ReaderProps) {
   const t = useTranslations('ModuleStory');
   const target = story.languages?.target ?? 'en';
   const home = story.languages?.home ?? 'fr';
   const chapters = story.chapters;
+
+  // This panel's own headings (the title, the chapter list, the still-to-do
+  // list) carry the friend's name too: the one chosen on the start card, else
+  // the cast's default, else the generic word.
+  const [friend, setFriend] = useState(() => readChoices(choicesKeyFor(story))?.friend);
+  const shown = useMemo(
+    () => personalizeStory(story, { friend, language }),
+    [story, friend, language],
+  );
+  const shownChapters = useMemo(
+    () => new Map(shown.chapters.map((chapter) => [chapter.id, chapter.title])),
+    [shown],
+  );
 
   // Resume at the first chapter not finished in this browser; -1 is the
   // summary (every chapter done).
@@ -423,6 +452,10 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
   const serverCompletedRef = useRef<ReadonlySet<string>>(new Set());
   // Whether that list was read: only the server can say every unit is done.
   const [serverRead, setServerRead] = useState(false);
+  // Every unit of the module, as the server lists them. Some have no chapter
+  // (a case study), and a quiz is only played as the rally, which does not
+  // complete it: what is still to do comes from this list, not the chapters.
+  const [serverUnits, setServerUnits] = useState<UnitProgressDetail[] | null>(null);
   // Lesson units whose completion this page posted and has not heard back on.
   const [posting, setPosting] = useState<ReadonlySet<string>>(() => new Set());
   const [recorded, setRecorded] = useState<ReadonlySet<string>>(() => new Set());
@@ -443,9 +476,9 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
     getModuleDetailWithProgress(moduleId)
       .then((detail) => {
         if (cancelled) return;
-        markServerCompleted(
-          (detail.units ?? []).filter((unit) => unit.status === 'completed').map((unit) => unit.id),
-        );
+        const units = detail.units ?? [];
+        markServerCompleted(units.filter((unit) => unit.status === 'completed').map((unit) => unit.id));
+        setServerUnits([...units].sort((a, b) => a.order_index - b.order_index));
         setServerRead(true);
       })
       .catch(() => {
@@ -539,26 +572,53 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
   const moduleNumber = story.module_story?.module_number ?? story.week;
   const done = finished && finished.index === selected ? finished : null;
 
-  const chapterTitle = (c: Chapter) => text(c.title, target, home);
+  const chapterTitle = (c: Chapter) => text(shownChapters.get(c.id) ?? c.title, target, home);
   const kindLabel = (c: Chapter) => {
-    const label = t('kind', { kind: unitKind(c.covers) });
+    const label = t('kind', { kind: chapterKind(c.covers) });
     return c.covers?.unit_number ? `${label} ${c.covers.unit_number}` : label;
   };
   const unitHref = (covers: ChapterCovers) =>
     `/modules/${moduleId}/units/${encodeURIComponent(covers.unit_number)}`;
+  const hrefFor = (unitNumber: string) => `/modules/${moduleId}/units/${encodeURIComponent(unitNumber)}`;
 
-  // Still to do once the story is over: units the story cannot complete
-  // (quizzes, case studies, lessons it could not tell) not done on the
-  // server and, once the server's list is read, any lesson it does not have
-  // completed (a chapter finished here whose completion never reached it).
-  const stillToDo = chapters.filter((c) => {
-    const covers = c.covers;
-    if (!covers || serverCompleted.has(covers.module_unit_id)) return false;
-    if (covers.completes_unit) return serverRead && !posting.has(covers.module_unit_id);
-    return sendsToUnit(covers);
-  });
+  // Still to do once the story is over. With the server's unit list: every
+  // unit it does not have completed, whether or not the story has a chapter
+  // for it (a case study has none; the quiz is only played as the rally),
+  // except a lesson whose completion this page is posting right now. Without
+  // it (offline): the units the story cannot complete itself.
+  const chapterFor = (unitId: string) =>
+    chapters.find((c) => c.covers?.module_unit_id === unitId && !c.covers.rally) ??
+    chapters.find((c) => c.covers?.module_unit_id === unitId);
+  const stillToDo: Array<{ id: string; number: string; kind: UnitKind; title: string }> = serverUnits
+    ? serverUnits
+        .filter((unit) => !serverCompleted.has(unit.id) && !posting.has(unit.id))
+        .map((unit) => {
+          const covering = chapterFor(unit.id);
+          const kind: UnitKind =
+            unit.unit_type === 'quiz'
+              ? 'quiz'
+              : unit.unit_type === 'case-study' || unit.unit_type === 'scenario'
+                ? 'case'
+                : unit.unit_type === 'lesson'
+                  ? 'lesson'
+                  : unitKind(covering?.covers);
+          const title = covering && !covering.covers?.rally
+            ? chapterTitle(covering)
+            : (language === 'fr' ? unit.title_fr : unit.title_en) || unit.title_fr || unit.title_en;
+          return { id: unit.id, number: unit.unit_number, kind, title };
+        })
+    : chapters
+        .filter((c) => c.covers && !serverCompleted.has(c.covers.module_unit_id) && sendsToUnit(c.covers))
+        .map((c) => ({
+          id: c.covers!.module_unit_id,
+          number: c.covers!.unit_number,
+          kind: unitKind(c.covers),
+          title: chapterTitle(c),
+        }))
+        .filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index);
   // "Every unit is done" is the server's word, never this browser's alone.
-  const allDone = serverRead && stillToDo.length === 0;
+  const allDone =
+    serverRead && !!serverUnits && serverUnits.every((unit) => serverCompleted.has(unit.id));
   const moduleStars = starsFor(totalMax ? totalPoints / totalMax : 0, story.rewards?.stars);
 
   return (
@@ -569,7 +629,7 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
         </p>
         <div className="mt-1 flex items-start justify-between gap-3">
           <h1 className="min-w-0 text-xl font-bold text-gray-900 sm:text-2xl">
-            {text(story.title, target, home)}
+            {text(shown.title, target, home)}
           </h1>
           {totalMax > 0 ? (
             <p className="shrink-0 pt-1 text-sm font-semibold text-teal-700">
@@ -678,6 +738,7 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
             hideFinishSummary
             variant="embedded"
             onComplete={(outcome) => handleChapterComplete(selected, outcome)}
+            onStart={(choices) => setFriend(choices.friend)}
           />
 
           {sendsToUnit(chapter.covers) ? (
@@ -748,24 +809,22 @@ function ModuleStoryReader({ storyId, userId, story, moduleId }: ReaderProps) {
               <h2 className="font-semibold text-gray-900">{t('stillToDo')}</h2>
               <p className="mt-1 text-sm text-gray-600">{t('stillToDoHint')}</p>
               <ul className="mt-3 space-y-2">
-                {stillToDo.map((c) =>
-                  c.covers ? (
-                    <li key={c.id}>
-                      <Link
-                        href={unitHref(c.covers)}
-                        className="flex min-h-11 items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-                      >
-                        <span className="min-w-0">
-                          <span className="block font-semibold text-teal-800">
-                            {t('openUnit', { kind: unitKind(c.covers), number: c.covers.unit_number })}
-                          </span>
-                          <span className="block truncate text-gray-700">{chapterTitle(c)}</span>
+                {stillToDo.map((unit) => (
+                  <li key={unit.id}>
+                    <Link
+                      href={hrefFor(unit.number)}
+                      className="flex min-h-11 items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:border-teal-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-teal-800">
+                          {t('openUnit', { kind: unit.kind, number: unit.number })}
                         </span>
-                        <ArrowRight className="h-4 w-4 shrink-0 text-teal-700" aria-hidden="true" />
-                      </Link>
-                    </li>
-                  ) : null,
-                )}
+                        <span className="block truncate text-gray-700">{unit.title}</span>
+                      </span>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-teal-700" aria-hidden="true" />
+                    </Link>
+                  </li>
+                ))}
               </ul>
             </div>
           ) : allDone ? (

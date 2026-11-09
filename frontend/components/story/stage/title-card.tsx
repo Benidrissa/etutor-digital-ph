@@ -136,12 +136,7 @@ export function StartCard({
                     style={{ height: `${Math.round(FIGURE_HEIGHT[actor.figure] * 1.25)}px` }}
                     aria-hidden="true"
                   >
-                    {artUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- generated art from the story API
-                      <img src={artUrl} alt="" className="h-full w-auto" />
-                    ) : (
-                      <PlaceholderFigure actor={actor} pose={chosen ? "happy" : "idle"} />
-                    )}
+                    <HeroThumb actor={actor} artUrl={artUrl} pose={chosen ? "happy" : "idle"} />
                   </span>
                   <span className="text-gray-900">{variantLabel(id)}</span>
                 </button>
@@ -171,13 +166,25 @@ export function StartCard({
 
       <button
         type="submit"
-        className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-6 text-lg font-extrabold text-white shadow-[0_4px_0_rgba(0,0,0,0.25)] hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffd23f]/60"
+        className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-6 text-lg font-extrabold text-white shadow-[0_4px_0_rgba(0,0,0,0.25)] hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1d6fb8] focus-visible:ring-offset-2"
       >
         {t("play")}
         <PlayIcon />
       </button>
     </form>
   );
+}
+
+/** A hero look in the picker: its picture, or the drawn figure if that fails to load. */
+function HeroThumb({ actor, artUrl, pose }: { actor: StageActor; artUrl?: string; pose: "happy" | "idle" }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (artUrl && failed !== artUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- generated art from the story API
+      <img src={artUrl} alt="" className="h-full w-auto" onError={() => setFailed(artUrl)} />
+    );
+  }
+  return <PlaceholderFigure actor={actor} pose={pose} />;
 }
 
 export function PlayIcon() {

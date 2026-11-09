@@ -8,7 +8,7 @@
  * lesson chapter completes that lesson once — never a quiz or a case study.
  */
 
-import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
@@ -21,6 +21,8 @@ import { loadModuleStory } from "@/lib/story-course/load";
 import { storyProgressKey } from "@/lib/story-course/progress";
 import type { ChapterCovers, StoryCourse } from "@/lib/story-course/types";
 import frMessages from "@/messages/fr.json";
+
+import { clickInCard } from "@/components/story/story-test-utils";
 
 import {
   LEAVE_HINT_MS,
@@ -253,6 +255,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Unmount first: a panel whose mount effects are still pending must not
+  // run them against mocks this hook is about to restore.
+  cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -582,7 +587,7 @@ describe("ModuleStory — reading", () => {
       throw new Error("QuotaExceededError");
     });
     await user.click(screen.getByRole("button", { name: "Suite" }));
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
     await user.click(screen.getByRole("button", { name: "Chapitre suivant" }));
     expect(screen.getByText(CH2_LINE)).toBeInTheDocument();
   });
@@ -600,7 +605,7 @@ describe("ModuleStory — completion", () => {
 
     // Chapter 1, lesson 1.1: answer the question right first time.
     await user.click(screen.getByRole("button", { name: "Suite" }));
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
     expect(completeMock).toHaveBeenCalledTimes(1);
     expect(completeMock).toHaveBeenCalledWith(MODULE_ID, "1.1", { online: true });
     const status = await screen.findByText("Chapitre terminé !");
@@ -651,7 +656,7 @@ describe("ModuleStory — completion", () => {
     const index = screen.getByRole("navigation", { name: "Chapitres" });
     await user.click(within(index).getByRole("button", { name: /Des mains propres/ }));
     await user.click(screen.getByRole("button", { name: "Suite" }));
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
     expect(completeMock).toHaveBeenCalledTimes(1);
   });
 
@@ -664,14 +669,14 @@ describe("ModuleStory — completion", () => {
     await screen.findByText(CH1_LINE);
 
     await user.click(screen.getByRole("button", { name: "Suite" }));
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
     await waitFor(() => expect(completeMock).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/est marquée comme terminée/)).not.toBeInTheDocument();
 
     const index = screen.getByRole("navigation", { name: "Chapitres" });
     await user.click(within(index).getByRole("button", { name: /Des mains propres/ }));
     await user.click(screen.getByRole("button", { name: "Suite" }));
-    await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+    await clickInCard(user, "Avant de toucher un patient");
     expect(completeMock).toHaveBeenCalledTimes(1);
   });
 
@@ -686,7 +691,7 @@ describe("ModuleStory — completion", () => {
       await screen.findByText(CH1_LINE);
 
       await user.click(screen.getByRole("button", { name: "Suite" }));
-      await user.click(screen.getByRole("button", { name: "Avant de toucher un patient" }));
+      await clickInCard(user, "Avant de toucher un patient");
       expect(completeMock).toHaveBeenCalledWith(MODULE_ID, "1.1", { online: false });
     } finally {
       Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => true });
@@ -774,5 +779,158 @@ describe("ModuleStory — completion", () => {
     expect(screen.getByText("Histoire terminée !")).toBeInTheDocument();
     expect(screen.getAllByText("1 sur 2 points").length).toBeGreaterThan(0);
     expect(screen.queryByText(CH1_LINE)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A module story from the screenplay generator (#2674): two lesson chapters
+ * and the final rally, which plays questions from the module's quiz (1.5)
+ * without completing it. The case study (1.4) has no chapter at all.
+ */
+function rallyStory({ withFriend = false } = {}): StoryCourse {
+  const story = moduleStory();
+  if (withFriend) {
+    // A friend the learner names on the start card.
+    story.title = { en: "{child} and {friend}", fr: "{child} et {friend}" };
+    story.cast = [
+      ...story.cast,
+      { id: "friend", role: "friend", name: "{friend}", default_name: "Awa", kind: "child", art: "friend" },
+    ];
+  }
+  story.chapters = [
+    story.chapters[0],
+    story.chapters[1],
+    {
+      id: "rally",
+      title: { en: "The rally", fr: "Le rallye" },
+      covers: { ...covers("1.5", "quiz_checkpoint", "checkpoint", 2), rally: true },
+      scenes: [
+        {
+          id: "s9",
+          place: "science_fair",
+          steps: [
+            { type: "narrate", en: "The rally starts!", fr: "Le rallye commence !" },
+            { type: "ask", ref: "u1_1-q1" },
+          ],
+        },
+      ],
+    },
+  ];
+  return story;
+}
+
+/** The module as the server lists it: two lessons, a case study and the quiz. */
+function rallyDetail(completed: string[] = []) {
+  const detail = moduleDetail(completed);
+  const units = (
+    [
+      ["1.1", "lesson"],
+      ["1.2", "lesson"],
+      ["1.4", "case-study"],
+      ["1.5", "quiz"],
+    ] as const
+  ).map(([unit, type], index) => ({
+    id: `unit-${unit}`,
+    unit_number: unit,
+    title_fr: type === "case-study" ? "Mystère au marché" : type === "quiz" ? "Quiz du module" : unit,
+    title_en: unit,
+    unit_type: type,
+    estimated_minutes: 10,
+    order_index: index,
+    status: completed.includes(unit) ? ("completed" as const) : ("pending" as const),
+  }));
+  return { ...detail, units };
+}
+
+const RALLY_LINE = "Le rallye commence !";
+
+describe("ModuleStory — the rally and units without a chapter", () => {
+  it("plays the rally, names it, sends to the quiz and completes nothing", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({ v: 1, completedUnits: ["unit-1.1", "unit-1.2"], points: {} }),
+    );
+    detailMock.mockResolvedValue(rallyDetail(["1.1", "1.2"]));
+    loadMock.mockResolvedValue(rallyStory());
+    renderPanel();
+
+    expect(await screen.findByText(RALLY_LINE)).toBeInTheDocument();
+    expect(screen.getByText("Chapitre 3 sur 3")).toBeInTheDocument();
+    const index = screen.getByRole("navigation", { name: "Chapitres" });
+    expect(within(index).getByText("Rallye 1.5")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Aller au quiz 1.5" })).toHaveAttribute(
+      "href",
+      `/modules/${MODULE_ID}/units/1.5`,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    await clickInCard(user, "Avant de toucher un patient");
+    expect(await screen.findByText("Chapitre terminé !")).toBeInTheDocument();
+    expect(completeMock).not.toHaveBeenCalled();
+    const saved = JSON.parse(window.localStorage.getItem(storyProgressKey(STORY_ID, USER_ID))!);
+    expect(saved.completedUnits).toContain("rally:unit-1.5");
+    expect(saved.points["rally:unit-1.5"]).toBe(2);
+  });
+
+  it("does not count an old quiz checkpoint's progress as the rally", async () => {
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({ v: 1, completedUnits: ["unit-1.1", "unit-1.2", "unit-1.5"], points: {} }),
+    );
+    detailMock.mockResolvedValue(rallyDetail(["1.1", "1.2"]));
+    loadMock.mockResolvedValue(rallyStory());
+    renderPanel();
+    expect(await screen.findByText(RALLY_LINE)).toBeInTheDocument();
+    expect(screen.getByText("Chapitre 3 sur 3")).toBeInTheDocument();
+  });
+
+  it("keeps the case study and the quiz still to do until the server has them", async () => {
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({
+        v: 1,
+        completedUnits: ["unit-1.1", "unit-1.2", "rally:unit-1.5"],
+        points: { "unit-1.1": 2, "rally:unit-1.5": 2 },
+      }),
+    );
+    detailMock.mockResolvedValue(rallyDetail(["1.1", "1.2"]));
+    loadMock.mockResolvedValue(rallyStory());
+    renderPanel();
+
+    // The case study has no chapter, and the rally does not complete the quiz.
+    const caseLink = await screen.findByRole("link", { name: /Aller à l'étude de cas 1.4/ });
+    expect(caseLink).toHaveAttribute("href", `/modules/${MODULE_ID}/units/1.4`);
+    expect(caseLink).toHaveTextContent("Mystère au marché");
+    expect(screen.getByRole("link", { name: /Aller au quiz 1.5/ })).toHaveAttribute(
+      "href",
+      `/modules/${MODULE_ID}/units/1.5`,
+    );
+    expect(screen.queryByText("Toutes les unités de ce module sont terminées.")).not.toBeInTheDocument();
+  });
+
+  it("says every unit is done only when the server has every unit completed", async () => {
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({ v: 1, completedUnits: ["unit-1.1", "unit-1.2", "rally:unit-1.5"], points: {} }),
+    );
+    detailMock.mockResolvedValue(rallyDetail(["1.1", "1.2", "1.4", "1.5"]));
+    loadMock.mockResolvedValue(rallyStory());
+    renderPanel();
+    expect(await screen.findByText("Toutes les unités de ce module sont terminées.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Encore à faire" })).not.toBeInTheDocument();
+  });
+
+  it("puts the friend's name in the panel's own headings, never {friend}", async () => {
+    loadMock.mockResolvedValue(rallyStory({ withFriend: true }));
+    const { unmount } = renderPanel();
+    expect(await screen.findByRole("heading", { level: 1, name: "Aminata et Awa" })).toBeInTheDocument();
+    expect(screen.queryByText(/\{friend\}/)).not.toBeInTheDocument();
+    unmount();
+
+    // The name chosen on the start card, once there is one.
+    window.localStorage.setItem("sira.story.choices:Santé publique", JSON.stringify({ friend: "Fatou" }));
+    renderPanel();
+    expect(await screen.findByRole("heading", { level: 1, name: "Aminata et Fatou" })).toBeInTheDocument();
   });
 });

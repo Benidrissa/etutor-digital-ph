@@ -126,9 +126,17 @@ export function withChapterDone(
   return { v: 1, completedUnits, points: { ...progress.points, [unitKey]: best } };
 }
 
-/** The key a chapter's progress is stored under: its unit, else its own id. */
+/**
+ * The key a chapter's progress is stored under: its unit, else its own id.
+ *
+ * The rally (#2674) points at the same quiz unit the older quiz checkpoint
+ * did, so it gets a key of its own: a learner who passed the checkpoint has
+ * not played the rally. Lesson keys never change.
+ */
 export function chapterKey(chapter: Chapter): string {
-  return chapter.covers?.module_unit_id ?? chapter.id;
+  const covers = chapter.covers;
+  if (covers?.rally) return `rally:${covers.module_unit_id}`;
+  return covers?.module_unit_id ?? chapter.id;
 }
 
 /** Index of the first chapter not finished yet, or -1 when all are. */

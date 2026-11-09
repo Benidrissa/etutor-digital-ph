@@ -20,7 +20,7 @@ import {
   type Ref,
 } from "react";
 
-import { FIGURE_HEIGHT, GROUND, type StageActor } from "./cast";
+import { GROUND, type StageActor } from "./cast";
 import styles from "./stage.module.css";
 import { TypedText, type TypedHandle } from "./typed-text";
 
@@ -32,13 +32,21 @@ export interface SkipHandle {
 
 /* ---- Speech bubble ------------------------------------------------------- */
 
+/** Someone standing on the stage: their slot and figure height, in % of the stage. */
+export interface Standing {
+  x: number;
+  height: number;
+}
+
 interface BubbleProps {
   name: string;
   /** Margo is labelled as the AI she is. */
   aiLabel?: string;
   actor?: StageActor;
-  /** The speaker's slot, as a % of the stage width; undefined when off stage. */
-  x?: number;
+  /** Where the speaker stands; undefined when they are not on stage. */
+  speaker?: Standing;
+  /** Everyone else on stage: the bubble rises above any face it would cover. */
+  others: Standing[];
   primary: string;
   primaryLang: string;
   secondary?: string;
@@ -47,18 +55,26 @@ interface BubbleProps {
   typedRef: Ref<TypedHandle>;
 }
 
-/** Where a bubble sits on a wide stage: beside the speaker's head. */
-function bubblePlacement(actor: StageActor | undefined, x: number | undefined): CSSProperties {
-  const height = actor ? FIGURE_HEIGHT[actor.figure] : 46;
-  if (x === undefined) {
-    return {
-      "--bubble-left": "20%",
-      "--bubble-width": "60%",
-      "--bubble-bottom": `${GROUND + 50}%`,
-      "--bubble-body-max": "calc(30cqw - 2.2rem)",
-      "--tail-x": "50%",
-    } as CSSProperties;
-  }
+/** A figure's width as a share of the stage width (the art is about 130 x 240, the stage 4:3). */
+function figureWidth(height: number): number {
+  return height * (130 / 240) * 0.75;
+}
+
+export interface BubbleBox {
+  left: number;
+  width: number;
+  bottom: number;
+  /** Where the tail sits along the bubble's bottom edge, in % of its width. */
+  tail: number;
+}
+
+/**
+ * Where a bubble sits on a wide stage: beside the speaker's head (above it
+ * for the middle slot), and above the head of anyone else it would cover.
+ */
+export function bubbleBox(speaker: Standing | undefined, others: Standing[]): BubbleBox {
+  if (!speaker) return { left: 20, width: 60, bottom: GROUND + 50, tail: 50 };
+  const { x, height } = speaker;
   const width = 52;
   let left: number;
   let tail: number;
@@ -76,18 +92,29 @@ function bubblePlacement(actor: StageActor | undefined, x: number | undefined): 
     tail = ((x - left) / width) * 100;
     bottom = GROUND + height + 3;
   }
+  for (const other of others) {
+    const half = figureWidth(other.height) / 2;
+    const covers = other.x + half > left && other.x - half < left + width;
+    if (covers) bottom = Math.max(bottom, GROUND + other.height + 3);
+  }
+  return { left, width, bottom, tail };
+}
+
+function bubblePlacement(speaker: Standing | undefined, others: Standing[]): CSSProperties {
+  const box = bubbleBox(speaker, others);
   // The stage is 4:3, so 1% of its height is 0.75cqw.
-  const room = Math.max(28, 96 - bottom);
+  const room = Math.max(26, 96 - box.bottom);
+  const x = speaker?.x ?? 50;
   return {
-    "--bubble-left": `${left}%`,
-    "--bubble-width": `${width}%`,
-    "--bubble-bottom": `${bottom}%`,
+    "--bubble-left": `${box.left}%`,
+    "--bubble-width": `${box.width}%`,
+    "--bubble-bottom": `${box.bottom}%`,
     "--bubble-body-max": `calc(${(room * 0.75).toFixed(2)}cqw - 2.2rem)`,
     // On a phone the box spans the stage, so the tail points at the speaker,
     // and the name tag moves aside to leave it room.
     "--tail-x": `${x}%`,
     "--tag-left": x < 55 ? `calc(${x}% + 18px)` : "1rem",
-    "--tail-x-wide": `${tail}%`,
+    "--tail-x-wide": `${box.tail}%`,
   } as CSSProperties;
 }
 
@@ -95,7 +122,8 @@ export function SpeechBubble({
   name,
   aiLabel,
   actor,
-  x,
+  speaker,
+  others,
   primary,
   primaryLang,
   secondary,
@@ -106,7 +134,7 @@ export function SpeechBubble({
   return (
     <div
       className={`${styles.panel} ${styles.bubble} ${styles.popIn} rounded-[1.4rem] border-[3px] bg-white px-4 pb-3 pt-4 shadow-[0_5px_0_rgba(29,43,79,0.25)]`}
-      style={{ ...bubblePlacement(actor, x), borderColor: NAVY }}
+      style={{ ...bubblePlacement(speaker, others), borderColor: NAVY }}
       data-step-panel="say"
     >
       <span className={styles.bubbleTail} aria-hidden="true" />
@@ -147,7 +175,7 @@ function isLight(hex: string): boolean {
 function NameTag({ name, aiLabel, color }: { name: string; aiLabel?: string; color: string }) {
   return (
     <p
-      className={`${styles.nameTag} absolute -top-3.5 max-w-[70%] truncate rounded-full border-2 px-2.5 py-0.5 text-xs font-extrabold uppercase tracking-wide`}
+      className={`${styles.nameTag} absolute -top-3.5 truncate rounded-full border-2 px-2.5 py-0.5 text-xs font-extrabold uppercase tracking-wide`}
       style={{ borderColor: NAVY, background: color, color: isLight(color) ? NAVY : "#ffffff" }}
     >
       {name}
@@ -165,7 +193,7 @@ export function CaptionBar({
   secondaryLang,
   animate,
   typedRef,
-}: Omit<BubbleProps, "name" | "aiLabel" | "actor" | "x">) {
+}: Omit<BubbleProps, "name" | "aiLabel" | "actor" | "speaker" | "others">) {
   return (
     <div
       className={`${styles.panel} ${styles.caption} ${styles.rise} rounded-2xl border-[3px] border-[#ffd23f] px-4 py-3 shadow-[0_5px_0_rgba(0,0,0,0.2)]`}
@@ -201,6 +229,16 @@ interface ChalkboardProps {
   homeLang: string;
   /** Seconds each row waits for the one before it to be read. */
   rowDelays: number[];
+  /**
+   * Which side of a wide stage the board hangs on: away from the teacher
+   * presenting it, so it never covers their face.
+   */
+  side: "left" | "right" | "center";
+  /**
+   * The board's height cap on a wide stage, in % of the stage: above the
+   * head of a presenter standing in the middle. Default 82%.
+   */
+  maxHeight?: number;
   ref?: Ref<SkipHandle>;
 }
 
@@ -212,6 +250,8 @@ export function Chalkboard({
   homeRows,
   homeLang,
   rowDelays,
+  side,
+  maxHeight,
   ref,
 }: ChalkboardProps) {
   // Tapping the stage while rows are still coming shows them all.
@@ -235,11 +275,15 @@ export function Chalkboard({
   const Heading = headingLevel === 3 ? "h3" : "h4";
   return (
     <section
-      className={`${styles.panel} ${styles.board} ${styles.chalk} ${styles.popIn} rounded-xl px-4 py-3 text-[#f7f4ea]`}
+      className={`${styles.panel} ${styles.board} ${
+        side === "right" ? styles.boardRight : side === "left" ? styles.boardLeft : ""
+      } ${styles.chalk} ${styles.popIn} rounded-xl px-4 py-3 text-[#f7f4ea]`}
       data-step-panel="concept"
+      data-side={side}
+      style={maxHeight ? ({ "--board-max": `${maxHeight}%` } as CSSProperties) : undefined}
     >
       {title ? (
-        <Heading className="text-lg font-extrabold leading-tight text-[#ffe066]">{title}</Heading>
+        <Heading className="text-lg font-extrabold leading-tight text-[#fff09a]">{title}</Heading>
       ) : null}
       <ul className="mt-2 space-y-2">
         {rows.map((row, index) => (
@@ -254,7 +298,7 @@ export function Chalkboard({
                 {row}
               </span>
               {homeRows[index] && homeRows[index] !== row ? (
-                <span className="block text-sm italic text-[#cfe6d8]" lang={homeLang}>
+                <span className="block text-sm italic text-[#e2f1e8]" lang={homeLang}>
                   {homeRows[index]}
                 </span>
               ) : null}
@@ -280,6 +324,16 @@ export function VisualPanel({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * How long a card that asks something of the learner ignores taps after it
+ * appears. The tap that brought it up (on the stage, or on a Next button a
+ * taller card has just pushed down) must not land on an answer.
+ */
+export const CARD_ARM_MS = 450;
+
+/** Cards the learner answers: a stray tap on them costs points. */
+const ARMED_KINDS: ReadonlySet<string> = new Set(["ask", "game", "photo"]);
+
 interface StageCardProps {
   kind: "ask" | "game" | "photo" | "video";
   /** A banner across the top: "Question", "Mini-game". */
@@ -291,14 +345,24 @@ interface StageCardProps {
 }
 
 export function StageCard({ kind, banner, bannerColor = "#1d6fb8", paper, children, ref }: StageCardProps) {
+  const needsArming = ARMED_KINDS.has(kind);
+  const [armed, setArmed] = useState(!needsArming);
+  useEffect(() => {
+    if (!needsArming) return;
+    const timer = setTimeout(() => setArmed(true), CARD_ARM_MS);
+    return () => clearTimeout(timer);
+  }, [needsArming]);
   return (
     <div
       ref={ref}
-      className={`${styles.panel} ${styles.card} ${kind === "game" ? styles.cardWide : ""} ${styles.popIn} rounded-2xl border-[3px] shadow-[0_6px_0_rgba(29,43,79,0.25)] ${
+      className={`${styles.panel} ${styles.card} ${styles.popIn} rounded-2xl border-[3px] shadow-[0_6px_0_rgba(29,43,79,0.25)] ${
         paper ? styles.paper : "bg-white"
       }`}
-      style={{ borderColor: NAVY }}
+      // Until armed, the card is shown but takes no taps, clicks or focus.
+      inert={!armed}
+      style={{ borderColor: NAVY, pointerEvents: armed ? undefined : "none" }}
       data-step-panel={kind}
+      data-armed={armed ? "true" : "false"}
     >
       {banner ? (
         <p

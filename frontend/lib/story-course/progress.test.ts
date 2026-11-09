@@ -140,6 +140,15 @@ describe("story progress", () => {
     expect(chapterKey(chapter("ch9"))).toBe("ch9");
   });
 
+  it("keys the rally apart from the quiz checkpoint of the same unit", () => {
+    const rally = chapter("rally", "unit-quiz");
+    rally.covers = { ...rally.covers!, role: "quiz_checkpoint", status: "checkpoint", rally: true };
+    expect(chapterKey(rally)).toBe("rally:unit-quiz");
+    // A learner who passed the old checkpoint has not played the rally.
+    const passedCheckpoint = withChapterDone(emptyStoryProgress(), "unit-quiz", 0);
+    expect(firstIncompleteChapter([rally], passedCheckpoint)).toBe(0);
+  });
+
   it("finds the first chapter not finished yet", () => {
     const chapters = [chapter("ch1", "a"), chapter("ch2", "b"), chapter("ch3", "c")];
     expect(firstIncompleteChapter(chapters, emptyStoryProgress())).toBe(0);

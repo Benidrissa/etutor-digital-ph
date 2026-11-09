@@ -270,6 +270,13 @@ export interface ChapterCovers {
   completes_unit: boolean;
   /** The chapter's own `checks.max_points` (0 for checkpoints). */
   max_points: number;
+  /**
+   * The module's final "rally" chapter (#2674): questions from the module's
+   * quiz played as a story. It points at the quiz unit, is a checkpoint
+   * (`role: quiz_checkpoint`), scores like a lesson chapter, and never
+   * completes the quiz, which still needs its own attempt.
+   */
+  rally?: boolean;
 }
 
 /** The top-level `module_story` block of a module story (contract C-2). */

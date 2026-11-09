@@ -15,6 +15,19 @@
 .frame {
   container-type: inline-size;
   position: relative;
+  /* Panels float at z-index 20 on a wide stage: keep that inside the frame,
+     under the page's sticky header and fixed bars. */
+  isolation: isolate;
+}
+
+/* Out of sight or out of focus: the ambient loops stand still. Only those:
+   a paused reveal (a chalkboard row, a card popping in) would hide content. */
+.paused .pan,
+.paused .drift,
+.paused .fly,
+.paused .breathe,
+.paused .dots > span {
+  animation-play-state: paused !important;
 }
 
 .box {
@@ -72,6 +85,8 @@
 
 .nameTag {
   left: var(--tag-left, 1rem);
+  /* Never past the box's right edge, however far right the tail is. */
+  max-width: calc(100% - var(--tag-left, 1rem) - 0.75rem);
 }
 
 /* Extra lines only a wide stage has room for. */
@@ -103,6 +118,22 @@
     pointer-events: auto;
   }
 
+  /* A timed game stays under the stage at every width, so all its targets
+     are in view without scrolling inside a card while the clock runs. */
+  .dialogue.dialogueFlow {
+    position: relative;
+    aspect-ratio: auto;
+    margin-top: 0.75rem;
+    pointer-events: auto;
+  }
+
+  .dialogueFlow .card {
+    position: relative;
+    inset: auto;
+    max-height: none;
+    overflow: hidden;
+  }
+
   .bubble {
     position: absolute;
     left: var(--bubble-left, 22%);
@@ -119,6 +150,7 @@
 
   .nameTag {
     left: 1rem;
+    max-width: 70%;
   }
 
   .bubbleTail {
@@ -144,8 +176,19 @@
     left: 9%;
     right: 9%;
     top: 4%;
-    max-height: 82%;
+    max-height: var(--board-max, 82%);
     overflow-y: auto;
+  }
+
+  /* Away from the teacher presenting it, clear of their face. */
+  .boardRight {
+    left: 31%;
+    right: 3%;
+  }
+
+  .boardLeft {
+    left: 3%;
+    right: 31%;
   }
 
   .inset {
@@ -164,11 +207,6 @@
     left: 31%;
     max-height: 94%;
     overflow-y: auto;
-  }
-
-  /* A game needs the room more than the cast needs to be seen. */
-  .cardWide {
-    left: 3%;
   }
 
   /* Beside the hero, who changes as the learner picks a look. */
@@ -213,8 +251,8 @@
 
 .chalk {
   background:
-    radial-gradient(ellipse at 30% 20%, rgb(255 255 255 / 0.07), transparent 60%),
-    linear-gradient(160deg, #2f6b4f, #234f3b);
+    radial-gradient(ellipse at 30% 20%, rgb(255 255 255 / 0.02), transparent 60%),
+    linear-gradient(160deg, #2c6649, #224d39);
   border: 8px solid #9a6332;
   box-shadow:
     inset 0 0 0 2px rgb(0 0 0 / 0.25),
@@ -302,35 +340,21 @@
     animation: breathe 3.4s ease-in-out infinite;
   }
 
-  .bob {
-    animation: bob 0.42s ease-in-out var(--bob-count, 6);
-  }
-
-  .jump {
-    animation: jump 0.6s ease-in-out 3;
-  }
-
-  .shake {
-    animation: shake 0.45s ease-in-out 1;
-  }
-
-  .lid {
-    animation: blink 4.2s linear infinite;
+  /* A blink is a class set for a moment every few seconds (by the
+     character), so a still face costs no repaint between blinks. */
+  .blinking .lid {
+    transform: scaleY(1);
   }
 
   .mouthOpen {
     animation: mouth 0.26s steps(1) var(--talk-count, 0);
   }
 
+  /* Ambient loops move HTML layers by transform only, which the compositor
+     runs without repainting the stage. */
   .drift {
     animation: drift var(--drift-s, 70s) linear infinite;
     animation-delay: var(--drift-delay, 0s);
-  }
-
-  .flap {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: flap 0.35s ease-in-out infinite;
   }
 
   .fly {
@@ -340,10 +364,6 @@
 
   .pan {
     animation: pan 38s ease-in-out infinite alternate;
-  }
-
-  .spin {
-    animation: spin 60s linear infinite;
   }
 
   .confettiFall {
@@ -451,55 +471,6 @@
   }
 }
 
-@keyframes bob {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0);
-  }
-  30% {
-    transform: translateY(-3%) rotate(-1deg);
-  }
-  70% {
-    transform: translateY(-1%) rotate(1deg);
-  }
-}
-
-@keyframes jump {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  35%,
-  55% {
-    transform: translateY(-16%);
-  }
-}
-
-@keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-4%);
-  }
-  75% {
-    transform: translateX(4%);
-  }
-}
-
-@keyframes blink {
-  0%,
-  93%,
-  100% {
-    transform: scaleY(0);
-  }
-  95%,
-  97% {
-    transform: scaleY(1);
-  }
-}
-
 @keyframes mouth {
   0% {
     opacity: 1;
@@ -509,51 +480,36 @@
   }
 }
 
+/* Across the stage: the layer is the stage's width, the cloud at its left. */
 @keyframes drift {
   from {
-    transform: translateX(-200px);
+    transform: translateX(-30%);
   }
   to {
-    transform: translateX(560px);
-  }
-}
-
-@keyframes flap {
-  0%,
-  100% {
-    transform: scaleY(1);
-  }
-  50% {
-    transform: scaleY(-0.6);
+    transform: translateX(105%);
   }
 }
 
 @keyframes fly {
   0% {
-    transform: translate(-60px, 0);
+    transform: translate(-12%, 0);
   }
   50% {
-    transform: translate(260px, -18px);
+    transform: translate(45%, -4%);
   }
   100% {
-    transform: translate(560px, 6px);
+    transform: translate(105%, 1%);
   }
 }
 
-/* Across whatever the picture has beyond the stage's 4:3 (a 3:2 backdrop has
-   a little on each side); a 4:3 picture simply stays put. */
+/* The backdrop sits in a layer 12% wider than the stage (a 3:2 picture on a
+   4:3 stage): slide it across that extra width. */
 @keyframes pan {
   from {
-    object-position: 0% 50%;
+    transform: translateX(0);
   }
   to {
-    object-position: 100% 50%;
-  }
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+    transform: translateX(-10.7%);
   }
 }
 

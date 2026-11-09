@@ -16,8 +16,10 @@ import {
   safeArtUrl,
   slotsFor,
   stageOrder,
+  GROUND,
 } from "./cast";
 import { placeTheme, placeTitle, skyFor } from "./places";
+import { bubbleBox } from "./panels";
 import { planSteps, presenterOf, reactorOf } from "./scene-plan";
 
 const OLD_CAST: CastMember[] = [
@@ -101,6 +103,28 @@ describe("cast", () => {
     expect(look.bottom).toBe("#2f9e5b");
   });
 
+  it("lets the cast's look decide over an old art key drawn as the other gender", () => {
+    // The bible gives the friend the girl preset's art key; the model wrote a boy.
+    const boy = lookFor({
+      id: "friend",
+      name: "{friend}",
+      kind: "child",
+      art: "friend",
+      look: "an 11-year-old boy, short hair, green shirt and khaki shorts",
+    });
+    expect(boy.feminine).toBe(false);
+    // Nothing of the girl preset is carried over.
+    expect(boy.accessories).not.toContain("headband");
+    expect(boy.hairStyle).not.toBe("braids");
+    expect(boy.bottomStyle).toBe("shorts");
+    // And the other way round: no beard on a woman drawn from Papa Ben's key.
+    const woman = lookFor({ id: "family", name: "Mariam", kind: "adult", art: "papa_ben", look: "a grandmother with a head wrap" });
+    expect(woman.feminine).toBe(true);
+    expect(woman.accessories).not.toContain("beard");
+    // A look that says nothing about gender keeps the preset.
+    expect(lookFor({ id: "friend", name: "{friend}", kind: "child", art: "friend", look: "round face, orange top" }).feminine).toBe(true);
+  });
+
   it("gives the same placeholder look on every visit", () => {
     const member: CastMember = { id: "peer", name: "Awa", kind: "child", art: "kid" };
     expect(lookFor(member)).toEqual(lookFor(member));
@@ -143,6 +167,24 @@ describe("art", () => {
     expect(safeArtUrl("http://plain.example/a.png")).toBeUndefined();
     expect(safeArtUrl("data:text/html;base64,AAAA")).toBeUndefined();
     expect(safeArtUrl(42)).toBeUndefined();
+  });
+});
+
+describe("speech bubbles", () => {
+  it("sits beside an edge speaker's head when nobody stands in the way", () => {
+    const box = bubbleBox({ x: 15, height: 42 }, [{ x: 85, height: 50 }]);
+    expect(box.left).toBeGreaterThan(15);
+    expect(box.bottom).toBeLessThan(GROUND + 42 + 1);
+  });
+
+  it("rises above the face of anyone it would cover", () => {
+    // Margo speaks from the right; the hero stands in the middle.
+    const box = bubbleBox({ x: 85, height: 22 }, [
+      { x: 15, height: 50 },
+      { x: 50, height: 42 },
+    ]);
+    expect(box.bottom).toBeGreaterThanOrEqual(GROUND + 42 + 3);
+    expect(box.left + box.width).toBeLessThan(85);
   });
 });
 

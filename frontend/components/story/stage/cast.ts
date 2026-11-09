@@ -138,34 +138,39 @@ function colorNear(look: string, nouns: RegExp): string | undefined {
   return undefined;
 }
 
+/** What a look sentence says about gender, if anything. */
+function genderIn(sentence: string): boolean | undefined {
+  if (!sentence) return undefined;
+  if (FEMININE.test(sentence)) return true;
+  if (MASCULINE.test(sentence)) return false;
+  return undefined;
+}
+
 /**
- * A placeholder look from what the story says about someone: the old art key
- * first, then the words of the `look` sentence (and the hero variant), then a
- * stable hash of the id for everything still open.
+ * A placeholder look from what the story says about someone: the hero
+ * variant and the words of the `look` sentence first, then the old art key's
+ * preset when it agrees with them, then a stable hash of the id for
+ * everything still open.
  */
 export function lookFor(member: CastMember, variant?: string): Look {
   const seed = hashOf(member.id || member.name || "?");
   // A hero variant describes itself; the member's own look is the default one.
   const lookText = (variant && member.variants?.find((v) => v?.id === variant)?.look) || member.look || "";
-  const text = `${variant ?? ""} ${lookText} ${member.name ?? ""}`;
   const variantFeminine =
     variant && /^(girl|woman|f)/i.test(variant)
       ? true
       : variant && /^(boy|man|m)/i.test(variant)
         ? false
         : undefined;
-  // An old art key's look only holds for the gender it was drawn as.
+  // What the story says beats what an art key was once drawn as: a preset
+  // of the other gender is dropped whole (no beard, tie, headband or basket
+  // carried over).
+  const said = variantFeminine ?? genderIn(lookText);
   const rawPreset = PRESETS[member.art] ?? {};
   const preset =
-    variantFeminine !== undefined && rawPreset.feminine !== undefined && rawPreset.feminine !== variantFeminine
-      ? {}
-      : rawPreset;
+    said !== undefined && rawPreset.feminine !== undefined && rawPreset.feminine !== said ? {} : rawPreset;
 
-  let feminine = variantFeminine ?? preset.feminine ?? seed % 2 === 0;
-  if (variantFeminine === undefined && preset.feminine === undefined) {
-    if (FEMININE.test(text)) feminine = true;
-    else if (MASCULINE.test(text)) feminine = false;
-  }
+  const feminine = said ?? preset.feminine ?? genderIn(member.name ?? "") ?? seed % 2 === 0;
 
   const look: Look = {
     feminine,
@@ -192,6 +197,10 @@ export function lookFor(member: CastMember, variant?: string): Look {
     else if (/bald|shaved/.test(words)) look.hairStyle = "bald";
     else if (/short hair|cropped/.test(words)) look.hairStyle = "short";
     if (/headband|hair ?band|ribbon/.test(words)) look.accessories.push("headband");
+    if (/basket/.test(words)) look.accessories.push("basket");
+    // A head wrap or a tie is drawn in the accent colour: take the one the look names.
+    const accent = colorNear(words, /^(wrap|headwrap|headscarf|scarf|turban|gele|tie|necktie)$/);
+    if (accent) look.accent = accent;
     if (/\bdress\b|boubou|pagne/.test(words)) look.bottomStyle = "dress";
     else if (/skirt/.test(words)) look.bottomStyle = "skirt";
     else if (/shorts/.test(words)) look.bottomStyle = "shorts";

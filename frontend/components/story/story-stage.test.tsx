@@ -4,7 +4,7 @@
  * (#2672), the ways to move on, sound and read-aloud.
  */
 
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,8 +12,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import frMessages from "@/messages/fr.json";
 import type { StoryCourse } from "@/lib/story-course/types";
 
-import { CHOICES_KEY_PREFIX, SOUND_KEY } from "./stage/prefs";
-import { StoryPlayer } from "./story-player";
+import { CHOICES_KEY_PREFIX, READ_ALOUD_KEY, SOUND_KEY } from "./stage/prefs";
+import { StoryPlayer, TITLE_BEAT_MS } from "./story-player";
+import { cardReady, clickInCard } from "./story-test-utils";
 
 // The stage draws a whole scene per step: long click-throughs need headroom
 // on a busy CI runner.
@@ -159,7 +160,7 @@ describe("Stage — the cast", () => {
     const user = userEvent.setup();
     renderPlayer(oldStory());
     for (let i = 0; i < 3; i += 1) await user.click(screen.getByRole("button", { name: "Suite" }));
-    await user.click(screen.getByRole("button", { name: "La grenouille" }));
+    await clickInCard(user, "La grenouille");
     await user.click(screen.getByRole("button", { name: "Suite" }));
     expect(screen.getByText("Margo (IA)")).toBeInTheDocument();
   });
@@ -206,9 +207,9 @@ describe("Stage — the cast", () => {
 
     // No hero in this cast: the first one on stage reacts.
     expect(actor(container, "mentor")).toHaveAttribute("data-pose", "think");
-    await user.click(screen.getByRole("button", { name: "Le caillou" }));
+    await clickInCard(user, "Le caillou");
     expect(actor(container, "mentor")).toHaveAttribute("data-pose", "think");
-    await user.click(screen.getByRole("button", { name: "La grenouille" }));
+    await clickInCard(user, "La grenouille");
     expect(actor(container, "mentor")).toHaveAttribute("data-pose", "happy");
   });
 });
@@ -317,7 +318,7 @@ describe("Stage — moving on", () => {
     const user = userEvent.setup();
     const { container, onComplete } = renderPlayer(oldStory(), { hideFinishSummary: true, maxPoints: 2 });
     for (let i = 0; i < 3; i += 1) await user.click(screen.getByRole("button", { name: "Suite" }));
-    await user.click(screen.getByRole("button", { name: "La grenouille" }));
+    await clickInCard(user, "La grenouille");
     await user.click(screen.getByRole("button", { name: "Suite" }));
 
     expect(onComplete).toHaveBeenCalledWith({ points: 2, maxPoints: 2 });
@@ -327,6 +328,194 @@ describe("Stage — moving on", () => {
       expect(el).toHaveAttribute("data-pose", "happy");
     }
     expect(screen.getByText("Bravo !")).toBeInTheDocument();
+  });
+});
+
+describe("Stage — review fixes", () => {
+  const next = () => screen.getByRole("button", { name: "Suite" });
+
+  it("ignores a tap in the moment a question appears, then takes the answer", async () => {
+    const user = userEvent.setup();
+    const { onComplete } = renderPlayer(oldStory());
+    for (let i = 0; i < 3; i += 1) await user.click(next());
+
+    const card = document.querySelector('[data-step-panel="ask"]')!;
+    expect(card).toHaveAttribute("data-armed", "false");
+    expect(card).toHaveAttribute("inert");
+    // The quick second tap of a double tap does not land on an answer.
+    const wrong = screen.getByText("Le caillou").closest("button")!;
+    await expect(user.click(wrong)).rejects.toThrow(/pointer-events/);
+    expect(screen.getByRole("button", { name: "Réponds pour continuer" })).toBeDisabled();
+
+    // Once the card is ready, a tap counts, and right first time scores 2.
+    await cardReady();
+    expect(card).not.toHaveAttribute("inert");
+    await user.click(screen.getByRole("button", { name: "La grenouille" }));
+    await user.click(next());
+    expect(onComplete).toHaveBeenCalledWith({ points: 2, maxPoints: 2 });
+  });
+
+  it("shows a chapter's title alone before a first line that would cover it", async () => {
+    const user = userEvent.setup();
+    const story = oldStory();
+    story.chapters[0].scenes[0].steps.shift(); // the chapter now opens on a speech bubble
+    const { container } = renderPlayer(story);
+    const dialogue = screen.getByTestId("story-stage").lastElementChild as HTMLElement;
+
+    expect(container.querySelector("[data-title-card]")).not.toBeNull();
+    expect(dialogue.style.visibility).toBe("hidden");
+    // Next ends the title's beat and brings up the first line, no further.
+    await user.click(next());
+    expect(container.querySelector("[data-title-card]")).toBeNull();
+    expect(dialogue.style.visibility).toBe("");
+    expect(screen.getByText("Observe bien.")).toBeInTheDocument();
+    await user.click(next());
+    expect(screen.getByText("Elle a bougé !")).toBeInTheDocument();
+  });
+
+  it("fades the title card on its own", async () => {
+    const story = oldStory();
+    story.chapters[0].scenes[0].steps.shift();
+    const { container } = renderPlayer(story);
+    await waitFor(() => expect(container.querySelector("[data-title-card]")).toBeNull(), {
+      timeout: TITLE_BEAT_MS + 2000,
+    });
+    expect((screen.getByTestId("story-stage").lastElementChild as HTMLElement).style.visibility).toBe("");
+  });
+
+  it("keeps the title over a narrator's caption, and never under a speech bubble", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPlayer(oldStory());
+    expect(container.querySelector("[data-title-card]")).not.toBeNull();
+    expect(screen.getByText("Un mystère t'attend.")).toBeInTheDocument();
+    await user.click(next());
+    expect(container.querySelector("[data-title-card]")).toBeNull();
+    expect(container.querySelector('[data-step-panel="say"]')).not.toBeNull();
+  });
+
+  it("leaves Space and → to the page when the story cannot move on", async () => {
+    const user = userEvent.setup();
+    renderPlayer(oldStory());
+    // Moving on: the key is the story's.
+    expect(fireEvent.keyDown(document.body, { key: "ArrowRight" })).toBe(false);
+    for (let i = 0; i < 2; i += 1) await user.click(next());
+    // A question waits: the key scrolls the page as usual.
+    expect(fireEvent.keyDown(document.body, { key: " " })).toBe(true);
+    expect(fireEvent.keyDown(document.body, { key: "ArrowRight" })).toBe(true);
+  });
+
+  it("hands the keyboard to the Next button after the start card", async () => {
+    const user = userEvent.setup();
+    renderPlayer(contractStory());
+    await user.click(screen.getByRole("button", { name: /Jouer/ }));
+    await waitFor(() => expect(next()).toHaveFocus());
+  });
+
+  it("says '1 étoile', not '1 étoiles'", async () => {
+    const user = userEvent.setup();
+    renderPlayer(oldStory());
+    for (let i = 0; i < 3; i += 1) await user.click(next());
+    await clickInCard(user, "Le caillou");
+    await user.click(screen.getByRole("button", { name: "La grenouille" }));
+    await user.click(next());
+    expect(screen.getByText("1 étoile sur 3")).toBeInTheDocument();
+  });
+
+  it("hangs the chalkboard away from the teacher presenting it", async () => {
+    const user = userEvent.setup();
+    const story = oldStory();
+    story.chapters[0].scenes[0].steps.splice(1, 0, {
+      type: "concept",
+      title: { en: "Signs", fr: "Signes" },
+      en: ["It moves."],
+      fr: ["Il bouge."],
+    });
+    const { container } = renderPlayer(story);
+    await user.click(next());
+    // The teacher stands on the left: the board hangs on the right.
+    expect(actor(container, "mentor")).toHaveAttribute("data-pose", "talk");
+    expect(container.querySelector('[data-step-panel="concept"]')).toHaveAttribute("data-side", "right");
+  });
+
+  it("lays a timed game out under the stage at every width", async () => {
+    const user = userEvent.setup();
+    const story = oldStory();
+    story.chapters[0].scenes[0].steps.splice(1, 0, { type: "game", ref: "g1" });
+    story.minigames = [
+      {
+        id: "g1",
+        engine: "catch",
+        title: { en: "Catch", fr: "Attrape" },
+        instruction: { en: "Catch the living.", fr: "Attrape le vivant." },
+        rounds: [{ items: [{ label: { en: "Frog", fr: "Grenouille" }, correct: true }] }],
+      },
+    ];
+    renderPlayer(story);
+    await user.click(next());
+    const dialogue = screen.getByTestId("story-stage").lastElementChild as HTMLElement;
+    expect(dialogue.className).toMatch(/dialogueFlow/);
+  });
+
+  it("swaps a speaker's picture in place, never remounting it", async () => {
+    const user = userEvent.setup();
+    const story = oldStory();
+    story.art = {
+      characters: { mentor: { idle: "/api/v1/story-art/k-idle/data", talk: "/api/v1/story-art/k-talk/data" } },
+    };
+    const { container } = renderPlayer(story);
+    const picture = actor(container, "mentor")!.querySelector("img")!;
+    await user.click(next());
+    expect(actor(container, "mentor")!.querySelector("img")).toBe(picture);
+    expect(picture).toHaveAttribute("src", "/api/v1/story-art/k-talk/data");
+    await user.click(next());
+    expect(actor(container, "mentor")!.querySelector("img")).toBe(picture);
+  });
+
+  it("fetches ahead only the poses of the cast on stage", () => {
+    const fetched: string[] = [];
+    class FakeImage {
+      decoding = "";
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(url: string) {
+        fetched.push(url);
+      }
+    }
+    vi.stubGlobal("Image", FakeImage);
+    const story = oldStory();
+    story.chapters[0].scenes.push({
+      id: "s2",
+      place: "market",
+      cast: ["margo"],
+      steps: [{ type: "narrate", en: "Later.", fr: "Plus tard." }],
+    });
+    story.art = {
+      characters: {
+        mentor: { idle: "/a/pre-m-idle", talk: "/a/pre-m-talk", happy: "/a/pre-m-happy", think: "/a/pre-m-think" },
+        // Not on stage in the first scene: Margo is only in the second.
+        margo: { idle: "/a/pre-g-idle" },
+      },
+    };
+    story.chapters[0].scenes[0].cast = ["mentor"];
+    story.chapters[0].scenes[0].steps = story.chapters[0].scenes[0].steps.filter((step) => step.who !== "margo");
+    renderPlayer(story);
+    expect(fetched).toEqual(expect.arrayContaining(["/a/pre-m-idle", "/a/pre-m-talk", "/a/pre-m-happy", "/a/pre-m-think"]));
+    expect(fetched).not.toContain("/a/pre-g-idle");
+  });
+
+  it("stands the stage still while the player is hidden", () => {
+    renderPlayer(oldStory(), { active: false });
+    expect(screen.getByTestId("story-stage").className).toMatch(/paused/);
+  });
+
+  it("draws the hero when a look's picture fails in the picker", () => {
+    const story = contractStory();
+    story.art = { characters: { "hero:girl": { idle: "/api/v1/story-art/gone/data" } } };
+    renderPlayer(story);
+    const choice = screen.getByRole("button", { name: /Une fille/ });
+    fireEvent.error(choice.querySelector("img")!);
+    expect(choice.querySelector("img")).toBeNull();
+    expect(choice.querySelector("svg")).not.toBeNull();
   });
 });
 
@@ -349,44 +538,63 @@ describe("Stage — sound", () => {
     return { speak, cancel };
   }
 
-  it("reads each line aloud, in the target language and the speaker's voice", async () => {
+  const readAloudToggle = () => screen.getByRole("button", { name: "Lire à voix haute" });
+  const effectsToggle = () => screen.getByRole("button", { name: "Effets sonores" });
+
+  it("does not read aloud until asked, so a screen reader is not spoken over", () => {
+    const { speak } = stubSpeech();
+    renderPlayer(oldStory());
+    expect(speak).not.toHaveBeenCalled();
+    expect(readAloudToggle()).toHaveAttribute("aria-pressed", "false");
+    // Sound effects are a separate switch, on by default.
+    expect(effectsToggle()).toHaveAttribute("aria-pressed", "true");
+    // The dialogue announces each new line to a screen reader.
+    expect(screen.getByTestId("story-stage").lastElementChild).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("reads each line aloud once asked, in the target language and the speaker's voice", async () => {
     const user = userEvent.setup();
     const { speak } = stubSpeech();
     renderPlayer(oldStory());
 
+    await user.click(readAloudToggle());
+    expect(window.localStorage.getItem(READ_ALOUD_KEY)).toBe("on");
     expect(speak).toHaveBeenCalledTimes(1);
     expect(speak.mock.calls[0][0]).toMatchObject({ text: "Un mystère t'attend.", lang: "fr-FR" });
+    // Read aloud, the screen reader does not announce the same line again.
+    expect(screen.getByTestId("story-stage").lastElementChild).toHaveAttribute("aria-live", "off");
 
     await user.click(screen.getByRole("button", { name: "Suite" }));
     expect(speak.mock.calls.at(-1)?.[0]).toMatchObject({ text: "Observe bien.", pitch: 0.8, rate: 0.9 });
   });
 
-  it("stops reading and stays quiet once muted, and remembers it", async () => {
+  it("stops reading once switched off, and remembers both switches", async () => {
     const user = userEvent.setup();
     const { speak, cancel } = stubSpeech();
+    window.localStorage.setItem(READ_ALOUD_KEY, "on");
     const { unmount } = renderPlayer(oldStory());
-    const toggle = screen.getByRole("button", { name: "Lecture à voix haute et effets sonores" });
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(toggle.className).toMatch(/\bmin-h-11\b/);
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(readAloudToggle().className).toMatch(/\bmin-h-11\b/);
+    expect(effectsToggle().className).toMatch(/\bmin-h-11\b/);
 
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(readAloudToggle());
+    expect(readAloudToggle()).toHaveAttribute("aria-pressed", "false");
     expect(cancel).toHaveBeenCalled();
+    await user.click(effectsToggle());
+    expect(effectsToggle()).toHaveAttribute("aria-pressed", "false");
     expect(window.localStorage.getItem(SOUND_KEY)).toBe("off");
-    const spoken = speak.mock.calls.length;
     await user.click(screen.getByRole("button", { name: "Suite" }));
-    expect(speak).toHaveBeenCalledTimes(spoken);
+    expect(speak).toHaveBeenCalledTimes(1);
 
     unmount();
     renderPlayer(oldStory());
-    expect(screen.getByRole("button", { name: "Lecture à voix haute et effets sonores" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(readAloudToggle()).toHaveAttribute("aria-pressed", "false");
+    expect(effectsToggle()).toHaveAttribute("aria-pressed", "false");
   });
 
   it("does not read while out of sight", () => {
     const { speak } = stubSpeech();
+    window.localStorage.setItem(READ_ALOUD_KEY, "on");
     renderPlayer(oldStory(), { active: false });
     expect(speak).not.toHaveBeenCalled();
   });
