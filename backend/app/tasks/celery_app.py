@@ -30,6 +30,7 @@ celery_app = Celery(
         "app.tasks.rag_indexation",
         "app.tasks.resource_extraction",
         "app.tasks.syllabus_generation",
+        "app.tasks.story_art",
         "app.tasks.subscription",
         "app.tasks.sms_relay",
         "app.tasks.course_bundle",

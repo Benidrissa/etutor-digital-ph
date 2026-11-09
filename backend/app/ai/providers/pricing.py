@@ -50,6 +50,15 @@ _IMAGE_PRICING_CENTS: dict[tuple[str, str], float] = {
     ("gpt-image-1", "high"): 25.0,
 }
 _IMAGE_DEFAULT_CENTS = 6.3  # unknown image model/quality — flag estimated
+# Image models that report token usage (#2675), in cents per 1M tokens. When a
+# call's usage is known it is priced from these instead of the flat per-image
+# table, which misses the input side: an edit's reference image is billed as
+# image-input tokens, and input_fidelity="high" makes those numerous.
+# gpt-image-1: text input $5/M, image input $10/M, image output $40/M (a medium
+# 1024x1536 image is ~1,584 output tokens = the 6.3c above).
+_IMAGE_TOKEN_PRICING: dict[str, dict[str, int]] = {
+    "gpt-image-1": {"text_input": 500, "image_input": 1000, "output": 4000},
+}
 # gpt-4o-mini-tts ≈ $0.015/min of audio ≈ 750 chars/min → ~2¢ per 1K input chars.
 _TTS_CENTS_PER_1K_CHARS = 2.0
 # whisper-1: $0.006/min.
@@ -87,6 +96,29 @@ def _token_cost_cents(model: str, usage: dict[str, Any]) -> tuple[float, bool]:
     return cents, estimated
 
 
+def _image_token_cost_cents(model: str, usage: dict[str, Any] | None) -> float | None:
+    """An image call priced by its reported tokens, or None (no usage, or no rates).
+
+    ``usage`` as the image provider records it: ``input_tokens`` and
+    ``output_tokens``, plus ``input_image_tokens``/``input_text_tokens`` when
+    the backend splits the input. Without the split, all input is priced as
+    text (the lower rate), as for a plain generation.
+    """
+    rates = _IMAGE_TOKEN_PRICING.get(model)
+    if not rates or not usage or usage.get("output_tokens") is None:
+        return None
+    image_in = usage.get("input_image_tokens")
+    text_in = usage.get("input_text_tokens")
+    if image_in is None or text_in is None:
+        image_in, text_in = 0, usage.get("input_tokens") or 0
+    out = int(usage.get("output_tokens") or 0)
+    return (
+        int(text_in) * rates["text_input"]
+        + int(image_in) * rates["image_input"]
+        + out * rates["output"]
+    ) / 1_000_000
+
+
 def estimate_cost_cents(
     *,
     model: str,
@@ -107,6 +139,9 @@ def estimate_cost_cents(
     if operation in ("chat", "embedding"):
         return _token_cost_cents(model, usage or {})
     if operation == "image":
+        tokens = _image_token_cost_cents(model, usage)
+        if tokens is not None:
+            return tokens, False
         row = _IMAGE_PRICING_CENTS.get((model, image_quality))
         if row is not None:
             return row * (images_count or 0), False

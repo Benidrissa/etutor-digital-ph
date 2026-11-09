@@ -713,7 +713,8 @@ def test_108_on_postgres_upgrades_cascades_and_downgrades(monkeypatch):
         monkeypatch.setattr(settings, "database_url", url)
         config = _alembic_config()
         command.stamp(config, "104_add_ai_usage_events")
-        command.upgrade(config, "head")
+        # Its own revision, not head: 109 (#2675) follows it.
+        command.upgrade(config, "108_story_course_bible")
 
         engine = sync_engine(url)
         tables = Base.metadata.tables
@@ -738,7 +739,7 @@ def test_108_on_postgres_upgrades_cascades_and_downgrades(monkeypatch):
 
             command.downgrade(config, "107_story_module_binding")
             assert "story_course_bibles" not in sa.inspect(engine).get_table_names()
-            command.upgrade(config, "head")
+            command.upgrade(config, "108_story_course_bible")
             assert "story_course_bibles" in sa.inspect(engine).get_table_names()
         finally:
             engine.dispose()

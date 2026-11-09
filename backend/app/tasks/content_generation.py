@@ -494,7 +494,7 @@ return 0
 """
 
 
-def _hold_story_dispatch(dedup_key: str | None, task_id: str | None, ttl_s: int) -> None:
+def _hold_story_dispatch(dedup_key: str | None, task_id: str | None, ttl_s: int) -> int | None:
     """Arm the API's dedup key for ``ttl_s`` from now, as the task starts (best effort).
 
     The key was claimed at dispatch with the same TTL, so the time the task
@@ -502,9 +502,13 @@ def _hold_story_dispatch(dedup_key: str | None, task_id: str | None, ttl_s: int)
     buffer) would otherwise come off its run: the key could expire while the
     task still runs, and the next view would dispatch a second, paid,
     generation of the same chapters.
+
+    Returns the script's answer: 1 when the key now names this task, 0 when
+    another task holds it, None without a key or task id or when Redis fails.
+    Callers that only re-arm may ignore it.
     """
     if not dedup_key or not task_id:
-        return
+        return None
     try:
         import redis
 
@@ -512,11 +516,12 @@ def _hold_story_dispatch(dedup_key: str | None, task_id: str | None, ttl_s: int)
 
         client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
         try:
-            client.eval(_HOLD_IF_OWNER_OR_FREE_SCRIPT, 1, dedup_key, task_id, ttl_s)
+            return int(client.eval(_HOLD_IF_OWNER_OR_FREE_SCRIPT, 1, dedup_key, task_id, ttl_s))
         finally:
             client.close()
     except Exception as exc:
         logger.warning("Story dispatch key not re-armed", key=dedup_key, error=str(exc))
+        return None
 
 
 def _release_story_dispatch(dedup_key: str | None, task_id: str | None) -> None:
