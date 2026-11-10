@@ -1024,9 +1024,21 @@ class TestScreenplay:
 
     def test_a_line_that_only_mentions_a_name_is_left_alone(self, raw):
         spine = spine_for(raw)
-        spine["scenes"][0]["steps"][3]["en"] = "Kaboré is right, {child}: look at the clock."
+        # Said by the hero: Kaboré himself saying it would narrate himself (#2697).
+        spine["scenes"][0]["steps"][3].update(
+            who="hero", en="Kaboré is right, {child}: look at the clock."
+        )
         build = repair.build_story_document(make_ctx(raw), spine)
         assert build.issues == []
+
+    def test_a_character_who_narrates_their_own_speech_gets_a_narrate_step(self, raw):
+        """#2697: the mentor's « Kaboré dit que… » is the storyteller's line."""
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][3]["en"] = "Kaboré says the night is long."
+        build = repair.build_story_document(make_ctx(raw), spine)
+        step = build.doc["chapters"][0]["scenes"][0]["steps"][3]
+        assert step["type"] == "narrate" and step["en"] == "Kaboré says the night is long."
+        assert ("line_self_narrated", "scenes[0].steps[3].en") in _codes(build)
 
     def test_a_speaker_who_is_not_in_the_cast_loses_the_line(self, raw):
         spine = spine_for(raw)
@@ -1195,6 +1207,9 @@ class TestReviewFixes:
         spine = spine_for(raw)
         index = 3 if not line.endswith("wait.") else 0
         spine["scenes"][0]["steps"][index]["en"] = line
+        if index == 3:
+            # Said by the hero: Kaboré himself saying it would narrate himself (#2697).
+            spine["scenes"][0]["steps"][index]["who"] = "hero"
         build = repair.build_story_document(make_ctx(raw), spine)
         assert build.doc["chapters"][0]["scenes"][0]["steps"][index]["en"] == line
         assert build.issues == []

@@ -62,7 +62,7 @@ from __future__ import annotations
 import copy
 import re
 import uuid
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -150,6 +150,10 @@ CONCEPT_NOT_COVERED = "concept_not_covered"
 CONCEPT_TOO_LONG = "concept_card_too_long"
 SCENE_COUNT = "scene_count"
 SCENE_CAST = "scene_cast_size"
+#: #2697: a say line that narrates its own speaker's action ("{friend} lève la
+#: carte. …"): the stage direction is made a narrate step. A fix of the
+#: builder that, like a prop's, never costs a repair call on its own.
+SELF_NARRATED = "line_self_narrated"
 #: v4 (#2680): the story checks of a chapter told from the episode plan.
 ASK_NOT_SET_UP = "ask_not_set_up"
 ASK_NOT_FOLLOWED = "ask_not_followed"
@@ -191,10 +195,13 @@ PROP_CODES = frozenset(
         "closeup_invalid",
     }
 )
+#: The builder's fixes that are warnings of the build: never a repair call on
+#: their own, listed in a repair only when the chapter needs one anyway.
+QUIET_CODES = frozenset({*PROP_CODES, SELF_NARRATED})
 SETTLEABLE = frozenset(
     {
         *STORY_CODES,
-        *PROP_CODES,
+        *QUIET_CODES,
         MISSING_TRANSLATION,
         SPEAKER_PREFIX,
         LINE_TOO_LONG,
@@ -1708,6 +1715,14 @@ class _Cast:
                 return member["id"]
         return None
 
+    def own_names(self, who: str) -> list[str]:
+        """What a line may call cast member ``who``: its placeholder and its names."""
+        names = {HERO_ID: [CHILD], FRIEND_ID: ["{friend}"]}.get(who, [])
+        for member in self.members:
+            if member["id"] == who:
+                names += [_as_str(member.get("name")), _as_str(member.get("default_name"))]
+        return [name for name in names if name]
+
     def names(self) -> list[str]:
         out: list[str] = []
         for member in self.members:
@@ -1768,6 +1783,69 @@ def _story_line(
             value = truncate(value, limit)
         step[lang] = value
     return step
+
+
+#: The first sentence of a line, and what follows it.
+_FIRST_SENTENCE_RE = re.compile(r"^(.+?[.!?…])(?:\s+(.*))?$", re.DOTALL)
+
+
+def _own_action(text: str, names: Sequence[str]) -> tuple[str, str] | None:
+    """``(stage direction, the rest)`` when ``text`` opens on its speaker doing something.
+
+    "{friend} lève la carte. Quel est l'ordre ?" → ("{friend} lève la carte.",
+    "Quel est l'ordre ?"): the line starts with one of the speaker's own
+    ``names`` followed by a verb (a lower-case word), up to the end of that
+    sentence. "Kofi !" or "{friend}, regarde" is not one.
+    """
+    stripped = text.strip()
+    for name in names:
+        if not stripped.startswith(name):
+            continue
+        after = stripped[len(name) :]
+        if not re.match(r"\s+[a-zà-öø-ÿ]", after):
+            continue
+        match = _FIRST_SENTENCE_RE.match(stripped)
+        if match is None:
+            return stripped, ""
+        return match.group(1).strip(), (match.group(2) or "").strip()
+    return None
+
+
+def _split_self_narration(
+    step: dict[str, Any], names: Sequence[str], path: str
+) -> list[dict[str, Any]]:
+    """A say line that narrates its own speaker's action, as a narrate step and the words.
+
+    The stage direction becomes a ``narrate`` step before the ``say`` step,
+    which keeps only what is said. When it is the whole line, the line is a
+    narrate step. When only one language narrates, its stage direction is
+    left out of that language (the other never had it).
+    """
+    found = {lang: _own_action(str(step.get(lang) or ""), names) for lang in LANGS}
+    if not any(found.values()):
+        return [step]
+    builder_issue(
+        SELF_NARRATED,
+        f"{path}.{next(lang for lang in LANGS if found[lang])}",
+        "a character's line narrates their own action: write the action as a"
+        ' "narrate" step and keep only the spoken words in the "say" step',
+    )
+    narrate = {
+        "type": "narrate",
+        **{k: v for k, v in step.items() if k in ("props", "_src")},
+    }
+    if all(found.values()):
+        rests = {lang: found[lang][1] for lang in LANGS}
+        if all(rests.values()):
+            said = {**step, **rests}
+            said.pop("props", None)
+            return [{**narrate, **{lang: found[lang][0] for lang in LANGS}}, said]
+        return [{**narrate, **{lang: step[lang] for lang in LANGS}}]
+    lang = next(lang for lang in LANGS if found[lang])
+    rest = found[lang][1]
+    if not rest:
+        return [{**narrate, **{lang: step[lang] for lang in LANGS}}]
+    return [{**step, lang: rest}]
 
 
 def _mood(value: Any, path: str) -> str:
@@ -2023,10 +2101,14 @@ class _ScreenplayBuilder:
             step = _story_line(
                 "say", raw, path, who=who, mood=_mood(raw.get("mood"), path), prefix=self.prefix
             )
-            if step:
-                self._line_props(step, raw, path)
-                self._refrain(step)
-            return [step] if step else []
+            if not step:
+                return []
+            self._line_props(step, raw, path)
+            steps = _split_self_narration(step, self.cast.own_names(who), path)
+            for built in steps:
+                if built["type"] == "say":
+                    self._refrain(built)
+            return steps
         if kind == "concept":
             return self.concept(raw, path)
         if kind == "ask":
@@ -3251,10 +3333,11 @@ def with_generator_issues(report: ValidationReport, build: StoryBuild) -> Valida
     That is what makes the repair loop ask the model for the missing
     translation, exactly as it asks for anything the validator found. A prop
     fix (:data:`PROP_CODES`) and the story lints are warnings: they never cost
-    a repair call on their own. ``checks.story_quality`` is carried over.
+    a repair call on their own (:data:`QUIET_CODES`). ``checks.story_quality``
+    is carried over.
     """
-    errors = [i for i in build.issues if i.code not in PROP_CODES]
-    props = [i for i in build.issues if i.code in PROP_CODES]
+    errors = [i for i in build.issues if i.code not in QUIET_CODES]
+    props = [i for i in build.issues if i.code in QUIET_CODES]
     report = with_warnings(with_issues(report, errors), [*props, *build.lints])
     if build.quality:
         checks = report.checks.model_copy(update={"story_quality": dict(build.quality)})
@@ -3264,7 +3347,7 @@ def with_generator_issues(report: ValidationReport, build: StoryBuild) -> Valida
 
 def repair_issues(report: ValidationReport) -> list[ValidationIssue]:
     """What a repair call is told: every error, then the prop fixes (listed only then)."""
-    return [*report.errors, *(w for w in report.warnings if w.code in PROP_CODES)]
+    return [*report.errors, *(w for w in report.warnings if w.code in QUIET_CODES)]
 
 
 def settle_translations(report: ValidationReport) -> ValidationReport:

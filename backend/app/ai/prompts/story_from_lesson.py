@@ -1235,7 +1235,7 @@ _PROPS_RULES = """THE PROPS — the cartoon SHOWS what its characters talk about
 - Every concrete thing a line names, points at or handles is a PROP the learner sees on stage: an object, a food, a tool, an animal, a plant or a part of one, a stone, a body part, a feature of the place (a tree, a river, a well). Ideas (life, energy, a rule, a number) are not props: they go on a concept card. People are never props: they are the cast.
 - Declare each prop ONCE in "props", with:
   - "id": snake_case, unique ("snail", "nere_tree").
-  - "label": what the learner reads, {"en": ..., "fr": ...}, at most 40 characters, with its article ("a snail" / "un escargot").
+  - "label": the name tag the learner reads, {"en": ..., "fr": ...}: a short noun with its article, at most 4 words and 40 characters ("a snail" / "un escargot", "the jar" / "le bocal"). It names what the thing IS, never what it looks like or holds: "le bocal", never "le bocal fermé avec quelque chose de gris"; a line of the story says the rest.
   - "query": 2 to 5 English words naming exactly what a photo must show, as a picture search needs it: "garden snail", "baobab tree", "onion skin cells microscope" — never just "tree" or "cells". No person, no brand, no written text.
   - "kind": "figure" with "figure": N when FIGURE N above shows this thing; "real" when seeing the real thing teaches something (an organism, a specimen, a rock, an instrument of the lesson, a natural process); "sticker" for an everyday thing the story only handles (a basket, a cup, a bench).
   - "educational": true for "figure" and "real", false for "sticker".

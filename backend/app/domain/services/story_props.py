@@ -244,6 +244,124 @@ def _str(value: Any) -> str:
     return " ".join(str(value).split())
 
 
+#: Words a long label is cut before: where a description of the thing starts.
+_LABEL_BREAKS = frozenset(
+    [
+        "avec",
+        "qui",
+        "que",
+        "dont",
+        "pour",
+        "sur",
+        "sous",
+        "dans",
+        "contre",
+        "entre",
+        "plein",
+        "pleine",
+        "pleins",
+        "pleines",
+        "with",
+        "that",
+        "which",
+        "who",
+        "whose",
+        "for",
+        "on",
+        "under",
+        "inside",
+        "near",
+        "from",
+        "full",
+        "containing",
+    ]
+)
+#: Words that start a noun's own complement: a label is cut there only when no
+#: description can be cut off.
+_LABEL_COMPLEMENTS = frozenset({"de", "du", "des", "d", "of"})
+#: Words a shortened label never ends on.
+_LABEL_TAILS = frozenset(
+    [
+        "de",
+        "du",
+        "des",
+        "d",
+        "l",
+        "la",
+        "le",
+        "les",
+        "un",
+        "une",
+        "au",
+        "aux",
+        "à",
+        "a",
+        "avec",
+        "et",
+        "ou",
+        "of",
+        "the",
+        "an",
+        "and",
+        "or",
+        "with",
+        "in",
+        "on",
+        "to",
+        "for",
+        "qui",
+        "que",
+    ]
+)
+
+
+def _label_word(word: str) -> str:
+    """A label word as the cut rules read it: folded, an elision reduced to its article."""
+    folded = fold(word).strip('.,;:!?()«»"')
+    return folded.split("'", 1)[0] if "'" in folded[:3] else folded
+
+
+def _drop_tail(words: list[str]) -> list[str]:
+    # The whole word: "d'oignon" is a noun, a bare "d'" or "de" is not.
+    while len(words) > 1 and fold(words[-1]).strip(".,;:!?()«»\"'") in _LABEL_TAILS:
+        words = words[:-1]
+    return words
+
+
+def short_label(value: Any, limit: int = PROP_LABEL_LIMIT) -> str:
+    """A prop label of at most ``limit`` characters, never cut mid-phrase, never with "…".
+
+    A label is what a name tag shows: a short noun with its article. A longer
+    one is cut where its description starts ("le bocal fermé avec quelque
+    chose de gris" → "le bocal fermé"), else before the noun's last
+    complement that fits ("le diagramme des niveaux du vivant de l'atome à la
+    biosphère" → "le diagramme des niveaux du vivant"), else after the last
+    whole word that fits; never on an article or a preposition. An ellipsis
+    the model wrote is removed.
+    """
+    text = _str(value)
+    # A label the model cut itself ("le bocal fermé avec quelque chose de…")
+    # is cut again where its description starts.
+    clipped = text.endswith(("…", "..."))
+    text = text.rstrip(".…").rstrip(" ,;:-–—").strip()
+    words = text.split(" ")
+    if len(text) <= limit and not clipped:
+        return " ".join(_drop_tail(words))
+    limit = min(limit, len(text))
+    for breaks in (_LABEL_BREAKS, _LABEL_COMPLEMENTS):
+        fitting = [
+            n
+            for n in range(2, len(words))
+            if _label_word(words[n]) in breaks and len(" ".join(words[:n])) <= limit
+        ]
+        if fitting:
+            return " ".join(_drop_tail(words[: fitting[-1]])).rstrip(" ,;:-–—")
+    fits = [n for n in range(1, len(words)) if len(" ".join(words[:n])) <= limit]
+    if not fits:
+        return text[:limit].rstrip(" ,;:-–—")
+    return " ".join(_drop_tail(words[: fits[-1]])).rstrip(" ,;:-–—")
+
+
 def _cut(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
@@ -410,13 +528,16 @@ class PropBook:
             )
             return None
         for lang in ("en", "fr"):
-            if len(label[lang]) > PROP_LABEL_LIMIT:
+            short = short_label(label[lang])
+            if short != label[lang]:
                 self.issue(
                     "prop_invalid",
                     f"{path}.label.{lang}",
-                    f"at most {PROP_LABEL_LIMIT} characters",
+                    f"a label is a short noun with its article, at most {PROP_LABEL_LIMIT}"
+                    " characters, never a description of the thing: it is now"
+                    f" «{short}»",
                 )
-                label[lang] = _cut(label[lang], PROP_LABEL_LIMIT)
+                label[lang] = short
         return label
 
     def _figure(self, number: Any) -> dict[str, Any] | None:
@@ -841,7 +962,8 @@ def plan_props(plan: dict[str, Any] | None) -> list[dict[str, Any]]:
         if not isinstance(raw, dict) or not raw.get("id"):
             continue
         label = raw.get("label") if isinstance(raw.get("label"), dict) else raw
-        en, fr = _str(label.get("en")), _str(label.get("fr"))
+        # A plan stored before #2697 may hold a label cut with "…".
+        en, fr = short_label(label.get("en")), short_label(label.get("fr"))
         if not en or not fr:
             continue
         kind = _str(raw.get("kind")).lower()

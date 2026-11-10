@@ -44,10 +44,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.schemas.story_course import ValidationIssue
+from app.api.v1.schemas.story_course import PROP_LABEL_LIMIT, ValidationIssue
 from app.domain.services import story_repair as repair
 from app.domain.services.story_bible import FRIEND, HERO, StoryBible
-from app.domain.services.story_props import fold, is_one_emoji, prop_slug
+from app.domain.services.story_props import fold, is_one_emoji, prop_slug, short_label
 
 logger = structlog.get_logger(__name__)
 
@@ -506,6 +506,18 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
             issues.append(
                 _issue("plan_too_long", f"catchphrases[{index}]", "at most 50 characters")
             )
+    for index, item in enumerate(raw.get("props") or []):
+        label = item.get("label") if isinstance(item, dict) else None
+        label = label if isinstance(label, dict) else item if isinstance(item, dict) else {}
+        if any(len(_str(label.get(lang), 10_000)) > PROP_LABEL_LIMIT for lang in ("en", "fr")):
+            issues.append(
+                _issue(
+                    "plan_prop_label_long",
+                    f"props[{index}]",
+                    f"a prop's label is a short noun with its article, at most"
+                    f' {PROP_LABEL_LIMIT} characters ("le bocal"), never a description',
+                )
+            )
     for key in ("want", "logline"):
         if _PREMISE_RE.search(_str(raw.get(key))):
             issues.append(
@@ -748,10 +760,12 @@ def _props(raw: Any, units: list[str], gaps: list[str]) -> list[dict[str, Any]]:
             continue
         pid = prop_slug(item.get("id"))
         label = item.get("label") if isinstance(item.get("label"), dict) else item
-        en, fr = _str(label.get("en"), 40), _str(label.get("fr"), 40)
+        en, fr = short_label(label.get("en")), short_label(label.get("fr"))
         if not pid or not en or not fr or any(p["id"] == pid for p in out):
             gaps.append(f"prop {item.get('id')!r} left out")
             continue
+        if (en, fr) != (_str(label.get("en"), 10_000), _str(label.get("fr"), 10_000)):
+            gaps.append(f"prop {pid}: label shortened")
         planted = str(item.get("planted") or "")
         prop: dict[str, Any] = {
             "id": pid,
