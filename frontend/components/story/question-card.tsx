@@ -27,6 +27,11 @@ export interface QuestionAnswer {
   correct: boolean;
   points: number;
   attempts: number;
+  /**
+   * Answered on an earlier visit, which answer is not known here: shown
+   * settled, with the right answer and the explanation, and no score.
+   */
+  unknown?: boolean;
 }
 
 /**
@@ -348,7 +353,7 @@ export function QuestionCard({
       {settled ? (
         <div className="mt-3">
           <p className={`font-semibold ${correct ? "text-green-700" : "text-gray-800"}`}>
-            {correct ? `+${earned} ${unitLabel}` : t("howItWorks")}
+            {correct && !review?.unknown ? `+${earned} ${unitLabel}` : t("howItWorks")}
           </p>
           {question.explanation ? (
             <div className="mt-2 rounded-lg border border-gray-200 bg-white p-3">

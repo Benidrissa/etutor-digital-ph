@@ -534,13 +534,17 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
 
   // What each chapter played on this page was answered with, so Previous
   // from the next chapter shows it again as it was (#2688).
+  // Only a run that finished is kept for that (#2692): a replay left half way
+  // must not replace it, and a chapter looked back at reports nothing.
   const snapshotsRef = useRef(new Map<string, PlayerSnapshot>());
+  const liveSnapshotsRef = useRef(new Map<string, PlayerSnapshot>());
   const [reviewing, setReviewing] = useState<PlayerSnapshot | null>(null);
 
   // Previous on a chapter's first line: back to the last line of the one
-  // before. A finished chapter comes back as it was left (answered questions
-  // stay answered, nothing is scored or completed again) with its end card;
-  // one not finished yet is simply opened.
+  // before. A finished chapter comes back read-only (answered questions stay
+  // answered, with their answers when they were given on this page; nothing
+  // is scored or completed again) with its end card and its best score; one
+  // not finished yet is simply opened.
   const backIntoChapterBefore = (index: number) => {
     const before = chapters[index - 1];
     if (!before) return;
@@ -548,14 +552,12 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
       openChapter(index - 1);
       return;
     }
-    const best = chapterPoints(before);
-    const snapshot = snapshotsRef.current.get(before.id) ?? { records: [], points: best };
-    openChapter(index - 1, snapshot);
-    setFinished({
-      index: index - 1,
-      points: Math.max(snapshot.points, best),
-      maxPoints: before.covers?.max_points ?? 0,
-    });
+    const maxPoints = before.covers?.max_points ?? 0;
+    const saved = chapterPoints(before);
+    const best = maxPoints > 0 ? Math.min(saved, maxPoints) : saved;
+    const snapshot = snapshotsRef.current.get(before.id);
+    openChapter(index - 1, { records: snapshot?.records ?? [], points: best });
+    setFinished({ index: index - 1, points: best, maxPoints });
   };
 
   const showSummary = () => {
@@ -570,6 +572,9 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
   ) => {
     const chapter = chapters[index];
     if (!chapter) return;
+    // This run finished: it is what Previous will show of the chapter.
+    const live = liveSnapshotsRef.current.get(chapter.id);
+    if (live) snapshotsRef.current.set(chapter.id, live);
 
     const next = withChapterDone(progressRef.current, chapterKey(chapter), outcome.points);
     progressRef.current = next;
@@ -783,7 +788,7 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
             onComplete={(outcome) => handleChapterComplete(selected, outcome)}
             onStart={(choices) => setFriend(choices.friend)}
             review={reviewing ?? undefined}
-            onSnapshot={(snapshot) => snapshotsRef.current.set(chapter.id, snapshot)}
+            onSnapshot={(snapshot) => liveSnapshotsRef.current.set(chapter.id, snapshot)}
             onBackFromStart={selected > 0 ? () => backIntoChapterBefore(selected) : undefined}
           />
 

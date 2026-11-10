@@ -12,23 +12,61 @@
 export const PAGES_CACHE_NAME = "pages-v11-story-fixes";
 
 /**
+ * What became of one page:
+ * - `cached`: stored;
+ * - `gone`: the server said no for good (a unit removed: 404, 410, 403);
+ * - `server_error`: the server failed for now (5xx): worth another try;
+ * - `network_error`: the request never got through: worth another try;
+ * - `store_error`: the page came but could not be stored (storage full): a
+ *   retry would only download it again;
+ * - `unsupported`: no Cache API here, nothing to do.
+ */
+export type PrewarmOutcome =
+  | "cached"
+  | "gone"
+  | "server_error"
+  | "network_error"
+  | "store_error"
+  | "unsupported";
+
+/** Outcomes where trying again later can succeed. */
+export function prewarmRetryable(outcome: PrewarmOutcome): boolean {
+  return outcome === "network_error" || outcome === "server_error";
+}
+
+/**
  * Pre-fetch a same-origin page and stash it in the SW page cache so an offline
  * navigation hits cache instead of falling through to /offline.html.
  *
  * Failures are swallowed — pre-warm is best-effort and must never fail a
- * download. It says whether the page was stored, so a one-shot migration can
- * try again later instead of marking itself done on a dead link.
+ * download. It says what happened, so a one-shot migration can tell a page
+ * worth another try from one that will never come (#2692).
  */
-export async function prewarmPage(url: string): Promise<boolean> {
+export async function prewarmPage(url: string): Promise<PrewarmOutcome> {
+  if (typeof caches === "undefined") return "unsupported";
+  let res: Response;
+  try {
+    res = await fetch(url, { credentials: "include" });
+  } catch {
+    return "network_error";
+  }
+  if (!res.ok) return res.status >= 500 ? "server_error" : "gone";
+  try {
+    const cache = await caches.open(PAGES_CACHE_NAME);
+    await cache.put(url, res.clone());
+    return "cached";
+  } catch {
+    return "store_error";
+  }
+}
+
+/** Whether a page is in the SW page cache already (so not fetched again). */
+export async function isPagePrewarmed(url: string): Promise<boolean> {
   try {
     if (typeof caches === "undefined") return false;
     const cache = await caches.open(PAGES_CACHE_NAME);
-    const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) return false;
-    await cache.put(url, res.clone());
-    return true;
+    return !!(await cache.match(url));
   } catch {
-    // best-effort
     return false;
   }
 }

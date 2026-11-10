@@ -2716,6 +2716,7 @@
     "start": "Start",
     "round": "Round {current} / {total}",
     "gameOver": "Game over — +{points}",
+    "gamePlayed": "Already played",
     "skipForNow": "Skip for now",
     "minigameUnavailable": "This mini-game needs the {engine} engine, which the player does not run yet.",
     "useDecimalPoint": "Use a decimal point (3.25), not a comma.",

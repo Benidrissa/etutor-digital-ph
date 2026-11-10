@@ -2716,6 +2716,7 @@
     "start": "Commencer",
     "round": "Manche {current} / {total}",
     "gameOver": "Partie terminée — +{points}",
+    "gamePlayed": "Déjà joué",
     "skipForNow": "Passer pour l'instant",
     "minigameUnavailable": "Ce mini-jeu a besoin du moteur {engine}, que l'application ne gère pas encore.",
     "useDecimalPoint": "Utilise un point décimal (3.25), pas une virgule.",

@@ -73,10 +73,21 @@ const courseFigurePlugins = [
   okOnly,
 ];
 
-/** Runtime caches of an older CACHE_VERSION: nothing reads them any more. */
+/**
+ * The runtime caches this worker versions with CACHE_VERSION. The first
+ * service worker named them without a version ("pages", "static-assets"…).
+ */
+const VERSIONED_RUNTIME_CACHES = ["google-fonts", "static-images", "static-assets", "api-responses", "pages"];
+
+/**
+ * Runtime caches of an older CACHE_VERSION, or of the first, unversioned
+ * worker (#2692): nothing reads them any more. Only names of this list
+ * qualify, so the precache, the story media, the course figures and any
+ * cache this worker does not own are kept by construction.
+ */
 export function isStaleRuntimeCache(name: string): boolean {
-  if (name.startsWith("serwist-") || name === STORY_MEDIA_CACHE || name === COURSE_FIGURES_CACHE) return false;
-  return /-v\d+-[\w-]+$/.test(name) && !name.endsWith(`-${CACHE_VERSION}`);
+  const ours = VERSIONED_RUNTIME_CACHES.some((prefix) => name === prefix || name.startsWith(`${prefix}-v`));
+  return ours && !name.endsWith(`-${CACHE_VERSION}`);
 }
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
