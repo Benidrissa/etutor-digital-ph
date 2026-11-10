@@ -67,6 +67,7 @@ from app.domain.services.story_art_service import (
     process_character,
     stored_reference,
 )
+from app.infrastructure.config.image_models import OPENAI_IMAGE_MODEL
 from app.main import app
 from app.tasks import story_art as story_art_task
 from app.tasks.story_art import STORY_ART_DISPATCH_TTL_S, story_art_dispatch_key
@@ -1040,7 +1041,7 @@ class FakeImages:
             call.returned = backdrop_png()
         else:
             call.returned = figure_png(shade=len(self.calls))
-        return call.returned, "gpt-image-1"
+        return call.returned, OPENAI_IMAGE_MODEL
 
     async def generate(
         self, prompt, *, model, size, background=None, max_retries=None, timeout=None
@@ -1126,7 +1127,7 @@ async def run_generator(
         patch.object(svc, "load_art_rows", AsyncMock(return_value=list(rows or []))),
     ):
         generator = StoryArtGenerator(
-            sessions, model="gpt-image-1", generate=images.generate, edit=images.edit, **kwargs
+            sessions, model=OPENAI_IMAGE_MODEL, generate=images.generate, edit=images.edit, **kwargs
         )
         report = await generator.run(COURSE_ID)
     return report, images, sessions
@@ -1162,7 +1163,7 @@ class TestRun:
             assert art.status == "ready" and art.look_digest == GIRL.digest
             assert art.kind == "character" and art.course_id == COURSE_ID
             assert is_webp(art.image_data) and art.height and art.width
-            assert art.model == "gpt-image-1"
+            assert art.model == OPENAI_IMAGE_MODEL
 
     async def test_every_character_is_drawn_idle_before_its_poses(self):
         _, images, _ = await run_generator(
@@ -1246,7 +1247,7 @@ class TestRun:
         async def generate(prompt, *, model, size, background=None, **_options):
             nonlocal calls
             calls += 1
-            return (b"garbage" if calls == 1 else backdrop_png()), "gpt-image-1"
+            return (b"garbage" if calls == 1 else backdrop_png()), OPENAI_IMAGE_MODEL
 
         sessions = FakeSessions()
         with (
@@ -1254,7 +1255,7 @@ class TestRun:
             patch.object(svc, "load_art_rows", AsyncMock(return_value=[])),
         ):
             await StoryArtGenerator(
-                sessions, model="gpt-image-1", generate=generate, edit=AsyncMock()
+                sessions, model=OPENAI_IMAGE_MODEL, generate=generate, edit=AsyncMock()
             ).run(COURSE_ID)
         assert calls == 2 and sessions.written[0].status == "ready"
 
@@ -1277,7 +1278,7 @@ class TestRun:
     async def test_the_default_backends_are_the_provider_functions(self):
         from app.ai.providers import image_provider
 
-        generator = StoryArtGenerator(FakeSessions(), model="gpt-image-1")
+        generator = StoryArtGenerator(FakeSessions(), model=OPENAI_IMAGE_MODEL)
         assert generator._generate is image_provider.generate_image
         assert generator._edit is image_provider.edit_image
         assert generator._sleep is asyncio.sleep
@@ -1465,7 +1466,7 @@ class TestOpenAIProvider:
         out = await provider.generate("p", size="1024x1536", background="transparent")
         kwargs = openai_client.images.generate.call_args.kwargs
         assert kwargs == {
-            "model": "gpt-image-1",
+            "model": OPENAI_IMAGE_MODEL,
             "prompt": "p",
             "size": "1024x1536",
             "quality": "medium",
@@ -1484,7 +1485,7 @@ class TestOpenAIProvider:
         out = await provider.edit("p", b"REF", size="1024x1536", background="transparent")
         kwargs = openai_client.images.edit.call_args.kwargs
         assert kwargs == {
-            "model": "gpt-image-1",
+            "model": OPENAI_IMAGE_MODEL,
             "image": ("ref.png", b"REF", "image/png"),
             "prompt": "p",
             "size": "1024x1536",
@@ -1540,27 +1541,29 @@ class TestGeminiProvider:
 
 
 class TestRouting:
-    async def test_an_edit_with_gemini_configured_goes_to_gpt_image_1(self, openai_client, ledger):
+    async def test_an_edit_with_gemini_configured_goes_to_the_openai_model(
+        self, openai_client, ledger
+    ):
         with patch(
             "app.ai.providers.image_provider.get_settings", return_value=_settings(google="gk")
         ):
             data, used = await edit_image(
                 "p", b"REF", model="gemini-2.5-flash-image", background="transparent"
             )
-        assert (data, used) == (b"EDIT", "gpt-image-1")
-        assert openai_client.images.edit.call_args.kwargs["model"] == "gpt-image-1"
+        assert (data, used) == (b"EDIT", OPENAI_IMAGE_MODEL)
+        assert openai_client.images.edit.call_args.kwargs["model"] == OPENAI_IMAGE_MODEL
         # Built against OpenAI, not Google's endpoint.
         assert "base_url" not in openai_client.cls.call_args.kwargs
         ledger.assert_awaited_once()
         assert ledger.await_args.kwargs == {
             "provider": "openai",
-            "model": "gpt-image-1",
+            "model": OPENAI_IMAGE_MODEL,
             "operation": "image",
             "images_count": 1,
             "usage": None,
         }
 
-    async def test_a_transparent_render_with_gemini_configured_goes_to_gpt_image_1(
+    async def test_a_transparent_render_with_gemini_configured_goes_to_the_openai_model(
         self, openai_client, ledger
     ):
         with patch(
@@ -1569,9 +1572,9 @@ class TestRouting:
             _, used = await generate_image(
                 "p", model="gemini-2.5-flash-image", size="1024x1536", background="transparent"
             )
-        assert used == "gpt-image-1"
+        assert used == OPENAI_IMAGE_MODEL
         kwargs = openai_client.images.generate.call_args.kwargs
-        assert kwargs["model"] == "gpt-image-1" and kwargs["background"] == "transparent"
+        assert kwargs["model"] == OPENAI_IMAGE_MODEL and kwargs["background"] == "transparent"
         assert ledger.await_count == 1
 
     async def test_the_routing_is_logged(self, openai_client, ledger):
@@ -1602,7 +1605,7 @@ class TestRouting:
             patch("app.ai.providers.image_provider.get_settings", return_value=_settings()),
             pytest.raises(RuntimeError),
         ):
-            await edit_image("p", b"REF", model="gpt-image-1")
+            await edit_image("p", b"REF", model=OPENAI_IMAGE_MODEL)
         assert openai_client.images.edit.await_count == 1  # no fallback loop on OpenAI
         assert ledger.await_args.kwargs["success"] is False
         assert ledger.await_args.kwargs["error_type"] == "RuntimeError"
@@ -1615,9 +1618,9 @@ class TestRouting:
             "app.ai.providers.image_provider.get_settings", return_value=_settings(google="gk")
         ):
             data, used = await generate_image("p", model="gemini-2.5-flash-image")
-        assert (data, used) == (b"FB", "gpt-image-1")
+        assert (data, used) == (b"FB", OPENAI_IMAGE_MODEL)
         rows = [c.kwargs for c in ledger.await_args_list]
-        assert [r["model"] for r in rows] == ["gemini-2.5-flash-image", "gpt-image-1"]
+        assert [r["model"] for r in rows] == ["gemini-2.5-flash-image", OPENAI_IMAGE_MODEL]
         assert rows[0]["success"] is False and rows[1]["images_count"] == 1
 
     async def test_no_sdk_retries_reach_the_fallback_client_too(self, openai_client, ledger):
@@ -1634,7 +1637,7 @@ class TestRouting:
 
     async def test_the_edit_timeout_and_retries_reach_the_client(self, openai_client, ledger):
         with patch("app.ai.providers.image_provider.get_settings", return_value=_settings()):
-            await edit_image("p", b"REF", model="gpt-image-1", max_retries=0, timeout=210.0)
+            await edit_image("p", b"REF", model=OPENAI_IMAGE_MODEL, max_retries=0, timeout=210.0)
         openai_client.with_options.assert_called_once_with(max_retries=0, timeout=210.0)
 
     async def test_the_ledger_gets_the_calls_token_usage(self, openai_client, ledger):
@@ -1642,7 +1645,7 @@ class TestRouting:
             b"EDIT", usage=_usage(4200, image=4160, text=40, output=1584)
         )
         with patch("app.ai.providers.image_provider.get_settings", return_value=_settings()):
-            await edit_image("p", b"REF", model="gpt-image-1")
+            await edit_image("p", b"REF", model=OPENAI_IMAGE_MODEL)
         assert ledger.await_args.kwargs["usage"] == {
             "input_tokens": 4200,
             "output_tokens": 1584,
@@ -1652,19 +1655,40 @@ class TestRouting:
 
 
 class TestImagePricing:
-    """gpt-image-1 calls with reported usage are priced by tokens (#2675)."""
+    """GPT image calls with reported usage are priced by tokens (#2675, #2689)."""
 
-    def test_an_edit_is_priced_by_its_input_and_output_tokens(self):
+    USAGE = {
+        "input_tokens": 4200,
+        "output_tokens": 1584,
+        "input_image_tokens": 4160,
+        "input_text_tokens": 40,
+    }
+
+    @pytest.mark.parametrize("model", [OPENAI_IMAGE_MODEL, "gpt-image-2.6-flare"])
+    def test_the_current_models_are_priced_by_tokens(self, model):
         from app.ai.providers.pricing import estimate_cost_cents
 
-        usage = {
-            "input_tokens": 4200,
-            "output_tokens": 1584,
-            "input_image_tokens": 4160,
-            "input_text_tokens": 40,
-        }
         cents, estimated = estimate_cost_cents(
-            model="gpt-image-1", operation="image", usage=usage, images_count=1
+            model=model, operation="image", usage=self.USAGE, images_count=1
+        )
+        # 40 x $5/M + 4160 x $8/M + 1584 x $30/M
+        assert cents == pytest.approx((40 * 500 + 4160 * 800 + 1584 * 3000) / 1_000_000)
+        assert estimated is False
+
+    def test_gpt_image_2_5_is_priced_the_same_but_flagged_estimated(self):
+        from app.ai.providers.pricing import estimate_cost_cents
+
+        cents, estimated = estimate_cost_cents(
+            model="gpt-image-2.5-sunburst", operation="image", usage=self.USAGE, images_count=1
+        )
+        assert cents == pytest.approx((40 * 500 + 4160 * 800 + 1584 * 3000) / 1_000_000)
+        assert estimated is True
+
+    def test_historical_gpt_image_1_rows_keep_their_rates(self):
+        from app.ai.providers.pricing import estimate_cost_cents
+
+        cents, estimated = estimate_cost_cents(
+            model="gpt-image-1", operation="image", usage=self.USAGE, images_count=1
         )
         # 40 x $5/M + 4160 x $10/M + 1584 x $40/M
         assert cents == pytest.approx((40 * 500 + 4160 * 1000 + 1584 * 4000) / 1_000_000)
@@ -1676,12 +1700,12 @@ class TestImagePricing:
         from app.ai.providers.pricing import estimate_cost_cents
 
         cents, _ = estimate_cost_cents(
-            model="gpt-image-1",
+            model=OPENAI_IMAGE_MODEL,
             operation="image",
             usage={"input_tokens": 100, "output_tokens": 1584},
             images_count=1,
         )
-        assert cents == pytest.approx((100 * 500 + 1584 * 4000) / 1_000_000)
+        assert cents == pytest.approx((100 * 500 + 1584 * 3000) / 1_000_000)
 
     def test_without_usage_the_per_image_price_still_applies(self):
         from app.ai.providers.pricing import estimate_cost_cents
@@ -1689,6 +1713,10 @@ class TestImagePricing:
         assert estimate_cost_cents(
             model="gpt-image-1", operation="image", usage=None, images_count=2
         ) == (12.6, False)
+        # A model without a per-image row: the default, flagged estimated.
+        assert estimate_cost_cents(
+            model=OPENAI_IMAGE_MODEL, operation="image", usage=None, images_count=1
+        ) == (6.3, True)
         # Gemini reports no tokens: unchanged.
         assert estimate_cost_cents(
             model="gemini-2.5-flash-image",
@@ -2315,7 +2343,7 @@ class TestTask:
     def test_a_run_uses_the_image_setting_and_holds_then_releases_the_key(self, task_wiring):
         result = run_task(str(COURSE_ID), dedup_key=KEY)
         assert result == {"status": "complete", "planned": 0}
-        task_wiring.cache.get.assert_called_once_with("ai-model-image", "gemini-2.5-flash-image")
+        task_wiring.cache.get.assert_called_once_with("ai-model-image", OPENAI_IMAGE_MODEL)
         assert task_wiring.generator_cls.call_args.kwargs["model"] == "gemini-2.5-flash-image"
         assert task_wiring.generator_cls.call_args.kwargs["retry_failed"] is False
         task_wiring.generator.run.assert_awaited_once_with(COURSE_ID)
@@ -2588,7 +2616,7 @@ def test_on_postgres_a_run_stores_skips_and_redraws_under_new_ids():
 
                 async def run(images: FakeImages) -> dict:
                     return await StoryArtGenerator(
-                        maker, model="gpt-image-1", generate=images.generate, edit=images.edit
+                        maker, model=OPENAI_IMAGE_MODEL, generate=images.generate, edit=images.edit
                     ).run(course_id)
 
                 first_images = FakeImages()

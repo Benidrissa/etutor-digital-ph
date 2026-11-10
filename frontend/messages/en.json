@@ -1107,6 +1107,8 @@
       "resetCategory": "Reset All in Category",
       "resetConfirm": "Are you sure? This will reset all settings in this category to their defaults.",
       "saved": "Setting saved successfully",
+      "saveFailed": "Setting not saved: the value was refused",
+      "notOffered": "no longer offered",
       "resetDone": "Setting reset to default",
       "categoryResetDone": "{count} settings reset to default",
       "sensitive": "Security setting",
@@ -1309,8 +1311,8 @@
           "body": "{errors} AI calls failed ({cost_cents} ¢ still billed). Check the affected providers' quotas and keys."
         },
         "image_fallback_active": {
-          "title": "Gemini → gpt-image-1 image fallback active",
-          "body": "{failures} Gemini attempts failed and fell back to gpt-image-1 (paid, OpenAI). Fix the Google key/quota to return to the intended provider."
+          "title": "Gemini → OpenAI image fallback active",
+          "body": "{failures} Gemini attempts failed and fell back to the OpenAI image model (paid). Fix the Google key/quota to return to the intended provider."
         },
         "low_cache_reuse": {
           "title": "Low prompt-cache reuse",

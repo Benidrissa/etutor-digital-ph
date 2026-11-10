@@ -1,46 +1,101 @@
 """Provider-agnostic image generation for lesson illustrations (#2517).
 
 Which backend generates the text-free illustration is config-selectable via the
-``ai-model-image`` platform setting and resolved by prefix. Both OpenAI
-(``gpt-image-1``) and Google's Gemini image models are reached through the OpenAI
-Images API — Gemini via its OpenAI-compatible endpoint, reusing the same
-``AsyncOpenAI`` client the vision and embeddings services already depend on (no
-extra package), exactly like ``translation.vision_provider``.
+``ai-model-image`` platform setting and resolved by prefix. Both OpenAI's GPT
+image models (:data:`OPENAI_IMAGE_MODEL`) and Google's Gemini image models are
+reached through the OpenAI Images API — Gemini via its OpenAI-compatible
+endpoint, reusing the same ``AsyncOpenAI`` client the vision and embeddings
+services already depend on (no extra package), exactly like
+``translation.vision_provider``.
 
 Illustrations stay **text-free**; the title and labels are rendered as a DOM
 overlay (#2512), so the choice of backend is purely about base-image quality.
 
-A missing ``GOOGLE_API_KEY`` transparently falls back to ``gpt-image-1`` so a
-Gemini default never hard-fails image generation.
+A missing ``GOOGLE_API_KEY`` falls back to :data:`OPENAI_IMAGE_MODEL`, so a
+Gemini setting never hard-fails image generation.
 
 Story-mode art (#2675) adds two capabilities: a **transparent background** on
 ``generate`` (character cut-outs) and **image edit** (a character's other poses
 are edits of its idle pose, so the face and outfit stay the same). Only the GPT
 image models offer either through the Images API; Gemini's OpenAI-compatible
 endpoint offers neither, so :func:`generate_image` and :func:`edit_image` route
-those calls to ``gpt-image-1`` when the configured model cannot do them, and log
-the routing (the ledger row then names the model actually billed).
+those calls to :data:`OPENAI_IMAGE_MODEL` when the configured model cannot do
+them, and log the routing (the ledger row then names the model actually billed).
+
+Model churn (#2689): OpenAI shut ``gpt-image-1`` down on 2026-10-23. The
+current model id lives in one constant. A configured model OpenAI no longer
+knows (a 400/404 on ``param=model``) falls back to it, and is remembered for
+the process. A parameter a model refuses (``background``, ``input_fidelity``,
+``quality``, ``output_format``, ``size``) is dropped and the call tried once
+more, and is remembered per model for the process. A transparent background so
+dropped becomes a plain one-colour background in the prompt, which story art's
+post-processing removes.
 """
 
 from __future__ import annotations
 
 import base64
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import structlog
 from openai import AsyncOpenAI
 
+from app.infrastructure.config.image_models import OPENAI_IMAGE_MODEL
 from app.infrastructure.config.settings import Settings, get_settings
 
 logger = structlog.get_logger(__name__)
 
 _TIMEOUT_SECONDS = 120.0
 
-# Default backend. Gemini ("Nano Banana") gives stronger prompt adherence and
-# base-image quality than gpt-image-1.
-DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"
-_FALLBACK_IMAGE_MODEL = "gpt-image-1"
+# OPENAI_IMAGE_MODEL (app.infrastructure.config.image_models, #2689) is the
+# default, the fallback of every other backend, and the route of edits and
+# transparent renders; ``ai-model-image`` can still select another.
+#: The ``ai-model-image`` default.
+DEFAULT_IMAGE_MODEL = OPENAI_IMAGE_MODEL
+_FALLBACK_IMAGE_MODEL = OPENAI_IMAGE_MODEL
+
+#: Image models OpenAI has shut down, mapped to their successor, so a stored
+#: setting that still names one keeps working (an admin should still update
+#: ``ai-model-image``). Models found missing at run time are added per process.
+_RETIRED_IMAGE_MODELS: dict[str, str] = {"gpt-image-1": OPENAI_IMAGE_MODEL}
+
+#: Parameters a model may refuse (400 ``invalid_value`` / ``unknown_parameter``
+#: / ``unsupported_parameter`` / ``unsupported_value``) that can be dropped
+#: without failing the image.
+DROPPABLE_PARAMS = frozenset({"background", "input_fidelity", "quality", "output_format", "size"})
+_PARAM_ERROR_CODES = frozenset(
+    {"invalid_value", "unknown_parameter", "unsupported_parameter", "unsupported_value"}
+)
+#: Per process: the parameters each model refused, never sent to it again.
+_UNSUPPORTED_PARAMS: dict[str, set[str]] = {}
+
+#: Asked for instead of a transparent background a model refuses: a background
+#: the post-processing (story art's flood fill) can clear. It *replaces* the
+#: prompt's transparent-background wording, so the model gets one instruction.
+PLAIN_BACKGROUND_WORDS = (
+    "plain flat solid light-grey background (one colour: no gradient, no texture, "
+    "no pattern, no checkerboard, no shadow)"
+)
+PLAIN_BACKGROUND = f" Background: one {PLAIN_BACKGROUND_WORDS}, no scenery, no frame."
+_TRANSPARENT_WORDING = re.compile(r"\btransparent background\b", re.IGNORECASE)
+
+
+def plain_background_prompt(prompt: str) -> str:
+    """``prompt`` asking for a plain one-colour background instead of a transparent one.
+
+    Each "transparent background" becomes the plain background; a prompt that
+    does not mention one gets the plain-background sentence appended.
+    """
+
+    def plain(match: re.Match[str]) -> str:
+        words = PLAIN_BACKGROUND_WORDS
+        return words[0].upper() + words[1:] if match.group(0)[0].isupper() else words
+
+    replaced, count = _TRANSPARENT_WORDING.subn(plain, prompt)
+    return replaced if count else prompt + PLAIN_BACKGROUND
+
 
 #: ``background`` values the GPT image models accept; ``None`` leaves it unset
 #: (the model's own default, ``auto``).
@@ -51,12 +106,60 @@ class ImageCapabilityError(RuntimeError):
     """The provider cannot do what was asked (an edit, a transparent background)."""
 
 
+def _error_param(exc: BaseException) -> str | None:
+    param = getattr(exc, "param", None)
+    return param if isinstance(param, str) else None
+
+
+def is_model_error(exc: BaseException | None) -> bool:
+    """OpenAI does not know (or no longer offers) the requested model.
+
+    A 400 on ``param=model`` ("does not exist", deprecated), or a 404 /
+    ``model_not_found``. A configuration problem, not a property of the image.
+    """
+    import openai
+
+    if not isinstance(exc, openai.APIStatusError):
+        return False
+    code = getattr(exc, "code", None)
+    if code == "model_not_found":
+        return True
+    return exc.status_code in (400, 404) and _error_param(exc) == "model"
+
+
+def refused_param(exc: BaseException | None) -> str | None:
+    """The droppable parameter a 400 says the model does not accept, if any."""
+    import openai
+
+    if not isinstance(exc, openai.BadRequestError):
+        return None
+    param = _error_param(exc)
+    if getattr(exc, "code", None) in _PARAM_ERROR_CODES and param in DROPPABLE_PARAMS:
+        return param
+    return None
+
+
+def unsupported_params(model: str) -> frozenset[str]:
+    """The parameters ``model`` refused in this process."""
+    return frozenset(_UNSUPPORTED_PARAMS.get(model, ()))
+
+
+def _remember_unsupported(model: str, param: str) -> None:
+    _UNSUPPORTED_PARAMS.setdefault(model, set()).add(param)
+
+
+def current_image_model(model: str | None) -> str:
+    """``model``, or its successor when OpenAI has retired it."""
+    requested = model or _FALLBACK_IMAGE_MODEL
+    return _RETIRED_IMAGE_MODELS.get(requested, requested)
+
+
 def _usage_of(response: Any) -> dict[str, int] | None:
-    """The token usage gpt-image-1 reports, as a ledger ``usage`` dict, or None.
+    """The token usage a GPT image model reports, as a ledger ``usage`` dict, or None.
 
     ``input_tokens`` and ``output_tokens`` are what the ledger stores; the
     image/text split of the input only feeds the token pricing (image input
-    is billed at twice the text rate, and high-fidelity edits are mostly that).
+    is billed above the text rate, and high-fidelity edits are mostly that).
     """
     usage = getattr(response, "usage", None)
     if usage is None:
@@ -102,6 +205,8 @@ class ImageProvider(Protocol):
     supports_transparency: bool
     #: Token usage of the last successful call, when the backend reports it.
     last_usage: dict[str, int] | None
+    #: The droppable parameters the last request actually sent (see ``_attempt``).
+    last_sent: frozenset[str]
 
     async def generate(
         self,
@@ -126,7 +231,7 @@ class ImageProvider(Protocol):
 
 
 class OpenAIImageProvider:
-    """gpt-image-1 via the OpenAI Images API."""
+    """OpenAI's GPT image models via the Images API."""
 
     supports_edit = True
     supports_transparency = True
@@ -135,6 +240,25 @@ class OpenAIImageProvider:
         self._client = AsyncOpenAI(api_key=api_key, timeout=_TIMEOUT_SECONDS)
         self.model = model
         self.last_usage: dict[str, int] | None = None
+        self.last_sent: frozenset[str] = frozenset()
+
+    def _request(
+        self, prompt: str, params: dict[str, Any], *, transparent: bool
+    ) -> tuple[str, dict[str, Any]]:
+        """``(prompt, params)`` without what this model refused in this process.
+
+        Takes one snapshot of the refused parameters, and records in
+        ``last_sent`` what this very request sends: a concurrent call that
+        learns a refusal meanwhile cannot change it. A refused transparent
+        background becomes a plain one-colour background in the prompt (its
+        transparent wording replaced), which the post-processing can clear.
+        """
+        refused = unsupported_params(self.model)
+        kept = {name: value for name, value in params.items() if name not in refused}
+        if transparent and "background" in refused:
+            prompt = plain_background_prompt(prompt)
+        self.last_sent = frozenset(kept) & DROPPABLE_PARAMS
+        return prompt, kept
 
     async def generate(
         self,
@@ -145,18 +269,13 @@ class OpenAIImageProvider:
         max_retries: int | None = None,
         timeout: float | None = None,
     ) -> bytes:
-        extra: dict = {}
+        params: dict[str, Any] = {"size": size, "quality": "medium"}
         if background is not None:
             # A transparent background needs a format with alpha: PNG.
-            extra = {"background": background, "output_format": "png"}
+            params.update(background=background, output_format="png")
+        prompt, params = self._request(prompt, params, transparent=background == "transparent")
         client = _client_with(self._client, max_retries=max_retries, timeout=timeout)
-        response = await client.images.generate(
-            model=self.model,
-            prompt=prompt,
-            size=size,
-            quality="medium",
-            **extra,
-        )
+        response = await client.images.generate(model=self.model, prompt=prompt, **params)
         self.last_usage = _usage_of(response)
         return base64.b64decode(response.data[0].b64_json)
 
@@ -174,21 +293,18 @@ class OpenAIImageProvider:
 
         ``input_fidelity="high"`` makes the model hold the reference's features,
         faces especially, which is the point of making poses by edit. The
-        ``-mini`` models do not offer it, so it is sent to the others only.
+        ``-mini`` models do not offer it, so it is sent to the others only (and
+        dropped for any model that refuses it).
         """
-        extra: dict = {}
+        params: dict[str, Any] = {"size": size, "quality": "medium"}
         if background is not None:
-            extra = {"background": background, "output_format": "png"}
+            params.update(background=background, output_format="png")
         if "mini" not in self.model.lower():
-            extra["input_fidelity"] = "high"
+            params["input_fidelity"] = "high"
+        prompt, params = self._request(prompt, params, transparent=background == "transparent")
         client = _client_with(self._client, max_retries=max_retries, timeout=timeout)
         response = await client.images.edit(
-            model=self.model,
-            image=("ref.png", image, "image/png"),
-            prompt=prompt,
-            size=size,
-            quality="medium",
-            **extra,
+            model=self.model, image=("ref.png", image, "image/png"), prompt=prompt, **params
         )
         self.last_usage = _usage_of(response)
         return base64.b64decode(response.data[0].b64_json)
@@ -207,6 +323,8 @@ class GeminiImageProvider:
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=_TIMEOUT_SECONDS)
         self.model = model
         self.last_usage: dict[str, int] | None = None
+        #: The compat endpoint is sent none of the droppable parameters.
+        self.last_sent: frozenset[str] = frozenset()
 
     async def generate(
         self,
@@ -247,11 +365,19 @@ def resolve_image_provider(model: str | None = None) -> ImageProvider:
     """Build the provider that serves ``model`` (prefix dispatch).
 
     * ``gemini-*`` / ``imagen-*`` → Google (OpenAI-compatible endpoint), or a
-      graceful fallback to ``gpt-image-1`` when ``GOOGLE_API_KEY`` is unset.
-    * everything else (``gpt-image-*`` / ``dall-e-*``) → OpenAI Images.
+      graceful fallback to :data:`OPENAI_IMAGE_MODEL` when ``GOOGLE_API_KEY``
+      is unset.
+    * everything else (``gpt-image-*`` / ``dall-e-*``) → OpenAI Images; a model
+      OpenAI has retired resolves to its successor.
     """
     settings = get_settings()
-    requested = model or _FALLBACK_IMAGE_MODEL
+    requested = current_image_model(model)
+    if requested != (model or _FALLBACK_IMAGE_MODEL):
+        logger.warning(
+            "retired image model configured — using its successor",
+            configured_model=model,
+            model=requested,
+        )
     m = requested.lower()
 
     if m.startswith("gemini") or m.startswith("imagen"):
@@ -262,8 +388,9 @@ def resolve_image_provider(model: str | None = None) -> ImageProvider:
                 base_url=settings.gemini_openai_base_url,
             )
         logger.warning(
-            "GOOGLE_API_KEY unset — falling back to gpt-image-1 for image generation",
+            "GOOGLE_API_KEY unset — falling back to the OpenAI image model",
             requested_model=requested,
+            model=_FALLBACK_IMAGE_MODEL,
         )
         return _openai_provider(settings, _FALLBACK_IMAGE_MODEL)
 
@@ -284,8 +411,8 @@ async def _record_attempt(
 ) -> None:
     """One ``ai_usage_events`` row (#2629) for one image call, failed or not.
 
-    ``usage`` is the call's token usage when the backend reports it (gpt-image-1):
-    the ledger then prices it by tokens, which counts an edit's reference image.
+    ``usage`` is the call's token usage when the backend reports it: the
+    ledger then prices it by tokens, which counts an edit's reference image.
     """
     from app.domain.services.ai_usage_service import record_ai_usage
 
@@ -307,40 +434,86 @@ async def _record_attempt(
         )
 
 
+async def _attempt(provider: ImageProvider, call: Callable[[ImageProvider], Awaitable[bytes]]):
+    """One call on ``provider``, retried without each droppable parameter it refuses.
+
+    A refusal is retried when the refused parameter was sent in *this*
+    request (``provider.last_sent``), whatever concurrent calls have learnt
+    meanwhile; the parameter is remembered for the model (this process), so
+    the retry and every later call leave it out. Each retry drops one more
+    parameter, so there are at most ``len(DROPPABLE_PARAMS)`` of them. Each
+    HTTP request writes its own ledger row.
+    """
+    retries = 0
+    while True:
+        try:
+            image = await call(provider)
+        except Exception as exc:
+            await _record_attempt(provider.model, error=exc)
+            param = refused_param(exc)
+            sent = getattr(provider, "last_sent", frozenset())
+            if param is None or param not in sent or retries >= len(DROPPABLE_PARAMS):
+                raise
+            _remember_unsupported(provider.model, param)
+            retries += 1
+            logger.warning(
+                "image model refused a parameter — retrying without it",
+                model=provider.model,
+                param=param,
+                error=str(exc),
+            )
+            continue
+        await _record_attempt(provider.model, usage=provider.last_usage)
+        return image
+
+
+def _falls_back(provider: ImageProvider, exc: Exception) -> bool:
+    """Whether a failure on ``provider`` is worth one try on :data:`OPENAI_IMAGE_MODEL`.
+
+    Any failure of another backend (Gemini quota, outage). On OpenAI, only a
+    model OpenAI does not know: anything else would fail the same way again.
+    """
+    if not isinstance(provider, OpenAIImageProvider):
+        return True
+    return provider.model != _FALLBACK_IMAGE_MODEL and is_model_error(exc)
+
+
 async def _call_with_fallback(
     provider: ImageProvider, call: Callable[[ImageProvider], Awaitable[bytes]]
 ) -> tuple[bytes, str]:
-    """Run ``call`` on ``provider``, falling back to gpt-image-1 on any error.
+    """Run ``call`` on ``provider``, falling back to :data:`OPENAI_IMAGE_MODEL` (see
+    :func:`_falls_back`).
 
     Each attempt — including the failed primary before a fallback — writes one
     ``ai_usage_events`` row (#2629), which is what surfaces "Gemini is broken and
-    we are silently paying gpt-image-1" on the admin cost dashboard.
+    we are silently paying OpenAI" on the admin cost dashboard. A model OpenAI
+    does not know is remembered as retired for the process.
     """
     try:
-        image = await call(provider)
+        return await _attempt(provider, call), provider.model
     except Exception as exc:
-        await _record_attempt(provider.model, error=exc)
-        if isinstance(provider, OpenAIImageProvider):
-            raise  # already on the fallback backend — nothing left to try
+        if not _falls_back(provider, exc):
+            raise
+        if is_model_error(exc):
+            _RETIRED_IMAGE_MODELS[provider.model] = _FALLBACK_IMAGE_MODEL
         logger.warning(
-            "image provider failed — falling back to gpt-image-1",
+            "image provider failed — falling back to the OpenAI image model",
             provider_model=provider.model,
+            model=_FALLBACK_IMAGE_MODEL,
             error=str(exc),
         )
         fallback = _openai_provider(get_settings(), _FALLBACK_IMAGE_MODEL)
         try:
-            image = await call(fallback)
+            return await _attempt(fallback, call), fallback.model
         except Exception as fallback_exc:
-            await _record_attempt(fallback.model, error=fallback_exc)
-            raise
-        await _record_attempt(fallback.model, usage=fallback.last_usage)
-        return image, fallback.model
-    await _record_attempt(provider.model, usage=provider.last_usage)
-    return image, provider.model
+            # Keep the primary's failure: callers classify the whole chain
+            # (a billed primary failure must not pass for a configuration one).
+            fallback_exc.image_primary_error = exc  # type: ignore[attr-defined]
+            raise fallback_exc from exc
 
 
 def _capable_provider(model: str, *, edit: bool, transparent: bool) -> ImageProvider:
-    """The provider for ``model``, or gpt-image-1 when ``model`` cannot do the call.
+    """The provider for ``model``, or :data:`OPENAI_IMAGE_MODEL` when it cannot do the call.
 
     A capability routing is not a failure, so it writes no ledger row of its
     own: it is logged, and the call's ledger row names the model billed.
@@ -357,9 +530,10 @@ def _capable_provider(model: str, *, edit: bool, transparent: bool) -> ImageProv
     if not missing:
         return provider
     logger.info(
-        "image provider lacks a capability — routing to gpt-image-1",
+        "image provider lacks a capability — routing to the OpenAI image model",
         requested_model=model,
         provider_model=provider.model,
+        model=_FALLBACK_IMAGE_MODEL,
         missing=missing,
     )
     return _openai_provider(get_settings(), _FALLBACK_IMAGE_MODEL)
@@ -374,15 +548,15 @@ async def generate_image(
     max_retries: int | None = None,
     timeout: float | None = None,
 ) -> tuple[bytes, str]:
-    """Generate an image for ``model``, falling back to gpt-image-1 on any error.
+    """Generate an image for ``model``, falling back to :data:`OPENAI_IMAGE_MODEL`.
 
     The resolve-time fallback only covers a *missing* key. A present-but-unprivileged
     key (e.g. a free-tier Gemini key with image quota 0) raises at call time
-    (429 RESOURCE_EXHAUSTED). Catch any provider error and retry once on gpt-image-1
-    so image generation never hard-fails. Returns ``(image_bytes, model_used)``.
+    (429 RESOURCE_EXHAUSTED). Catch any provider error and retry once on the OpenAI
+    model so image generation never hard-fails. Returns ``(image_bytes, model_used)``.
 
-    ``background="transparent"`` (a PNG with alpha) goes straight to gpt-image-1
-    when ``model`` cannot honour it (Gemini). ``max_retries``/``timeout``
+    ``background="transparent"`` (a PNG with alpha) goes straight to the OpenAI
+    model when ``model`` cannot honour it (Gemini). ``max_retries``/``timeout``
     override the SDK client's for this call, the fallback's included (story
     art passes ``max_retries=0``: it retries itself, and each HTTP request
     then has its own ledger row); left unset, nothing changes.
@@ -408,9 +582,9 @@ async def edit_image(
 ) -> tuple[bytes, str]:
     """Edit ``image`` (PNG bytes) by ``prompt`` with ``model``; see :func:`generate_image`.
 
-    Goes straight to gpt-image-1 when ``model`` cannot edit (Gemini), and falls
-    back to it on any error. Every attempt writes one ``ai_usage_events`` row.
-    Returns ``(image_bytes, model_used)``.
+    Goes straight to the OpenAI model when ``model`` cannot edit (Gemini).
+    Every attempt writes one ``ai_usage_events`` row. Returns
+    ``(image_bytes, model_used)``.
     """
     provider = _capable_provider(model, edit=True, transparent=background == "transparent")
     return await _call_with_fallback(

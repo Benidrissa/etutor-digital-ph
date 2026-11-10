@@ -71,7 +71,16 @@ FEATURE_STORY_ART = "story_art"
 #: Stored on every row (``story_art.art_version``). Bump it to redraw every
 #: course's art (a prompt or post-processing change worth paying for): rows of
 #: an older version are stale, so the next view of each course starts a run.
-ART_VERSION = 1
+#: 2 (#2689): every v1 row failed (``gpt-image-1`` had been shut down) and was
+#: stored as final; v2 draws each of them once with the current model.
+ART_VERSION = 2
+#: A failure caused by the configuration (the image model does not exist) is
+#: never final: it is tried again after this wait, or at once when the
+#: ``ai-model-image`` setting changes.
+CONFIG_RETRY_AFTER = timedelta(hours=1)
+#: A parameter the model refused is left out from then on: the image is tried
+#: again soon.
+PARAM_RETRY_AFTER = timedelta(minutes=10)
 
 #: Cost guard: images one run may draw (about 26 for a usual course: two hero
 #: variants and four other cast members at four poses each, plus the places).
@@ -404,6 +413,7 @@ def art_for_view(
     rows: Iterable[Any],
     *,
     now: datetime | None = None,
+    model: str | None = None,
 ) -> ViewArt:
     """The art map of one story view, judged exactly as a run plans.
 
@@ -414,16 +424,19 @@ def art_for_view(
     An image counts as outstanding only when the run's plan draws it: an
     unscheduled one (a draft's own key, a bible of defaults awaiting its
     retry) is missing, so the map never says ``pending`` for work nobody
-    will do.
+    will do. ``model`` is the configured image model (``ai-model-image``):
+    a failure under another model is tried again (:func:`row_state`).
     """
     now = now or datetime.now(UTC)
     rows = list(rows)
-    plan = plan_art(course.items, rows, accepted=course.accepted, now=now)
+    plan = plan_art(course.items, rows, accepted=course.accepted, now=now, model=model)
     scheduled = {(job.item.kind, job.item.key, pose) for job in plan for pose in job.poses}
     accepted = {key: dict(looks) for key, looks in course.accepted.items()}
     for item in document_items:
         accepted.setdefault((item.kind, item.key), {item.digest: item.look})
-    art_map = build_art_map(document_items, rows, accepted=accepted, now=now, scheduled=scheduled)
+    art_map = build_art_map(
+        document_items, rows, accepted=accepted, now=now, scheduled=scheduled, model=model
+    )
     return ViewArt(art_map=art_map, plan=plan)
 
 
@@ -456,19 +469,27 @@ class ArtMap:
 RowState = Literal["ready", "failed", "outstanding"]
 
 
-def row_state(row: Any, accepted: Mapping[str, str], *, now: datetime) -> RowState:
+def row_state(
+    row: Any, accepted: Mapping[str, str], *, now: datetime, model: str | None = None
+) -> RowState:
     """How one stored image stands against the looks that count as current.
 
     ``outstanding`` (a run draws it): no row, a look that is not the course's
-    any more, an older :data:`ART_VERSION`, or a transient failure whose wait
-    is over. ``failed``: a final failure, or a transient one still waiting. A
-    row of a *newer* version is current: code rolled back after a version bump
-    keeps serving the newer art instead of redrawing every course.
+    any more, an older :data:`ART_VERSION`, a transient failure whose wait is
+    over, or a failure under another image model than ``model`` (the
+    ``ai-model-image`` setting: a changed model is a new chance, and the fix
+    for a model that does not exist). ``failed``: a final failure, or a
+    transient one still waiting. A row of a *newer* version is current: code
+    rolled back after a version bump keeps serving the newer art instead of
+    redrawing every course. A ready row is never redrawn for a model change.
     """
     if row is None or row.look_digest not in accepted or row.art_version < ART_VERSION:
         return "outstanding"
     if row.status == STATUS_READY:
         return "ready"
+    failed_under = getattr(row, "model", None)
+    if model and failed_under and failed_under != model:
+        return "outstanding"
     if row.retry_after is not None and row.retry_after <= now:
         return "outstanding"
     return "failed"
@@ -485,6 +506,7 @@ def item_states(
     accepted: Mapping[str, str],
     *,
     now: datetime,
+    model: str | None = None,
 ) -> dict[str, RowState]:
     """:func:`row_state` of each of ``item``'s images.
 
@@ -492,7 +514,7 @@ def item_states(
     they share its state: redrawn with it, or failed with it.
     """
     states = {
-        pose: row_state(by_item.get((item.kind, item.key, pose)), accepted, now=now)
+        pose: row_state(by_item.get((item.kind, item.key, pose)), accepted, now=now, model=model)
         for pose in item.poses
     }
     if item.kind == KIND_CHARACTER and states[POSE_IDLE] != "ready":
@@ -512,6 +534,7 @@ def build_art_map(
     accepted: AcceptedLooks | None = None,
     now: datetime | None = None,
     scheduled: set[tuple[str, str, str]] | None = None,
+    model: str | None = None,
 ) -> ArtMap:
     """The contract's ``art`` map for a document whose looks are ``items``.
 
@@ -535,7 +558,7 @@ def build_art_map(
     places: dict[str, str] = {}
     ready = failed = outstanding = 0
     for item in items:
-        states = item_states(item, by_item, _accepted_for(item, accepted), now=now)
+        states = item_states(item, by_item, _accepted_for(item, accepted), now=now, model=model)
         for pose, state in states.items():
             if state == "outstanding" and (
                 scheduled is None or (item.kind, item.key, pose) in scheduled
@@ -672,7 +695,7 @@ def process_character(raw: bytes) -> tuple[bytes, int, int]:
 def process_backdrop(raw: bytes) -> tuple[bytes, int, int]:
     """Crop to 3:2 if needed (centred), cap at 1536 wide, and save as WebP.
 
-    gpt-image-1 returns 1536x1024 already; Gemini sets the aspect from the
+    The GPT image models return 1536x1024 already; Gemini sets the aspect from the
     prompt and may not honour it. Returns ``(webp, width, height)``.
     """
     from PIL import Image
@@ -752,6 +775,7 @@ def plan_art(
     accepted: AcceptedLooks | None = None,
     retry_failed: bool = False,
     now: datetime | None = None,
+    model: str | None = None,
 ) -> list[ArtJob]:
     """What a run must draw: every image :func:`row_state` calls ``outstanding``.
 
@@ -761,13 +785,15 @@ def plan_art(
     character's idle is (re)drawn, its other poses are redrawn with it: they
     are edits of the idle, and a new idle has a new face. A pose missing beside
     a kept idle is an edit of the stored idle, drawn as the look of that idle.
+    ``model`` is the configured image model: a failure under another one is
+    drawn again.
     """
     now = now or datetime.now(UTC)
     by_item = _by_item(rows)
     jobs: list[ArtJob] = []
     for item in items:
         looks = _accepted_for(item, accepted)
-        states = item_states(item, by_item, looks, now=now)
+        states = item_states(item, by_item, looks, now=now, model=model)
         needed = [
             pose
             for pose, state in states.items()
@@ -842,6 +868,25 @@ def failure_is_timeout(exc: BaseException | None) -> bool:
     return isinstance(exc, openai.APITimeoutError | TimeoutError | httpx.TimeoutException)
 
 
+def _primary_error(exc: BaseException | None) -> BaseException | None:
+    """The failure of the primary backend when ``exc`` is its fallback's (else None)."""
+    return getattr(exc, "image_primary_error", None)
+
+
+def failure_is_config(exc: BaseException | None) -> bool:
+    """The image model does not exist (or is no longer offered), on every attempt.
+
+    Not a property of the image: it succeeds once ``ai-model-image`` names a
+    model OpenAI serves (#2689), so it is never stored as final. Only when the
+    whole chain failed on the model: a primary that failed otherwise (a billed
+    Gemini timeout) before a fallback's model error is judged by its own error.
+    """
+    from app.ai.providers.image_provider import is_model_error
+
+    primary = _primary_error(exc)
+    return is_model_error(exc) and (primary is None or is_model_error(primary))
+
+
 def failure_is_transient(exc: BaseException | None) -> bool:
     """Whether a later run may succeed where this one failed.
 
@@ -897,11 +942,23 @@ def classify_failure(
     back, so it gets at most :data:`TIMEOUT_LATER_RUNS` later run(s) before it
     is final. ``previous`` is the row the run found; only this image's own
     failed runs count (a pose never attempted because its idle failed is
-    stored with ``failed_runs=0``).
+    stored with ``failed_runs=0``). A configuration failure (the model does
+    not exist on every attempt, :func:`failure_is_config`) is never final and
+    counts no run: it waits :data:`CONFIG_RETRY_AFTER`, or less if the model
+    setting changes. When only a fallback failed on the model, the primary's
+    own failure is judged instead. A refused parameter is left out from then
+    on, so it waits only :data:`PARAM_RETRY_AFTER`.
     """
+    from app.ai.providers.image_provider import DROPPABLE_PARAMS, is_model_error, refused_param
+
+    if failure_is_config(exc):
+        error = _error_text(exc or ImageFailed())
+        return Failure(error=f"configuration: {error}"[:500], retry_after=now + CONFIG_RETRY_AFTER)
+    primary = _primary_error(exc)
+    if primary is not None and is_model_error(exc):
+        # The fallback's model error is not this image's failure: the primary's is.
+        exc = primary
     error = _error_text(exc or ImageFailed())
-    if not failure_is_transient(exc):
-        return Failure(error=error)
     runs = 1
     if (
         previous is not None
@@ -911,6 +968,14 @@ def classify_failure(
         and previous.failed_runs
     ):
         runs = previous.failed_runs + 1
+    if refused_param(exc) is not None:
+        # A parameter the model refused: it is remembered and left out next
+        # time, so a later run soon succeeds. Never final while parameters are
+        # left to drop.
+        retry_after = now + PARAM_RETRY_AFTER if runs <= len(DROPPABLE_PARAMS) else None
+        return Failure(error=error, failed_runs=runs, retry_after=retry_after)
+    if not failure_is_transient(exc):
+        return Failure(error=error)
     later_runs = TIMEOUT_LATER_RUNS if failure_is_timeout(exc) else len(TRANSIENT_RETRY_BACKOFF)
     retry_after = now + TRANSIENT_RETRY_BACKOFF[runs - 1] if runs <= later_runs else None
     return Failure(error=error, failed_runs=runs, retry_after=retry_after)
@@ -1007,7 +1072,13 @@ class StoryArtGenerator:
                 detail="a bible of defaults awaits its retry: its looks are not drawn",
             )
         self._previous = _by_item(rows)
-        jobs = plan_art(looks.items, rows, accepted=looks.accepted, retry_failed=self._retry_failed)
+        jobs = plan_art(
+            looks.items,
+            rows,
+            accepted=looks.accepted,
+            retry_failed=self._retry_failed,
+            model=self._model,
+        )
         kept, skipped = apply_cap(jobs, self._max_images)
         report = RunReport(skipped=[job.item.key for job in skipped])
         if skipped:
@@ -1150,6 +1221,8 @@ class StoryArtGenerator:
                     attempt=attempt,
                     error=_error_text(exc),
                 )
+                if failure_is_config(exc):
+                    break  # the same model would fail the same way: no second call
                 wait = rate_limit_wait(exc)
                 if wait and attempt < ATTEMPTS_PER_IMAGE:
                     await self._sleep(wait)
@@ -1202,6 +1275,8 @@ class StoryArtGenerator:
             error=failure.error,
             failed_runs=failure.failed_runs,
             retry_after=failure.retry_after,
+            # The configured model it failed under: a model change retries it.
+            model=self._model,
         )
 
     async def _store(

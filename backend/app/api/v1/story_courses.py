@@ -434,7 +434,12 @@ async def _story_art(
     except Exception as exc:
         logger.warning("Story art unavailable", course_id=str(course_id), error=str(exc))
         return _ServedArt(empty_art("pending"), drawing=True)
-    view = art_for_view(items, course, rows, now=datetime.now(UTC))
+    from app.ai.providers.image_provider import DEFAULT_IMAGE_MODEL
+    from app.domain.services.platform_settings_service import SettingsCache
+
+    # The configured model, as a run reads it: a failure under another one is retried.
+    image_model = SettingsCache.instance().get("ai-model-image", DEFAULT_IMAGE_MODEL)
+    view = art_for_view(items, course, rows, now=datetime.now(UTC), model=image_model)
     if view.plan and may_dispatch:
         try:
             await dispatch_story_art_generation(course_id)
