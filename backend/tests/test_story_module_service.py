@@ -754,6 +754,55 @@ async def test_course_questions_are_asked_in_the_story_voice_with_the_key_locked
     assert model.calls == [] and len(judge.messages) == 1
 
 
+async def test_a_kept_verdict_is_checked_again_for_free_when_the_chapter_is_told(sessions):
+    """A stem approved before a check existed, that fails it now: dropped, no judge call."""
+    from tests.test_story_stems import FakeJudge
+
+    seed_ = await seed(sessions)
+    judge = FakeJudge("yes")
+    await run(service_for(StemModel(), stem_judge=judge), sessions, seed_)
+    assert len(judge.messages) == 1
+    # As if the q3 stem had been approved under the checks of before: its
+    # lead-in now holds a negation (a rejection today).
+    bad = {
+        "en": "Grandma does not know. Why is a pebble not alive?",
+        "fr": "Mamie ne sait pas. Pourquoi un caillou n'est-il pas vivant ?",
+    }
+    key = str(seed_.units["1.1"])
+    async with sessions.maker() as session:
+        row = (
+            await session.execute(
+                sa.select(StoryModulePlan).where(StoryModulePlan.module_id == seed_.module_id)
+            )
+        ).scalar_one()
+        content = copy.deepcopy(row.content)
+        kept = content["packs"][key]
+        for item in kept["spine"]["derived"]:
+            if item["ref"] == "q3":
+                item["story_stem"] = dict(bad)
+        kept["stems"]["approved"]["q3"] = dict(bad)
+        row.content = content
+        await session.execute(
+            sa.delete(StoryCourseRecord).where(
+                StoryCourseRecord.module_unit_id == seed_.units["1.1"]
+            )
+        )
+        await session.commit()
+    model = StemModel()
+    record = await run(service_for(model, stem_judge=judge), sessions, seed_)
+    assert len(judge.messages) == 1  # the judge is never asked again
+    assert model.calls == [("story", "1.1")]  # the pack was kept
+    asked = {
+        q["derived_from"]["question_id"]: q
+        for q in record.content["questions"]
+        if q.get("derived_from")
+    }
+    quiz = {q["id"]: q for q in quiz_questions(LANGUAGE)}
+    assert asked["q3"]["prompt"][LANGUAGE] == quiz["q3"]["question"]
+    assert "original_stem" not in asked["q3"]
+    assert "original_stem" in asked["q1"]  # still approved and still passing
+
+
 async def test_a_story_stem_the_judge_rejects_falls_back_to_the_quiz_stem(sessions):
     from tests.test_story_stems import FakeJudge
 

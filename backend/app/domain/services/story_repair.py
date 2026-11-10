@@ -1067,6 +1067,26 @@ def _home_options(spec: dict[str, Any], mcq: QuizMcq, home: str, path: str) -> l
     return home_options
 
 
+def usable_story_stem(
+    ctx: LessonStoryContext, ref: str, correct_texts: list[str]
+) -> dict[str, str] | None:
+    """The approved story stem of question ``ref`` (#2698), if it can be asked as it is.
+
+    Only ``ctx.story_stems`` decides — the approved stems, checked in code and
+    by the judge — never a key of the document: written in both languages,
+    within the prompt's length, without the correct answer.
+    """
+    story = ctx.story_stems.get(ref)
+    if (
+        isinstance(story, dict)
+        and all(isinstance(story.get(lang), str) and story[lang] for lang in LANGS)
+        and all(len(story[lang]) <= PROMPT_LIMITS[lang] for lang in LANGS)
+        and _leak_free(story, correct_texts)
+    ):
+        return {lang: story[lang] for lang in LANGS}
+    return None
+
+
 def _derived_question(
     mcq: QuizMcq,
     spec: dict[str, Any],
@@ -1119,17 +1139,11 @@ def _derived_question(
     # #2698: the question asked in the story's voice, when its rewrite passed
     # every check and the judge. Only this sentence changes; the original is
     # kept next to it, and no card is needed (it fits the prompt).
-    story = ctx.story_stems.get(mcq.ref)
-    if (
-        story
-        and _leak_free(story, correct_texts)
-        and all(story.get(lang) and len(story[lang]) <= PROMPT_LIMITS[lang] for lang in LANGS)
-    ):
-        prompt = {lang: story[lang] for lang in LANGS}
-    else:
-        story = None
-        if any(len(prompt[lang]) > PROMPT_LIMITS[lang] for lang in LANGS):
-            situation, prompt = stem, dict(_SITUATION_PROMPT)
+    story = usable_story_stem(ctx, mcq.ref, correct_texts)
+    if story is not None:
+        prompt = dict(story)
+    elif any(len(prompt[lang]) > PROMPT_LIMITS[lang] for lang in LANGS):
+        situation, prompt = stem, dict(_SITUATION_PROMPT)
 
     # Wrong options: a misconception and, when written, a targeted hint.
     distractors: dict[int, dict[str, Any]] = {}
@@ -3322,12 +3336,24 @@ def enforce_quiz_fidelity(doc: dict[str, Any], ctx: LessonStoryContext) -> None:
         question["answer"] = ids[mcq.correct_index]
         choices[mcq.correct_index].pop("misconception", None)
         situation = situations.get(mcq.ref)
+        correct = [choices[mcq.correct_index].get(lang, "") for lang in LANGS]
+        story = usable_story_stem(ctx, mcq.ref, correct)
         original = question.get("original_stem")
-        if isinstance(original, dict):
-            # #2698: asked in the story's voice; the quiz's own stem stays on record.
-            original[target] = mcq.stem
+        if story is not None and situation is None:
+            # #2698: asked in the story's voice — the approved stem, re-asserted;
+            # the quiz's own stem stays on record.
+            question["prompt"] = dict(story)
+            original = original if isinstance(original, dict) else {}
+            question["original_stem"] = {
+                target: mcq.stem,
+                ctx.home: original.get(ctx.home) or mcq.stem,
+            }
             question.pop("stem", None)
-        elif situation is not None:
+            if mcq.explanation and isinstance(question.get("explanation"), dict):
+                question["explanation"][target] = mcq.explanation
+            continue
+        question.pop("original_stem", None)
+        if situation is not None:
             situation[target] = [mcq.stem]
             stem = question.get("stem") if isinstance(question.get("stem"), dict) else {}
             home_rows = situation.get(ctx.home) or [mcq.stem]

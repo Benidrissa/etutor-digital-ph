@@ -132,7 +132,12 @@ from app.domain.services.story_plan import (
     stored_packs,
 )
 from app.domain.services.story_props import plan_props
-from app.domain.services.story_stems import STEM_JUDGE_VERSION, approve_stems, approved_stems
+from app.domain.services.story_stems import (
+    STEM_JUDGE_VERSION,
+    approve_stems,
+    approved_stems,
+    recheck_stems,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -1457,7 +1462,8 @@ class ModuleStoryService:
         """
         kept = pack.get("stems")
         if isinstance(kept, dict) and kept.get("version") == STEM_JUDGE_VERSION:
-            return approved_stems(kept)
+            # Read again with the checks as they are now: free, never the judge.
+            return recheck_stems(chapter, pack["spine"], approved_stems(kept))
         with ai_usage_context(
             FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
         ):

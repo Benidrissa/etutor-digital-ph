@@ -74,9 +74,13 @@ def stemmed_pack(unit: str = "1.1", language: str = "en") -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
+#: The course's words a story stem may use as names (the fixture bible's).
+COURSE = ["Grandma", "Mamie", "Awa"]
+
+
 def test_a_faithful_story_stem_passes():
     for ref in STORY_STEMS:
-        assert stem_problems(candidate(ref)) == [], ref
+        assert stem_problems(candidate(ref), allowed=COURSE) == [], ref
 
 
 @pytest.mark.parametrize(
@@ -89,7 +93,7 @@ def test_a_faithful_story_stem_passes():
             {
                 "en": "Grandma holds up the stone: it never feeds, grows or reproduces. Why not alive?"
             },
-            "correct answer",
+            "names an option",
         ),
         ({"en": "In Bouaké, Aminata holds up a stone. Why is a pebble not alive?"}, "name"),
         ({"en": "Grandma meets Doctor Traoré. Why is a pebble not alive?"}, "name or place"),
@@ -100,7 +104,9 @@ def test_a_faithful_story_stem_passes():
     ],
 )
 def test_a_story_stem_that_changes_the_question_is_refused(change, problem):
-    found = stem_problems(candidate("q3", **change), blocklist=["Aminata", "Bouaké"])
+    found = stem_problems(
+        candidate("q3", **change), blocklist=["Aminata", "Bouaké"], allowed=COURSE
+    )
     assert found, change
     assert any(problem in p for p in found), found
 
@@ -120,7 +126,7 @@ def test_the_correct_answer_and_the_key_terms_are_checked():
     assert stem_problems(base) == []
     leaked = copy.deepcopy(base)
     leaked.rewrite["en"] = "The jury holds a pebble: which of these is NOT alive?"
-    assert any("correct answer" in p for p in stem_problems(leaked))
+    assert any("names an option" in p for p in stem_problems(leaked))
     # The words a stem shares with its options tie it to them: they stay.
     heart = StemCandidate(
         ref="q99",
@@ -146,8 +152,8 @@ def test_the_correct_answer_and_the_key_terms_are_checked():
 
 def test_a_name_of_the_course_may_be_used():
     kept = candidate("q3", en="Awa holds up the grey stone. Why is a pebble not alive, Awa?")
-    assert stem_problems(kept, allowed=["Awa"]) == []
-    assert stem_problems(kept) != []
+    assert stem_problems(kept, allowed=COURSE) == []
+    assert stem_problems(kept, allowed=["Mamie"]) != []
 
 
 # --------------------------------------------------------------------------
@@ -220,7 +226,7 @@ def test_only_the_stems_that_pass_the_checks_reach_the_judge():
     leaked["story_stem"]["en"] = "It folds shut! What does a mimosa leaf do when you touch it?"
     candidates, kept = stem_candidates(ctx, the_pack)
     assert [c.ref for c in candidates] == ["q1", "q3"]
-    assert "correct answer" in kept["q2"]
+    assert "names an option" in kept["q2"]
     judge = FakeJudge()
     verdict = asyncio.run(approve_stems(ctx, the_pack, judge))
     assert len(judge.messages) == 1 and "[q2]" not in judge.messages[0]
@@ -319,3 +325,317 @@ def test_a_question_asked_in_the_story_voice_is_still_the_quiz_question_for_dedu
     for language in ("en", "fr"):
         key = derived_key(_question(voiced, "q3"), language)
         assert key is not None and key == derived_key(_question(plain, "q3"), language)
+
+
+# --------------------------------------------------------------------------
+# The review of #2701: what the checks made in code must refuse
+# --------------------------------------------------------------------------
+
+ORGANS = {
+    "en": ["The skin", "The liver", "The heart", "The brain"],
+    "fr": ["La peau", "Le foie", "Le cœur", "Le cerveau"],
+}
+ALIVE = {
+    "en": ["A pebble", "A snail", "A mango tree", "A goat"],
+    "fr": ["Un caillou", "Un escargot", "Un manguier", "Une chèvre"],
+}
+
+
+def _check(original, rewrite, options, correct=0, **kwargs) -> list[str]:
+    return stem_problems(
+        StemCandidate(
+            ref="q1", original=original, rewrite=rewrite, options=options, correct_index=correct
+        ),
+        allowed=COURSE,
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    ("original", "rewrite", "options", "problem"),
+    [
+        (  # Guard words, not groups: "largest" is not "smallest".
+            {
+                "en": "Which is the largest organ of the human body?",
+                "fr": "Quel est le plus grand organe du corps humain ?",
+            },
+            {
+                "en": "Grandma rubs her arm. Which is the smallest organ of the human body?",
+                "fr": "Mamie frotte son bras. Quel est le plus petit organe du corps humain ?",
+            },
+            ORGANS,
+            "comparison changed",
+        ),
+        (  # « le plus » is not « le moins ».
+            {
+                "en": "Which organ uses the most energy?",
+                "fr": "Quel organe utilise le plus d'énergie ?",
+            },
+            {
+                "en": "{friend} yawns. Which organ uses the least energy?",
+                "fr": "{friend} bâille. Quel organe utilise le moins d'énergie ?",
+            },
+            ORGANS,
+            "comparison changed",
+        ),
+        (  # A guard word in the lead-in is a rejection.
+            {
+                "en": "Which of these is not alive?",
+                "fr": "Lequel de ces éléments n'est pas vivant ?",
+            },
+            {
+                "en": "Grandma does not know. Which of these is alive?",
+                "fr": "Mamie ne sait pas. Lequel de ces éléments est vivant ?",
+            },
+            ALIVE,
+            "lead-in has a word",
+        ),
+        (  # non-living → living.
+            {
+                "en": "Which of these is non-living?",
+                "fr": "Lequel de ces éléments est non vivant ?",
+            },
+            {
+                "en": "{friend} looks at the table. Which of these is living?",
+                "fr": "{friend} regarde la table. Lequel de ces éléments est vivant ?",
+            },
+            ALIVE,
+            "restriction",
+        ),
+        (  # « ne … que » dropped.
+            {
+                "en": "Which animal eats only plants?",
+                "fr": "Quel animal ne mange que des plantes ?",
+            },
+            {
+                "en": "{friend} points at the yard. Which animal eats plants?",
+                "fr": "{friend} montre la cour. Quel animal mange des plantes ?",
+            },
+            ALIVE,
+            "restriction",
+        ),
+        (  # "other than" dropped.
+            {
+                "en": "Which is a sign of life other than growth?",
+                "fr": "Quel est un signe de vie autre que la croissance ?",
+            },
+            {
+                "en": "{friend} thinks. Which is a sign of life, like growth?",
+                "fr": "{friend} réfléchit. Quel est un signe de vie, comme la croissance ?",
+            },
+            {
+                "en": ["Breathing", "Growth", "Colour", "Weight"],
+                "fr": ["La respiration", "La croissance", "La couleur", "Le poids"],
+            },
+            "restriction",
+        ),
+        (  # « à l'exception de » dropped.
+            {
+                "en": "All of these are alive except which one?",
+                "fr": "Tous ces éléments sont vivants, à l'exception duquel ?",
+            },
+            {
+                "en": "Grandma lines them up. All of these are alive except which one?",
+                "fr": "Mamie les aligne. Tous ces éléments sont vivants : lequel est vivant ?",
+            },
+            ALIVE,
+            "restriction",
+        ),
+        (  # A number spelled out gives the answer away.
+            {
+                "en": "How many chambers does the human heart have?",
+                "fr": "Combien de cavités le cœur humain a-t-il ?",
+            },
+            {
+                "en": "{friend} counts four on her fingers. How many chambers does the human heart have?",
+                "fr": "{friend} compte quatre sur ses doigts. Combien de cavités le cœur humain a-t-il ?",
+            },
+            {"en": ["2", "3", "4", "5"], "fr": ["2", "3", "4", "5"]},
+            "numbers changed",
+        ),
+        (  # A multiplier is a number: double is not triple.
+            {
+                "en": "What happens to the area if you double the side?",
+                "fr": "Que devient l'aire si on double le côté ?",
+            },
+            {
+                "en": "{friend} draws a square. What happens to the area if you triple the side?",
+                "fr": "{friend} dessine un carré. Que devient l'aire si on triple le côté ?",
+            },
+            {
+                "en": ["It doubles", "It triples", "It is 4 times larger", "It stays"],
+                "fr": ["Elle double", "Elle triple", "Elle est 4 fois plus grande", "Elle reste"],
+            },
+            "numbers changed",
+        ),
+        (  # A unit word with no number: micrometres are not millimetres.
+            {
+                "en": "How wide is a cell, in micrometres?",
+                "fr": "Quelle est la largeur d'une cellule, en micromètres ?",
+            },
+            {
+                "en": "{friend} squints. How wide is a cell, in millimetres?",
+                "fr": "{friend} plisse les yeux. Quelle est la largeur d'une cellule, en millimètres ?",
+            },
+            {
+                "en": ["About 10", "About 100", "About 1000", "About 1"],
+                "fr": ["Environ 10", "Environ 100", "Environ 1000", "Environ 1"],
+            },
+            "units changed",
+        ),
+        (  # Ruling distractors out names options the original does not.
+            {"en": "Which organ pumps blood?", "fr": "Quel organe pompe le sang ?"},
+            {
+                "en": "{friend} sighs: not the liver, not the skin. Which organ pumps blood?",
+                "fr": "{friend} soupire : ni le foie, ni la peau. Quel organe pompe le sang ?",
+            },
+            {
+                "en": ["The heart", "The liver", "The skin", "The lungs"],
+                "fr": ["Le cœur", "Le foie", "La peau", "Les poumons"],
+            },
+            "names an option",
+        ),
+        (  # A new name, even one that starts the sentence.
+            {"en": "Which organ pumps blood?", "fr": "Quel organe pompe le sang ?"},
+            {
+                "en": "Moussa taps his chest. Which organ pumps blood?",
+                "fr": "Moussa tape sa poitrine. Quel organe pompe le sang ?",
+            },
+            {
+                "en": ["The heart", "The liver", "The skin", "The lungs"],
+                "fr": ["Le cœur", "Le foie", "La peau", "Les poumons"],
+            },
+            "a name or place",
+        ),
+    ],
+)
+def test_a_rewrite_that_changes_the_question_is_refused_in_code(
+    original, rewrite, options, problem
+):
+    found = _check(original, rewrite, options)
+    assert any(problem in p for p in found), found
+
+
+def test_the_faithful_controls_pass():
+    heart = {
+        "en": ["The heart", "The liver", "The skin", "The lungs"],
+        "fr": ["Le cœur", "Le foie", "La peau", "Les poumons"],
+    }
+    assert (
+        _check(
+            {"en": "Which organ pumps blood?", "fr": "Quel organe pompe le sang ?"},
+            {
+                "en": "{friend} taps her chest. Which organ pumps blood?",
+                "fr": "{friend} tape sa poitrine. Quel organe pompe le sang ?",
+            },
+            heart,
+        )
+        == []
+    )
+    assert (
+        _check(
+            {"en": "Why is a pebble not alive?", "fr": "Pourquoi un caillou n’est-il pas vivant ?"},
+            {
+                "en": "Grandma lifts the stone. Why is a pebble not alive?",
+                "fr": "Mamie lève la pierre. Pourquoi un caillou n’est-il pas vivant ?",
+            },
+            ALIVE,
+        )
+        == []
+    )
+    # The same superlative, the same restriction: kept.
+    assert (
+        _check(
+            {
+                "en": "Which is the largest organ of the human body?",
+                "fr": "Quel est le plus grand organe du corps humain ?",
+            },
+            {
+                "en": "Grandma rubs her arm. Which is the largest organ of the human body?",
+                "fr": "Mamie frotte son bras. Quel est le plus grand organe du corps humain ?",
+            },
+            ORGANS,
+        )
+        == []
+    )
+
+
+def test_a_blocked_name_is_caught_in_any_case_and_without_accents():
+    for name in ("Bouaké", "bouake", "BOUAKE"):
+        found = _check(
+            {"en": "Which organ pumps blood?", "fr": "Quel organe pompe le sang ?"},
+            {
+                "en": f"Grandma is back from {name}. Which organ pumps blood?",
+                "fr": "Mamie tape sa poitrine. Quel organe pompe le sang ?",
+            },
+            {"en": ["The heart", "The liver"], "fr": ["Le cœur", "Le foie"]},
+            blocklist=["Bouaké"],
+        )
+        assert any("lesson's own examples" in p for p in found), (name, found)
+
+
+def test_the_judge_judges_both_languages_with_their_options():
+    message = build_judge_message([candidate("q3")], "fr")
+    assert "Judge BOTH languages" in message and "False if either language differs" in message
+    assert "OPTIONS (fr):" in message and "OPTIONS (en):" in message
+    assert "a) It never feeds, grows or reproduces  <- correct" in message
+
+
+class _RaisingJudge:
+    def __init__(self, exc: Exception) -> None:
+        self.exc = exc
+
+    async def generate_structured_content(self, *args, **kwargs):
+        raise self.exc
+
+
+@pytest.mark.parametrize("exc", [ValueError("ANTHROPIC_API_KEY is required"), RuntimeError("529")])
+def test_an_error_raised_is_never_a_stored_no(exc):
+    """Only an answer that came back unreadable is a stored "no" (#2701 review)."""
+    assert asyncio.run(approve_stems(chapter_ctx(), stemmed_pack(), _RaisingJudge(exc))) is None
+
+
+def test_an_unreadable_answer_is_a_stored_no():
+    class Unreadable:
+        async def generate_structured_content(self, *args, **kwargs):
+            return {"raw_response": "not JSON"}
+
+    verdict = asyncio.run(approve_stems(chapter_ctx(), stemmed_pack(), Unreadable()))
+    assert verdict["approved"] == {} and verdict["calls"] == 1
+
+
+def test_approved_stems_are_checked_again_for_free():
+    from app.domain.services.story_stems import recheck_stems
+
+    ctx, the_pack = chapter_ctx(), stemmed_pack()
+    approved = {ref: dict(stem) for ref, stem in STORY_STEMS.items()}
+    assert recheck_stems(ctx, the_pack, approved) == approved
+    # A stem approved before a check existed, that fails it now: dropped, no call.
+    bad = next(d for d in the_pack["derived"] if d["ref"] == "q3")
+    bad["story_stem"] = {
+        "en": "Grandma does not know. Why is a pebble not alive?",
+        "fr": "Mamie ne sait pas. Pourquoi un caillou n'est-il pas vivant ?",
+    }
+    approved["q3"] = dict(bad["story_stem"])
+    assert set(recheck_stems(ctx, the_pack, approved)) == {"q1", "q2"}
+    # A stem that is no longer the pack's: dropped too.
+    approved["q1"] = {"en": "Something else?", "fr": "Autre chose ?"}
+    assert set(recheck_stems(ctx, the_pack, approved)) == {"q2"}
+
+
+def test_fidelity_follows_the_approved_stems_never_a_document_key():
+    """Only ctx.story_stems decides; the approved stem is re-asserted (#2701 review)."""
+    ctx = chapter_ctx()
+    ctx.story_stems = {"q3": STORY_STEMS["q3"]}
+    result = build(ctx, spine())
+    doc = copy.deepcopy(result.doc)
+    question = next(q for q in doc["questions"] if q["id"] == "q3")
+    question["prompt"] = {"en": "Edited after the build?", "fr": "Modifiée ?"}
+    repair.enforce_quiz_fidelity(doc, ctx)
+    assert question["prompt"] == STORY_STEMS["q3"]
+    assert question["original_stem"]["en"] == quiz("q3")["question"]["en"]
+    # Without an approved stem, a stray original_stem key changes nothing.
+    plain_ctx = chapter_ctx()
+    repair.enforce_quiz_fidelity(doc, plain_ctx)
+    assert question["prompt"]["en"] == quiz("q3")["question"]["en"]
+    assert "original_stem" not in question
