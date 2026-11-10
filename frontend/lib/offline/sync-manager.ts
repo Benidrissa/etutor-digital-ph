@@ -29,12 +29,12 @@ import type { QueuedQuizAnswerPayload } from './offline-quiz-scorer';
 const PREWARM_V6_DONE_KEY = 'offline_prewarm_v6_done';
 const PREWARM_V7_DONE_KEY = 'offline_prewarm_v7_done';
 const PREWARM_V8_DONE_KEY = 'offline_prewarm_v8_done';
-const PREWARM_V11_DONE_KEY = 'offline_prewarm_v11_done';
-// The v11 prewarm's runs so far and the earliest time for the next one (#2692).
-export const PREWARM_V11_RUNS_KEY = 'offline_prewarm_v11_runs';
-export const PREWARM_V11_NEXT_KEY = 'offline_prewarm_v11_next';
-export const PREWARM_V11_MAX_RUNS = 3;
-export const PREWARM_V11_BACKOFF_MS = 5 * 60 * 1000;
+const PREWARM_V12_DONE_KEY = 'offline_prewarm_v12_done';
+// The v12 prewarm's runs so far and the earliest time for the next one (#2692).
+export const PREWARM_V12_RUNS_KEY = 'offline_prewarm_v12_runs';
+export const PREWARM_V12_NEXT_KEY = 'offline_prewarm_v12_next';
+export const PREWARM_V12_MAX_RUNS = 3;
+export const PREWARM_V12_BACKOFF_MS = 5 * 60 * 1000;
 
 export type SyncStatus =
   | { state: 'idle' }
@@ -118,7 +118,7 @@ class SyncManager {
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
-      this.runV11PrewarmMigration();
+      this.runV12PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -139,7 +139,7 @@ class SyncManager {
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
-      this.runV11PrewarmMigration();
+      this.runV12PrewarmMigration();
     }
   }
 
@@ -373,39 +373,39 @@ class SyncManager {
   }
 
   /**
-   * One-shot migration for users who downloaded a module before SW v11.
-   * The v10 bump (the story media cache, #2681/#2682) and the v11 bump (the
-   * story player fixes, #2688) renamed the pages cache, now
-   * `pages-v11-story-fixes`. Without this, previously-prewarmed pages, the
+   * One-shot migration for users who downloaded a module before SW v12.
+   * The v10 bump (the story media cache, #2681/#2682), the v12 bump (the
+   * story player fixes, #2688) and the v12 bump (the AI read-aloud voice,
+   * #2704) renamed the pages cache, now `pages-v12-story-voice`. Without this, previously-prewarmed pages, the
    * module story page among them, are invisible to the SW and an offline
    * navigation falls through to /offline.html.
    *
    * It marks itself done once every page is either stored or failed for
    * good (a unit removed: 404; storage full). Only a page that may still come
-   * (the link dropped, a 5xx) brings it back, at most PREWARM_V11_MAX_RUNS
+   * (the link dropped, a 5xx) brings it back, at most PREWARM_V12_MAX_RUNS
    * times in all, with a growing wait persisted between runs, and a page
    * stored already is never fetched again: on 2G a dead page must not cost
    * every module's pages on each start (#2692). Overlapping calls (an
    * `online` event during a run) share the run in progress.
    */
-  runV11PrewarmMigration(): Promise<void> {
-    if (!this.v11Run) {
-      this.v11Run = this.prewarmV11().finally(() => {
-        this.v11Run = null;
+  runV12PrewarmMigration(): Promise<void> {
+    if (!this.v12Run) {
+      this.v12Run = this.prewarmV12().finally(() => {
+        this.v12Run = null;
       });
     }
-    return this.v11Run;
+    return this.v12Run;
   }
 
-  private v11Run: Promise<void> | null = null;
+  private v12Run: Promise<void> | null = null;
 
-  private async prewarmV11(): Promise<void> {
+  private async prewarmV12(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
-      if (localStorage.getItem(PREWARM_V11_DONE_KEY)) return;
+      if (localStorage.getItem(PREWARM_V12_DONE_KEY)) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-      const runs = Number(localStorage.getItem(PREWARM_V11_RUNS_KEY)) || 0;
-      const notBefore = Number(localStorage.getItem(PREWARM_V11_NEXT_KEY)) || 0;
+      const runs = Number(localStorage.getItem(PREWARM_V12_RUNS_KEY)) || 0;
+      const notBefore = Number(localStorage.getItem(PREWARM_V12_NEXT_KEY)) || 0;
       if (Date.now() < notBefore) return;
 
       let retry = false;
@@ -438,15 +438,15 @@ class SyncManager {
         }
       }
       const run = runs + 1;
-      if (!retry || run >= PREWARM_V11_MAX_RUNS) {
-        localStorage.setItem(PREWARM_V11_DONE_KEY, '1');
-        localStorage.removeItem(PREWARM_V11_RUNS_KEY);
-        localStorage.removeItem(PREWARM_V11_NEXT_KEY);
+      if (!retry || run >= PREWARM_V12_MAX_RUNS) {
+        localStorage.setItem(PREWARM_V12_DONE_KEY, '1');
+        localStorage.removeItem(PREWARM_V12_RUNS_KEY);
+        localStorage.removeItem(PREWARM_V12_NEXT_KEY);
       } else {
-        localStorage.setItem(PREWARM_V11_RUNS_KEY, String(run));
+        localStorage.setItem(PREWARM_V12_RUNS_KEY, String(run));
         localStorage.setItem(
-          PREWARM_V11_NEXT_KEY,
-          String(Date.now() + PREWARM_V11_BACKOFF_MS * 4 ** (run - 1)),
+          PREWARM_V12_NEXT_KEY,
+          String(Date.now() + PREWARM_V12_BACKOFF_MS * 4 ** (run - 1)),
         );
       }
     } catch {

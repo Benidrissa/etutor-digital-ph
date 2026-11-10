@@ -17,6 +17,7 @@ import {
   safeArtUrl,
   slotsFor,
   stageOrder,
+  voiceProfileOf,
   GROUND,
 } from "./cast";
 import { placeTheme, placeTitle, skyFor } from "./places";
@@ -80,13 +81,25 @@ describe("cast", () => {
 
   it("uses the cast's voice, clamped, and a default per figure", () => {
     const actors = buildActors(course(CONTRACT_CAST), "girl");
-    expect(actors.get("mentor")?.voice).toEqual({ pitch: 0.9, rate: 0.9 });
+    expect(actors.get("mentor")?.voice).toMatchObject({ pitch: 0.9, rate: 0.9 });
     expect(actors.get("margo")?.voice.pitch).toBeGreaterThan(1);
     const loud = buildActors(
       course([{ id: "x", name: "X", kind: "adult", art: "x", voice: { pitch: 9, rate: -1 } }]),
       undefined,
     );
-    expect(loud.get("x")?.voice).toEqual({ pitch: 2, rate: 0.5 });
+    expect(loud.get("x")?.voice).toMatchObject({ pitch: 2, rate: 0.5 });
+  });
+
+  it("gives each cast member an AI voice: Margo, a child or an adult, by gender (#2704)", () => {
+    const girl = buildActors(course(CONTRACT_CAST), "girl");
+    expect(girl.get("hero")?.voice.profile).toBe("girl");
+    expect(girl.get("margo")?.voice.profile).toBe("tutor");
+    expect(girl.get("mentor")?.voice.profile).toBe(girl.get("mentor")?.look.feminine ? "woman" : "man");
+    expect(buildActors(course(CONTRACT_CAST), "boy").get("hero")?.voice.profile).toBe("boy");
+    expect(voiceProfileOf("adult", { feminine: true }, false)).toBe("woman");
+    expect(voiceProfileOf("adult", { feminine: false }, false)).toBe("man");
+    expect(voiceProfileOf("child", { feminine: false }, true)).toBe("tutor");
+    expect(voiceProfileOf("gecko", { feminine: true }, false)).toBe("tutor");
   });
 
   it("reads a look sentence for the placeholder", () => {
