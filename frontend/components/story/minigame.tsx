@@ -63,10 +63,13 @@ interface MinigameViewProps {
    */
   result?: number;
   /**
-   * Brings the targets into view when a round starts: a game under the
-   * stage can begin below the fold on a laptop.
+   * Brings the round into view when it starts: `round` holds its counter,
+   * clock and prompt, `targets` the things to tap. A game under the stage can
+   * begin below the fold on a laptop, or past the bottom bar on a phone.
    */
-  onRound?: (targets: HTMLElement) => void;
+  onRound?: (round: HTMLElement, targets: HTMLElement) => void;
+  /** Whether the game is waiting, running or over, as it changes. */
+  onPhase?: (phase: "ready" | "playing" | "done") => void;
 }
 
 /** Rule predicates the player can evaluate locally, for list rounds. */
@@ -224,6 +227,7 @@ export function MinigameView({
   className,
   result,
   onRound,
+  onPhase,
 }: MinigameViewProps) {
   const t = useTranslations("Story");
   const rounds = useMemo(() => playableRounds(game), [game]);
@@ -247,6 +251,7 @@ export function MinigameView({
     secondsLeft: seconds,
   });
   const targetsRef = useRef<HTMLUListElement | null>(null);
+  const roundRef = useRef<HTMLDivElement | null>(null);
   const { phase, round, caught, wrong, score, secondsLeft } = state;
   const current = rounds[round];
   const correctSlots = useMemo(
@@ -299,17 +304,27 @@ export function MinigameView({
     onTapRef.current = onTap;
   }, [onTap]);
 
-  // Every round's targets in view, once they are on screen.
+  // Every round in view, once it is on screen.
   const onRoundRef = useRef(onRound);
   useEffect(() => {
     onRoundRef.current = onRound;
   }, [onRound]);
   useEffect(() => {
-    if (phase !== "playing" || !targetsRef.current) return;
+    if (phase !== "playing" || !targetsRef.current || !roundRef.current) return;
     const targets = targetsRef.current;
-    const frame = requestAnimationFrame(() => onRoundRef.current?.(targets));
+    const roundBox = roundRef.current;
+    const frame = requestAnimationFrame(() => onRoundRef.current?.(roundBox, targets));
     return () => cancelAnimationFrame(frame);
   }, [phase, round]);
+
+  // The host learns when a game is running (Previous waits for its end).
+  const onPhaseRef = useRef(onPhase);
+  useEffect(() => {
+    onPhaseRef.current = onPhase;
+  }, [onPhase]);
+  useEffect(() => {
+    onPhaseRef.current?.(phase);
+  }, [phase]);
 
   // Keys 1-6 mirror the touch targets (A.9), only while the game is in sight
   // and the key is not meant for something else.
@@ -378,7 +393,7 @@ export function MinigameView({
       ) : null}
 
       {phase === "playing" && current ? (
-        <>
+        <div ref={roundRef}>
           <div className="mt-3 flex items-center justify-between text-sm font-semibold text-gray-700">
             <span>{t("round", { current: round + 1, total: rounds.length })}</span>
             <span aria-live="polite">{t("secondsLeft", { seconds: secondsLeft })}</span>
@@ -470,7 +485,7 @@ export function MinigameView({
               {text(game.hint_after_wrong, target, home)}
             </p>
           ) : null}
-        </>
+        </div>
       ) : null}
 
       {phase === "done" ? (

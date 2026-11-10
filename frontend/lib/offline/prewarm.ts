@@ -9,24 +9,26 @@
 
 // Cache name MUST stay aligned with `pages-${CACHE_VERSION}` in frontend/sw.ts.
 // Bump both together when changing.
-export const PAGES_CACHE_NAME = "pages-v10-story-media";
+export const PAGES_CACHE_NAME = "pages-v11-story-fixes";
 
 /**
  * Pre-fetch a same-origin page and stash it in the SW page cache so an offline
  * navigation hits cache instead of falling through to /offline.html.
  *
  * Failures are swallowed — pre-warm is best-effort and must never fail a
- * download.
+ * download. It says whether the page was stored, so a one-shot migration can
+ * try again later instead of marking itself done on a dead link.
  */
-export async function prewarmPage(url: string): Promise<void> {
+export async function prewarmPage(url: string): Promise<boolean> {
   try {
-    if (typeof caches === "undefined") return;
+    if (typeof caches === "undefined") return false;
     const cache = await caches.open(PAGES_CACHE_NAME);
     const res = await fetch(url, { credentials: "include" });
-    if (res.ok) {
-      await cache.put(url, res.clone());
-    }
+    if (!res.ok) return false;
+    await cache.put(url, res.clone());
+    return true;
   } catch {
     // best-effort
+    return false;
   }
 }

@@ -71,9 +71,13 @@ export function reveal(
   const first = from.getBoundingClientRect();
   // Not laid out (jsdom, a hidden pane): nothing to measure.
   if (first.width === 0 && first.height === 0) return;
+  // A box scaled from its centre (a panel popping in) is measured at its
+  // laid-out size, where it will end up, not at its size mid-animation.
+  const height = from.offsetHeight > first.height + 1 ? from.offsetHeight : first.height;
+  const top = first.top - (height - first.height) / 2;
+  const ownBottom = top + height;
   const last = options.to?.getBoundingClientRect();
-  const top = first.top;
-  const bottom = last && (last.width || last.height) ? Math.max(first.bottom, last.bottom) : first.bottom;
+  const bottom = last && (last.width || last.height) ? Math.max(ownBottom, last.bottom) : ownBottom;
   const gap = options.gap ?? 12;
   const band = visibleBand(from);
   let delta = 0;

@@ -2759,6 +2759,7 @@
     "creditSource": "Source",
     "publicDomain": "Domaine public",
     "loadPhoto": "Afficher la photo ({kb} Ko)",
+    "loadPhotoUnsized": "Afficher la photo",
     "imageCredits": "Crédits images"
   }
 }

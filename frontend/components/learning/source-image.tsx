@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 import type { SourceImageMeta } from '@/lib/api';
+import { useInertBackground } from '@/lib/hooks/use-inert-background';
 
 interface SourceImageProps extends SourceImageMeta {
   language: 'fr' | 'en';
@@ -35,19 +36,34 @@ export function SourceImage({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [failed, setFailed] = useState(false);
+  const thumbRef = useRef<HTMLButtonElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const viewerRef = useRef<HTMLDivElement | null>(null);
 
-  // Esc closes the full-screen view.
+  // Closing gives the focus back to the figure it was opened from.
+  const close = useCallback(() => {
+    setIsFullscreen(false);
+    requestAnimationFrame(() => thumbRef.current?.focus());
+  }, []);
+
+  // A modal view: Esc closes it, Tab stays on its close button (its only
+  // control), and the page behind takes no clicks, focus or reading.
   useEffect(() => {
     if (!isFullscreen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      setIsFullscreen(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      } else if (event.key === 'Tab') {
+        event.preventDefault();
+        closeRef.current?.focus();
+      }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [isFullscreen]);
+  }, [isFullscreen, close]);
+  useInertBackground(viewerRef, isFullscreen);
 
   const caption = (language === 'fr' ? caption_fr : caption_en) ?? captionFallback;
   const altText = language === 'fr'
@@ -75,22 +91,31 @@ export function SourceImage({
 
   // Portalled to the body: a host's stacking context (the story stage keeps
   // its panels in one) must not put the viewer under the app's header or nav.
+  // React still bubbles its events to the host's handlers (the story stage
+  // reads taps and swipes): they stop here.
   const viewer = isFullscreen ? (
     <div
+      ref={viewerRef}
       className="fixed inset-0 z-[80] bg-black/90 flex flex-col items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label={altText}
-      onClick={() => setIsFullscreen(false)}
+      onClick={(e) => {
+        e.stopPropagation();
+        close();
+      }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
     >
       <button
+        ref={closeRef}
         type="button"
         className="absolute top-4 right-4 min-h-11 min-w-11 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         aria-label={t('closeFullscreen')}
         autoFocus
         onClick={(e) => {
           e.stopPropagation();
-          setIsFullscreen(false);
+          close();
         }}
       >
         <X className="w-5 h-5" aria-hidden="true" />
@@ -122,6 +147,7 @@ export function SourceImage({
     <>
       <figure className="my-6 w-full">
         <button
+          ref={thumbRef}
           type="button"
           className="w-full rounded-lg overflow-hidden border border-stone-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 min-h-11"
           aria-label={t('viewFullscreen')}

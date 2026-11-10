@@ -14,7 +14,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { choicesKeyFor, readChoices } from '@/components/story/stage/prefs';
-import { StoryPlayer } from '@/components/story/story-player';
+import { StoryPlayer, type PlayerSnapshot } from '@/components/story/story-player';
 import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { Link } from '@/i18n/routing';
 import { ApiError, apiFetch, getModuleDetailWithProgress, type UnitProgressDetail } from '@/lib/api';
@@ -48,10 +48,11 @@ import { ModuleStorySkeleton } from './module-story-skeleton';
  * Polling a module story being written. The first open writes every chapter
  * (and any lesson or quiz not generated yet), which takes minutes, not
  * seconds: poll gently, tell the learner after 30 s that they can leave, and
- * stop after 15 min — the task keeps running, and the next open joins it.
+ * stop after 30 min (story generator v4, #2680, can take longer than 15) —
+ * the task keeps running, and the next open joins it.
  */
 export const POLL_INTERVAL_MS = 5000;
-export const POLL_TIMEOUT_MS = 15 * 60 * 1000;
+export const POLL_TIMEOUT_MS = 30 * 60 * 1000;
 export const LEAVE_HINT_MS = 30 * 1000;
 /**
  * Status polls in a row that may fail on the way (the request dropped, a
@@ -221,7 +222,7 @@ export function ModuleStory({ moduleId, language }: ModuleStoryProps) {
           if (cancelled) return;
           // A dropped request or a 5xx (a flaky 2G link, a deploy) says
           // nothing about the task, which keeps writing: ask again on the
-          // next tick, under the same 15 min cap.
+          // next tick, under the same 30 min cap.
           if (isTransientPollError(err) && errors + 1 < POLL_MAX_CONSECUTIVE_ERRORS) {
             poll(taskId, startedAt, errors + 1);
           } else {
@@ -521,13 +522,40 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
   const doneCount = completedChapterCount(chapters, progress);
   const nextIncomplete = firstIncompleteChapter(chapters, progress);
 
-  const openChapter = (index: number) => {
+  const openChapter = (index: number, review?: PlayerSnapshot) => {
     setSelected(index);
     setRun((n) => n + 1);
     setFinished(null);
+    setReviewing(review ?? null);
     // Move focus to the "Chapter x of y" line once it shows the new chapter,
     // so keyboard and screen-reader users land at its start.
     requestAnimationFrame(() => chapterLineRef.current?.focus());
+  };
+
+  // What each chapter played on this page was answered with, so Previous
+  // from the next chapter shows it again as it was (#2688).
+  const snapshotsRef = useRef(new Map<string, PlayerSnapshot>());
+  const [reviewing, setReviewing] = useState<PlayerSnapshot | null>(null);
+
+  // Previous on a chapter's first line: back to the last line of the one
+  // before. A finished chapter comes back as it was left (answered questions
+  // stay answered, nothing is scored or completed again) with its end card;
+  // one not finished yet is simply opened.
+  const backIntoChapterBefore = (index: number) => {
+    const before = chapters[index - 1];
+    if (!before) return;
+    if (!completedUnits.has(chapterKey(before))) {
+      openChapter(index - 1);
+      return;
+    }
+    const best = chapterPoints(before);
+    const snapshot = snapshotsRef.current.get(before.id) ?? { records: [], points: best };
+    openChapter(index - 1, snapshot);
+    setFinished({
+      index: index - 1,
+      points: Math.max(snapshot.points, best),
+      maxPoints: before.covers?.max_points ?? 0,
+    });
   };
 
   const showSummary = () => {
@@ -754,6 +782,9 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
             variant="embedded"
             onComplete={(outcome) => handleChapterComplete(selected, outcome)}
             onStart={(choices) => setFriend(choices.friend)}
+            review={reviewing ?? undefined}
+            onSnapshot={(snapshot) => snapshotsRef.current.set(chapter.id, snapshot)}
+            onBackFromStart={selected > 0 ? () => backIntoChapterBefore(selected) : undefined}
           />
 
           {sendsToUnit(chapter.covers) ? (

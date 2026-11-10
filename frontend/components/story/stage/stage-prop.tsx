@@ -8,11 +8,11 @@
  */
 
 import { useTranslations } from "next-intl";
-import { memo, useEffect, useRef, type CSSProperties } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Prop } from "@/lib/story-course/types";
 
-import { EMOJI_FONTS, emojiDrawn, type PropSlot, type PropToken } from "./props";
+import { EMOJI_FONTS, emojiDrawn, tokenFor, type PropSlot, type PropToken } from "./props";
 import styles from "./stage.module.css";
 
 interface StagePropProps {
@@ -54,6 +54,13 @@ function StagePropView({
 }: StagePropProps) {
   const t = useTranslations("Story");
   const bounceRef = useRef<HTMLSpanElement | null>(null);
+  // A sticker or photo that cannot load (offline, a missing file) gives way
+  // to the prop's emoji or name, never to nothing (#2688).
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const shown: PropToken =
+    (token.kind === "sticker" || token.kind === "polaroid") && token.src === failedSrc
+      ? tokenFor(prop, undefined, "ground")
+      : token;
 
   // A prop named again bounces, without being redrawn.
   useEffect(() => {
@@ -81,23 +88,32 @@ function StagePropView({
         className={`${entering ? styles.propEnter : ""} flex h-full items-end justify-center`}
         aria-hidden="true"
       >
-        {token.kind === "sticker" ? (
+        {shown.kind === "sticker" ? (
           // eslint-disable-next-line @next/next/no-img-element -- a same-origin story sticker
-          <img src={token.src} alt="" className="h-full w-auto max-w-none select-none" draggable={false} />
-        ) : token.kind === "polaroid" ? (
+          <img
+            key={shown.src}
+            src={shown.src}
+            alt=""
+            className="h-full w-auto max-w-none select-none"
+            draggable={false}
+            onError={() => setFailedSrc(shown.src)}
+          />
+        ) : shown.kind === "polaroid" ? (
           // eslint-disable-next-line @next/next/no-img-element -- a same-origin story photo, never cropped
           <img
-            src={token.src}
+            key={shown.src}
+            src={shown.src}
             alt=""
             className={`${styles.polaroid} h-full w-auto max-w-none select-none object-contain`}
             draggable={false}
+            onError={() => setFailedSrc(shown.src)}
           />
-        ) : token.kind === "emoji" && emojiDrawn(token.emoji) ? (
+        ) : shown.kind === "emoji" && emojiDrawn(shown.emoji) ? (
           <span
             className="block leading-none"
             style={{ fontSize, fontFamily: EMOJI_FONTS, filter: "drop-shadow(0 3px 0 rgba(0,0,0,0.18))" }}
           >
-            {token.emoji}
+            {shown.emoji}
           </span>
         ) : (
           <span

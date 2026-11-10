@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { text } from "@/lib/story-course/answer";
+import { useInertBackground } from "@/lib/hooks/use-inert-background";
 import type { MediaCredit, Prop, PropPicture, TextObject } from "@/lib/story-course/types";
 
 import { EMOJI_FONTS, emojiDrawn, licenseLabel, propLabel, sameOriginMedia, savesData } from "./props";
@@ -101,7 +102,17 @@ function LookCloserBody({
   const t = useTranslations("Story");
   const sticker = sameOriginMedia(stickerUrl);
   const isDrawing = picture?.via === "ai_drawing";
-  const first: Stage = picture ? (picture.src_large ? "full" : "small") : sticker ? "sticker" : "name";
+  // The large picture only on a wide screen with no data saving: on a phone
+  // the small one (the one fetched ahead) fills the box, and a srcset would
+  // make a dense screen download the large one on 3G (#2688).
+  const [wide] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(min-width: 640px)").matches &&
+      !savesData(),
+  );
+  const first: Stage = picture ? (picture.src_large && wide ? "full" : "small") : sticker ? "sticker" : "name";
   const [stage, setStage] = useState<Stage>(first);
   // With data saving on, a photo waits for the learner to ask for it.
   const [asked, setAsked] = useState(() => !picture || isDrawing || !savesData());
@@ -122,9 +133,9 @@ function LookCloserBody({
   const showsPicture = picture && (stage === "full" || stage === "small");
   const width = showsPicture ? picture.width : 1;
   const height = showsPicture ? picture.height : 1;
-  const kb = picture
-    ? Math.max(1, Math.round((picture.bytes ?? picture.width * picture.height * 0.12) / 1024))
-    : 0;
+  // Its size, when the server says it: a course figure's is not known, and
+  // its width and height are placeholders (#2688).
+  const kb = picture?.bytes ? Math.max(1, Math.round(picture.bytes / 1024)) : undefined;
 
   return (
     <figure className="m-0" data-step-panel="look" data-look={stage}>
@@ -152,7 +163,7 @@ function LookCloserBody({
             className="flex min-h-11 w-full items-center justify-center rounded-lg border-2 border-dashed border-teal-600 bg-teal-50 px-3 text-sm font-semibold text-teal-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
             style={{ aspectRatio: `${width} / ${height}`, maxHeight: "16rem" }}
           >
-            {t("loadPhoto", { kb })}
+            {kb ? t("loadPhoto", { kb }) : t("loadPhotoUnsized")}
           </button>
         ) : showsPicture ? (
           <div
@@ -163,12 +174,8 @@ function LookCloserBody({
             <img
               key={stage}
               src={picture.src}
-              srcSet={
-                stage === "full" && picture.src_large && !savesData()
-                  ? `${picture.src} 400w, ${picture.src_large} 960w`
-                  : undefined
-              }
-              sizes={stage === "full" && picture.src_large ? "(min-width: 640px) 390px, 92vw" : undefined}
+              srcSet={stage === "full" && picture.src_large ? `${picture.src} 400w, ${picture.src_large} 960w` : undefined}
+              sizes={stage === "full" && picture.src_large ? "390px" : undefined}
               alt={text(picture.alt, target, home) || label}
               lang={target}
               className="h-full w-full object-contain"
@@ -255,6 +262,8 @@ export function StoryDialog({
   const t = useTranslations("Story");
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  useInertBackground(overlayRef, true);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -298,6 +307,7 @@ export function StoryDialog({
   );
   const overlay = (
     <div
+      ref={overlayRef}
       className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-3 sm:items-center"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();

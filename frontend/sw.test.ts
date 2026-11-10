@@ -14,7 +14,7 @@ import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from "serwist";
 
 import { PAGES_CACHE_NAME } from "@/lib/offline/prewarm";
 
-import "./sw";
+import { isStaleRuntimeCache } from "./sw";
 
 type Matcher = (context: { url: URL; request: Request }) => boolean;
 interface RuntimeCaching {
@@ -120,10 +120,19 @@ describe("service worker story media cache (#2681)", () => {
     }
   });
 
-  it("refreshes course figures behind the cached copy", () => {
+  it("refreshes course figures behind the cached copy, in a cache of their own (#2688)", () => {
     const found = ruleFor(FIGURE);
     expect(found?.handler).toBeInstanceOf(StaleWhileRevalidate);
-    expect(found?.handler.options.cacheName).toBe("story-media-v1");
+    expect(found?.handler.options.cacheName).toBe("course-figures-v1");
+  });
+
+  it("evicts the least recently used picture, counting its age from its last use (#2688)", () => {
+    for (const path of [ART, FIGURE]) {
+      const plugins = (ruleFor(path)?.handler.options as { plugins?: Array<{ options?: Record<string, unknown> }> })
+        .plugins;
+      const expiration = plugins?.find((plugin) => plugin.options)?.options;
+      expect(expiration).toMatchObject({ maxAgeFrom: "last-used", purgeOnQuotaError: true });
+    }
   });
 
   it("leaves other paths of those routes to the API rule", () => {
@@ -133,6 +142,31 @@ describe("service worker story media cache (#2681)", () => {
   });
 
   it("bumps the page cache with the service worker", () => {
-    expect(PAGES_CACHE_NAME).toBe("pages-v10-story-media");
+    expect(PAGES_CACHE_NAME).toBe("pages-v11-story-fixes");
+    expect(rule(NetworkFirst).handler.options.cacheName).toBe(PAGES_CACHE_NAME);
+  });
+});
+
+describe("service worker clean-up of older caches (#2688)", () => {
+  it("deletes the runtime caches of older versions only", () => {
+    for (const stale of [
+      "pages-v10-story-media",
+      "pages-v9-api-keys-tab",
+      "static-assets-v9-api-keys-tab",
+      "api-responses-v8-summative-safe",
+      "google-fonts-v6-offline-routes",
+    ]) {
+      expect(isStaleRuntimeCache(stale)).toBe(true);
+    }
+    for (const kept of [
+      "pages-v11-story-fixes",
+      "static-images-v11-story-fixes",
+      "story-media-v1",
+      "course-figures-v1",
+      "serwist-precache-v2-https://sira.example/",
+      "some-other-cache",
+    ]) {
+      expect(isStaleRuntimeCache(kept)).toBe(false);
+    }
   });
 });
