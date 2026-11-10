@@ -189,14 +189,34 @@ class TestErrorRecognition:
     def test_a_droppable_parameter_refused(self, param, code):
         assert refused_param(param_refused(param, code)) == param
 
-    def test_other_parameters_are_not_dropped(self):
+    def test_other_parameters_or_codes_are_not_dropped(self):
         assert refused_param(param_refused("prompt")) is None
+        assert refused_param(param_refused("background", code="moderation_blocked")) is None
         assert refused_param(model_missing()) is None  # param=model: a model error
 
     def test_a_droppable_param_is_a_refusal_whatever_the_code(self):
         # #2696: staging's code was invalid_input_fidelity_model, unknown to the list.
-        for code in ("invalid_input_fidelity_model", "moderation_blocked", None):
+        for code in ("invalid_input_fidelity_model", "invalid_value", None):
             assert refused_param(param_refused("input_fidelity", code=code)) == "input_fidelity"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "moderation_blocked",
+            "content_policy_violation",
+            "safety",
+            "image_moderation_failed",
+            "usage_policy_block",
+        ],
+    )
+    def test_a_safety_block_is_never_a_refusal(self, code):
+        # Even when it names a droppable parameter: it stays final.
+        exc = param_refused("background", code=code)
+        assert refused_param(exc) is None
+        assert not svc.failure_is_transient(exc)
+        failure = svc.classify_failure(exc, None, MARKET.digest, now=NOW)
+        assert failure.retry_after is None and failure.failed_runs == 0
+        assert image_provider.refused_param_in_error(svc._error_text(exc)) is None
 
 
 # --------------------------------------------------------------------------

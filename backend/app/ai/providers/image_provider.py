@@ -131,8 +131,20 @@ _REFUSED_PARAM_MESSAGES = (
     re.compile(r"does not support the '([a-z_]+)' parameter", re.IGNORECASE),
     re.compile(r"(?:unknown|unsupported) (?:parameter|value): '([a-z_]+)'", re.IGNORECASE),
 )
-#: The ``param`` field of an error as ``str()`` renders its body.
+#: The ``param`` and ``code`` fields of an error as ``str()`` renders its body.
 _PARAM_FIELD = re.compile(r"""['"]param['"]: ['"]([a-z_]+)['"]""")
+_CODE_FIELD = re.compile(r"""['"]code['"]: ['"]([A-Za-z_.-]+)['"]""")
+#: Codes of a safety block: never a refused parameter, even when the error
+#: names one; the image stays refused (deterministic, final).
+_SAFETY_CODES = frozenset({"moderation_blocked", "content_policy_violation", "safety"})
+
+
+def is_safety_code(code: object) -> bool:
+    """A safety block: one of :data:`_SAFETY_CODES`, or a code about moderation or policy."""
+    if not isinstance(code, str):
+        return False
+    lowered = code.lower()
+    return lowered in _SAFETY_CODES or "moderation" in lowered or "policy" in lowered
 
 
 def _droppable_in_message(message: str) -> str | None:
@@ -150,11 +162,14 @@ def refused_param(exc: BaseException | None) -> str | None:
     (OpenAI uses ``invalid_value``, ``unsupported_parameter``,
     ``invalid_input_fidelity_model``…); without a ``param``, the message
     ("does not support the 'input_fidelity' parameter"). A model error
-    (``param=model``) is never one.
+    (``param=model``) is never one, nor is a safety block (:func:`is_safety_code`),
+    whatever parameter it names.
     """
     import openai
 
     if not isinstance(exc, openai.BadRequestError):
+        return None
+    if is_safety_code(getattr(exc, "code", None)):
         return None
     param = _error_param(exc)
     if param is not None:
@@ -167,6 +182,9 @@ def refused_param(exc: BaseException | None) -> str | None:
 def refused_param_in_error(error: str | None) -> str | None:
     """:func:`refused_param` of a failure stored as text (``story_art.error``)."""
     if not error or not error.startswith("BadRequestError"):
+        return None
+    code = _CODE_FIELD.search(error)
+    if code is not None and is_safety_code(code.group(1)):
         return None
     field = _PARAM_FIELD.search(error)
     if field is not None:
