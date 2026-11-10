@@ -1030,3 +1030,146 @@ def test_a_name_starting_a_sentence_is_a_name_only_if_the_other_language_keeps_i
         HEART["fr"],
     )
     assert stem_problems(night, allowed=CAST) == []
+
+
+# --------------------------------------------------------------------------
+# The final review of #2701: plural forms, unit words, word-level negations
+# --------------------------------------------------------------------------
+
+ANIMALS = {
+    "en": ["The goat", "The lion", "The mango tree", "The pebble"],
+    "fr": ["La chèvre", "Le lion", "Le manguier", "Le caillou"],
+}
+MILK = {
+    "en": "Which of these feeds its young with milk?",
+    "fr": "Lequel de ces êtres nourrit ses petits avec du lait ?",
+}
+LAYERS = {
+    "en": ["The bat", "The hen", "The crocodile", "The tortoise"],
+    "fr": ["La chauve-souris", "La poule", "Le crocodile", "La tortue"],
+}
+NUCLEUS = {
+    "en": ["The red blood cell", "The skin cell", "The nerve cell", "The muscle cell"],
+    "fr": [
+        "Le globule rouge",
+        "La cellule de la peau",
+        "La cellule nerveuse",
+        "La cellule musculaire",
+    ],
+}
+
+
+def test_a_french_plural_of_a_noun_in_e_is_the_same_term():
+    from app.domain.services.story_stems import _forms, _same_term
+
+    for plural, singular in (
+        ("chevres", "chevre"),
+        ("cellules", "cellule"),
+        ("proprietes", "propriete"),
+        ("boxes", "box"),
+        ("snails", "snail"),
+    ):
+        assert _same_term(plural, [singular]) and _same_term(singular, [plural]), plural
+    assert not _same_term("seau", ["eau"])
+    assert _forms("cellules") == {"cellules", "cellule", "cellul"}
+
+
+def test_the_answers_noun_in_the_french_plural_is_a_leak():
+    leak = _faithful(
+        MILK["en"],
+        MILK["fr"],
+        "Mariam milks the goats. Which of these feeds its young with milk?",
+        "Mariam trait les chèvres. Lequel de ces êtres nourrit ses petits avec du lait ?",
+        ANIMALS["en"],
+        ANIMALS["fr"],
+    )
+    found = stem_problems(leak, allowed=CAST)
+    assert "en: the rewrite names an option" in found
+    assert "fr: the rewrite names an option" in found
+
+
+def test_a_key_term_kept_in_the_singular_is_kept():
+    kept = _faithful(
+        "Which of these cells have a nucleus?",
+        "Lesquelles de ces cellules ont un noyau ?",
+        "Kaboré adjusts the microscope. Which of these cells have a nucleus?",
+        "Kaboré règle le microscope. Laquelle de ces cellule a un noyau ?",
+        ["Skin cells", "Red blood cells", "Both", "None"],
+        ["Les cellules de la peau", "Les globules rouges", "Les deux", "Aucune"],
+    )
+    assert stem_problems(kept, allowed=CAST) == []
+
+
+@pytest.mark.parametrize(
+    ("rewrite_en", "rewrite_fr"),
+    [
+        (
+            "One day, Kaboré taps his chest. Which organ pumps blood?",
+            "Un jour, Kaboré tape sur sa poitrine. Quel organe pompe le sang ?",
+        ),
+        (
+            "It beats day and night in your chest. Which organ pumps blood?",
+            "Il bat jour et nuit dans ta poitrine. Quel organe pompe le sang ?",
+        ),
+    ],
+)
+def test_a_time_word_of_the_story_is_no_unit(rewrite_en, rewrite_fr):
+    story = _faithful(PUMPS["en"], PUMPS["fr"], rewrite_en, rewrite_fr, HEART["en"], HEART["fr"])
+    assert not any("units" in p for p in stem_problems(story, allowed=CAST))
+
+
+def test_a_unit_word_next_to_a_number_or_after_in_is_a_unit():
+    from app.domain.services.story_stems import _units
+
+    assert _units("He has had diarrhoea for 3 days.", "en") == {"day"}
+    assert _units("Un enfant de 3 ans, depuis trois jours.", "fr") == {"an", "jour"}
+    assert _units("How wide is a cell, in micrometres?", "en") == {"micrometre"}
+    assert _units("Combien d'œufs par jour ?", "fr") == {"jour"}
+    assert _units("Un jour, il bat jour et nuit.", "fr") == set()
+
+
+@pytest.mark.parametrize(
+    ("original", "rewrite", "options", "correct"),
+    [
+        (  # "lacks" / « dépourvue de »: a negation carried by a word.
+            {
+                "en": "Which of these cells has a nucleus?",
+                "fr": "Laquelle de ces cellules possède un noyau ?",
+            },
+            {
+                "en": "Kaboré adjusts the microscope. Which of these cells lacks a nucleus?",
+                "fr": "Kaboré règle le microscope. Laquelle de ces cellules est dépourvue de noyau ?",
+            },
+            NUCLEUS,
+            1,
+        ),
+        (  # often → rarely, souvent → rarement.
+            {
+                "en": "Which of these animals often lives in water?",
+                "fr": "Lequel de ces animaux vit souvent dans l'eau ?",
+            },
+            {
+                "en": "Awa looks at the river. Which of these animals rarely lives in water?",
+                "fr": "Awa regarde la rivière. Lequel de ces animaux vit rarement dans l'eau ?",
+            },
+            LAYERS,
+            2,
+        ),
+        (  # "hardly" / « ne … guère ».
+            {
+                "en": "Which of these animals moves fast?",
+                "fr": "Lequel de ces animaux se déplace vite ?",
+            },
+            {
+                "en": "Awa waits by the path. Which of these animals hardly moves fast?",
+                "fr": "Awa attend près du chemin. Lequel de ces animaux ne se déplace guère vite ?",
+            },
+            LAYERS,
+            3,
+        ),
+    ],
+)
+def test_a_word_level_negation_or_opposite_is_refused(original, rewrite, options, correct):
+    found = _check(original, rewrite, options, correct)
+    assert any(p.startswith("en: a negation") for p in found), found
+    assert any(p.startswith("fr: a negation") for p in found), found

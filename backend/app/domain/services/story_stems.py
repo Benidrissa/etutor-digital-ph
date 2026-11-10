@@ -182,11 +182,16 @@ _BLOCKING_WORDS = {
     "en": _wordset(
         "not never no none nothing nobody neither nor cannot except excluding besides"
         " only solely without non true false wrong correct incorrect untrue"
+        # Negations carried by a word: "lacks a nucleus", "hardly moves".
+        " lack lacks lacking devoid absent missing rarely seldom hardly barely"
     ),
     "fr": _wordset(
         "pas jamais aucun aucune rien ni personne sauf excepte hormis seul seule seuls"
         " seules seulement uniquement sans non vrai vraie faux fausse correct correcte"
         " incorrect incorrecte erronee"
+        # Negations carried by a word: « dépourvue de noyau », « ne… guère ».
+        " depourvu depourvue depourvus depourvues manque manquent absent absente"
+        " absents absentes rarement guere point nul nulle"
     ),
 }
 _QUESTION_WORDS = {
@@ -196,14 +201,14 @@ _QUESTION_WORDS = {
         # Opposites: a rewrite keeps the original's side of each pair.
         " max min maximum minimum greater higher lower increase increases increased"
         " decrease decreases decreased before after above below inside outside gain gains"
-        " lose loses"
+        " lose loses often usually"
     ),
     "fr": _wordset(
         "tous toutes tout chaque toujours meilleur meilleure pire principal principale"
         " principalement premier premiere dernier derniere"
         " maximum minimum maximal minimal superieur superieure superieurs superieures"
         " inferieur inferieure inferieurs inferieures augmente augmentent diminue"
-        " diminuent avant apres au-dessus au-dessous dessus dessous"
+        " diminuent avant apres au-dessus au-dessous dessus dessous souvent"
     ),
 }
 _GUARD_WORDS = {lang: _BLOCKING_WORDS[lang] | _QUESTION_WORDS[lang] for lang in ("en", "fr")}
@@ -279,11 +284,31 @@ def _words(text: Any) -> set[str]:
 
 
 def _root(word: str) -> str:
-    """A word without its plural: "proprietes" and "propriete" are one term."""
+    """A word without its plural, for messages: "pumps" → "pump"."""
     for end in ("es", "s", "x"):
         if len(word) > 4 and word.endswith(end):
             return word[: -len(end)]
     return word
+
+
+def _forms(word: str) -> set[str]:
+    """The forms one term may take: the word, without a final s or x, without "es".
+
+    Both endings are tried, so « chèvres » and « chèvre », « cellules » and
+    « cellule », "boxes" and "box" are one term.
+    """
+    forms = {word}
+    if len(word) > 3 and word[-1] in "sx":
+        forms.add(word[:-1])
+    if len(word) > 4 and word.endswith("es"):
+        forms.add(word[:-2])
+    return forms
+
+
+def _same_term(word: str, others: Iterable[str]) -> bool:
+    """Whether ``word`` is one of ``others``, plurals aside."""
+    mine = _forms(word)
+    return any(mine & _forms(other) for other in others)
 
 
 def _numbers(text: str, lang: str) -> list[str]:
@@ -297,17 +322,34 @@ def _numbers(text: str, lang: str) -> list[str]:
     return sorted(found)
 
 
+#: Words before a unit word that make it a unit ("in micrometres", « par jour »).
+_UNIT_LEADS = _wordset("in per en par")
+
+
 def _units(text: str, lang: str) -> set[str]:
-    """The units of ``text``: a symbol after a number, a unit word anywhere."""
+    """The units of ``text``: a symbol after a number; a unit word next to a number
+    ("3 days", « 3 jours ») or after in/per/en/par ("in micrometres") — never a
+    story word: « Un jour, … », "day and night"."""
     found = {re.sub(r"\s+", "", u.lower()) for u in _UNIT_SYMBOL_RE.findall(text)}
     units = {_singular(u) for u in _UNIT_WORDS[lang]}
-    found |= {_singular(w) for w in _words(text) if _singular(w) in units}
+    tokens = _WORD_RE.findall(_plain(text).replace("'", " ").replace("-", " "))
+
+    def numeric(token: str) -> bool:
+        return token[:1].isdigit() or token in _NUMBER_WORDS[lang]
+
+    for index, token in enumerate(tokens):
+        if _singular(token) not in units:
+            continue
+        before = tokens[index - 1] if index > 0 else ""
+        after = tokens[index + 1] if index + 1 < len(tokens) else ""
+        if numeric(before) or numeric(after) or before in _UNIT_LEADS:
+            found.add(_singular(token))
     return found
 
 
 def _singular(word: str) -> str:
     """A unit word without its plural s ("millimetres" → "millimetre")."""
-    return word[:-1] if len(word) > 3 and word.endswith("s") else word
+    return word[:-1] if len(word) > 2 and word.endswith("s") else word
 
 
 def _guards(text: str, lang: str) -> set[str]:
@@ -360,13 +402,13 @@ _AUXILIARIES = _wordset(
 
 
 def _content(text: Any, *, auxiliaries: bool = True) -> list[str]:
-    """The content words of ``text`` in order, plurals folded ("The snails" → ["snail"]).
+    """The content words of ``text`` in order (compared by :func:`_forms`).
 
     Placeholders are left out first, so « Rien » is never found in "{friend}".
     """
     plain = _PLACEHOLDER_RE.sub(" ", str(text or ""))
     skip = _FUNCTION_WORDS if auxiliaries else _FUNCTION_WORDS | _AUXILIARIES
-    return [_root(w) for w in _tokens(plain) if w not in skip]
+    return [w for w in _tokens(plain) if w not in skip]
 
 
 def _names_answer(answer: str, rewrite: str, original: str = "") -> bool:
@@ -378,7 +420,12 @@ def _names_answer(answer: str, rewrite: str, original: str = "") -> bool:
     words = set(_content(answer, auxiliaries=False))
     if not words:
         return False
-    return words <= set(_content(rewrite)) and not words <= set(_content(original))
+
+    def says(text: str) -> bool:
+        said = set(_content(text))
+        return all(_same_term(word, said) for word in words)
+
+    return says(rewrite) and not says(original)
 
 
 def _names_option(option: str, rewrite: str, original: str = "") -> bool:
@@ -393,7 +440,13 @@ def _names_option(option: str, rewrite: str, original: str = "") -> bool:
 
     def says(text: str) -> bool:
         tokens = _content(text)
-        return any(tokens[i : i + len(words)] == words for i in range(len(tokens)))
+        return any(
+            all(
+                _forms(a) & _forms(b)
+                for a, b in zip(tokens[i : i + len(words)], words, strict=True)
+            )
+            for i in range(len(tokens) - len(words) + 1)
+        )
 
     return says(rewrite) and not says(original)
 
@@ -479,13 +532,16 @@ def stem_problems(
                 " opposite changed"
             )
         options = candidate.options.get(lang) or []
-        option_words = {_root(w) for o in options for w in _words(o)}
-        key_terms = {
+        option_words = {w for o in options for w in _words(o)}
+        rewrite_words = _words(rewrite)
+        missing = {
             _root(w)
             for w in _words(original)
-            if len(w) >= 5 and w not in _STOPWORDS and _root(w) in option_words
+            if len(w) >= 5
+            and w not in _STOPWORDS
+            and _same_term(w, option_words)
+            and not _same_term(w, rewrite_words)
         }
-        missing = key_terms - {_root(w) for w in _words(rewrite)}
         if missing:
             problems.append(f"{lang}: key terms left out: {', '.join(sorted(missing))}")
         answer = options[candidate.correct_index] if candidate.correct_index < len(options) else ""
