@@ -1028,6 +1028,15 @@ class TestScreenplay:
         build = repair.build_story_document(make_ctx(raw), spine)
         assert build.issues == []
 
+    def test_a_character_who_narrates_their_own_action_gets_a_narrate_step(self, raw):
+        """#2697: the mentor's « Kaboré lifts the clock. » is the storyteller's line."""
+        spine = spine_for(raw)
+        spine["scenes"][0]["steps"][3]["en"] = "Kaboré lifts the clock."
+        build = repair.build_story_document(make_ctx(raw), spine)
+        step = build.doc["chapters"][0]["scenes"][0]["steps"][3]
+        assert step["type"] == "narrate" and step["en"] == "Kaboré lifts the clock."
+        assert ("line_self_narrated", "scenes[0].steps[3].en") in _codes(build)
+
     def test_a_speaker_who_is_not_in_the_cast_loses_the_line(self, raw):
         spine = spine_for(raw)
         spine["scenes"][0]["steps"][1]["who"] = "the_mayor"

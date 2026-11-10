@@ -18,7 +18,7 @@ from app.domain.services import story_repair as repair
 from app.domain.services.story_checks import check_story
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import pack_issues, validate_document
-from app.domain.services.story_props import names_prop
+from app.domain.services.story_props import names_prop, short_label
 from tests.test_story_screenplay_module import (
     data,
     make_run,
@@ -1045,3 +1045,296 @@ def test_a_provider_error_on_a_pack_repair_keeps_the_paid_pack():
     failing = _PackModel(RuntimeError("401 invalid key"), RuntimeError("never"))
     with pytest.raises(RuntimeError, match="401"):
         asyncio.run(StoryFromLessonService(failing).generate_pack(ctx, system_prompt="s"))
+
+
+# --------------------------------------------------------------------------
+# #2697: prop labels are short nouns; a character never narrates their own action
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("label", "short"),
+    [
+        ("le bocal fermé avec quelque chose de gris dedans", "le bocal fermé"),
+        ("le bocal fermé avec quelque chose de…", "le bocal fermé"),
+        ("the closed jar with something grey pressed inside", "the closed jar"),
+        (
+            "le diagramme des niveaux du vivant de l'atome à la biosphère",
+            "le diagramme des niveaux du vivant",
+        ),
+        ("des cellules d'oignon avec leur noyau bien visible", "des cellules d'oignon"),
+        ("un escargot", "un escargot"),
+        ("le panier de…", "le panier"),
+        # The staging label of #2697, whole and as a plan stored it before.
+        (
+            "le diagramme des niveaux du vivant dessiné par l'ami",
+            "le diagramme des niveaux du vivant",
+        ),
+        ("le diagramme des niveaux du vivant…", "le diagramme des niveaux du vivant"),
+        (
+            "the diagram of the levels of life drawn by the friend",
+            "the diagram of the levels of life",
+        ),
+        ("the closed glass jar holding a slice of mouldy bread", "the closed glass jar"),
+        ("le grand bocal en verre fermé contenant du pain moisi", "le grand bocal en verre fermé"),
+        ("l'arbre à karité devant la maison de grand-mère", "l'arbre à karité"),
+        # Cut by the model: kept whole, without its "…".
+        ("the jar…", "the jar"),
+        ("un escargot…", "un escargot"),
+        ("le bocal fermé…", "le bocal fermé"),
+        ("la carte...", "la carte"),
+        # An elided first word holds its article: a cut may follow it.
+        ("l'escargot avec sa coquille brisée en mille morceaux", "l'escargot"),
+        # The longest run of whole words that fits, never ending on a small word.
+        (
+            "le thermomètre à mercure de l'infirmière du village",
+            "le thermomètre à mercure de l'infirmière",
+        ),
+        # A capital letter is never taken for an article.
+        ("la vitamine A", "la vitamine A"),
+        ("le plan B", "le plan B"),
+    ],
+)
+def test_a_long_label_is_cut_where_its_description_starts(label, short):
+    assert short_label(label) == short
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "a very long and winding description of a small brown seed that fell",
+        "la grande carte dessinée à la main des huit signes du vivant pour le jury",
+        "unmotdeplusdequarantecaracteressansaucunespacedutout",
+        "le carnet de {friend} et la craie et le tableau et la règle",
+    ],
+)
+def test_a_cut_label_fits_never_ends_on_a_small_word_and_has_no_ellipsis(label):
+    from app.api.v1.schemas.story_course import PROP_LABEL_LIMIT
+
+    short = short_label(label)
+    assert 0 < len(short) <= PROP_LABEL_LIMIT
+    assert "…" not in short and not short.endswith("...")
+    assert short.split()[-1] not in {
+        "de",
+        "du",
+        "des",
+        "la",
+        "le",
+        "les",
+        "et",
+        "en",
+        "par",
+        "of",
+        "the",
+        "a",
+        "by",
+        "at",
+    }
+
+
+def test_a_chapter_props_long_label_is_shortened_and_reported():
+    the_spine = spine()
+    the_spine["props"].append(
+        {
+            "id": "jar",
+            "label": {
+                "en": "the closed jar with something grey pressed inside",
+                "fr": "le bocal fermé avec quelque chose de gris dedans",
+            },
+            "query": "glass jar grey mould",
+            "kind": "real",
+        }
+    )
+    steps_of(the_spine, 0)[1]["props"] = ["jar"]
+    result = build(chapter_ctx(), the_spine)
+    jar = next(p for p in result.doc["props"] if p["id"] == "jar")
+    assert jar["label"] == {"en": "the closed jar", "fr": "le bocal fermé"}
+    messages = [i.message for i in result.issues if i.code == "prop_invalid"]
+    assert any("short noun" in m and "«le bocal fermé»" in m for m in messages)
+    report = repair.with_generator_issues(validate_document(result.doc), result)
+    assert report.ok  # a prop fix alone never costs a repair
+
+
+def _said(the_spine, scene: int, index: int, en: str, fr: str) -> None:
+    steps_of(the_spine, scene)[index].update(en=en, fr=fr)
+
+
+def test_a_line_that_narrates_its_own_speaker_becomes_a_narrate_and_a_say():
+    the_spine = spine()
+    steps = steps_of(the_spine, 0)
+    at = index_of(steps, type="say", who="friend")
+    _said(
+        the_spine,
+        0,
+        at,
+        "{friend} points at the bench. A snail! It is not moving. Poor thing, it must be dead.",
+        "{friend} montre le banc. Un escargot ! Il ne bouge pas. Le pauvre, il doit être mort.",
+    )
+    result = build(chapter_ctx(), the_spine)
+    built = result.doc["chapters"][0]["scenes"][0]["steps"]
+    narrate = next(i for i, s in enumerate(built) if s.get("en") == "{friend} points at the bench.")
+    assert built[narrate]["type"] == "narrate"
+    assert built[narrate]["fr"] == "{friend} montre le banc."
+    said = built[narrate + 1]
+    assert said["type"] == "say" and said["who"] == "friend"
+    assert said["en"].startswith("A snail!") and said["fr"].startswith("Un escargot !")
+    assert repair.SELF_NARRATED in codes(result)
+    report = repair.with_generator_issues(validate_document(result.doc), result)
+    assert repair.SELF_NARRATED in {w.code for w in report.warnings}
+    assert repair.SELF_NARRATED not in {e.code for e in report.errors}
+
+
+@pytest.mark.parametrize(
+    ("en", "fr", "types", "kept_en", "kept_fr"),
+    [
+        # The whole line is a stage direction: a narrate step.
+        (
+            "{friend} lifts the snail.",
+            "{friend} soulève l'escargot.",
+            ["narrate"],
+            "{friend} lifts the snail.",
+            "{friend} soulève l'escargot.",
+        ),
+        # Only French narrates: the stage direction leaves the French line.
+        (
+            "A snail! It is not moving.",
+            "{friend} montre le banc. Un escargot ! Il ne bouge pas.",
+            ["say"],
+            "A snail! It is not moving.",
+            "Un escargot ! Il ne bouge pas.",
+        ),
+    ],
+)
+def test_self_narration_in_one_language_or_the_whole_line(en, fr, types, kept_en, kept_fr):
+    the_spine = spine()
+    steps = steps_of(the_spine, 0)
+    at = index_of(steps, type="say", who="friend")
+    _said(the_spine, 0, at, en, fr)
+    result = build(chapter_ctx(), the_spine)
+    built = result.doc["chapters"][0]["scenes"][0]["steps"]
+    found = [s for s in built if s.get("en") == kept_en]
+    assert [s["type"] for s in found] == types and found[0]["fr"] == kept_fr
+    assert repair.SELF_NARRATED in codes(result)
+
+
+@pytest.mark.parametrize(
+    ("en", "fr"),
+    [
+        ("{friend}, look at this snail! It is not moving.", "{friend}, regarde ! Il ne bouge pas."),
+        ("Grandma says it is dead, but look again.", "Mamie dit qu'il est mort, mais regarde."),
+        ("{child} found it first! It is not moving.", "{child} l'a trouvé ! Il ne bouge pas."),
+    ],
+)
+def test_a_line_that_names_someone_else_or_calls_out_is_left_alone(en, fr):
+    the_spine = spine()
+    steps = steps_of(the_spine, 0)
+    at = index_of(steps, type="say", who="friend")
+    _said(the_spine, 0, at, en, fr)
+    result = build(chapter_ctx(), the_spine)
+    assert repair.SELF_NARRATED not in codes(result)
+
+
+def test_a_stored_plan_label_cut_with_an_ellipsis_is_shortened_for_the_chapters():
+    from app.domain.services.story_props import plan_props
+
+    raw = {
+        "props": [
+            {
+                "id": "jar",
+                "en": "the closed jar with something…",
+                "fr": "le bocal fermé avec quelque chose de…",
+                "kind": "real",
+            }
+        ]
+    }
+    assert plan_props(raw)[0]["label"] == {"en": "the closed jar", "fr": "le bocal fermé"}
+
+
+def test_a_lead_in_that_is_only_a_stage_direction_stays_a_say_and_costs_no_repair():
+    """As a narrate step it would leave the question with no lead-in (#2697 review)."""
+    the_spine = spine()
+    steps = steps_of(the_spine, 0)
+    lead = index_of(steps, type="ask", ref="q1") - 1
+    assert steps[lead]["who"] == "friend"
+    steps[lead].update(en="{friend} lifts the snail.", fr="{friend} soulève l'escargot.")
+    result = build(chapter_ctx(), the_spine)
+    built = result.doc["chapters"][0]["scenes"][0]["steps"]
+    ask = index_of(built, type="ask", ref="q1")
+    assert built[ask - 1]["type"] == "say" and built[ask - 1]["en"] == "{friend} lifts the snail."
+    assert repair.ASK_NOT_SET_UP not in codes(result)
+    assert repair.SELF_NARRATED in codes(result)
+    report = repair.with_generator_issues(validate_document(result.doc), result)
+    assert report.errors == []  # the split never costs a repair call
+
+
+def test_any_self_narration_split_is_a_warning_only():
+    the_spine = spine()
+    steps = steps_of(the_spine, 0)
+    at = index_of(steps, type="say", who="friend")
+    steps[at].update(
+        en="{friend} points at the bench. A snail! It is not moving.",
+        fr="{friend} montre le banc. Un escargot ! Il ne bouge pas.",
+    )
+    result = build(chapter_ctx(), the_spine)
+    report = repair.with_generator_issues(validate_document(result.doc), result)
+    assert repair.SELF_NARRATED in {w.code for w in report.warnings}
+    assert repair.repair_issues(report) and not report.errors
+
+
+@pytest.mark.parametrize(
+    ("who", "en", "fr"),
+    [
+        # Speech about oneself stays speech.
+        (
+            "family",
+            "Grandma will show you how it is done.",
+            "Mamie va te montrer comment on fait.",
+        ),
+        ("mentor", "Kaboré says the night is long.", "Kaboré dit que la nuit est longue."),
+        ("friend", "{friend} is so happy! Look!", "{friend} est trop contente ! Regarde !"),
+    ],
+)
+def test_speech_about_oneself_is_never_split(who, en, fr):
+    from app.domain.services.story_repair import _own_action
+
+    the_spine = spine()
+    steps = steps_of(the_spine, 0)
+    at = index_of(steps, type="say", who="friend")
+    names = {"family": ["Grandma", "Mamie"], "mentor": ["Kaboré"], "friend": ["{friend}"]}[who]
+    assert _own_action(fr, names) is None and _own_action(en, names) is None
+    steps[at].update(who=who, en=en, fr=fr)
+    the_spine["scenes"][0]["cast"] = (
+        ["hero", "friend", who] if who != "friend" else ["hero", "friend", "family"]
+    )
+    result = build(chapter_ctx(), the_spine)
+    assert repair.SELF_NARRATED not in codes(result)
+
+
+def test_an_abbreviation_never_ends_a_stage_direction():
+    from app.domain.services.story_repair import _own_action
+
+    assert _own_action("{friend} montre la fig. 3 du livre. Regarde !", ["{friend}"]) == (
+        "{friend} montre la fig. 3 du livre.",
+        "Regarde !",
+    )
+    assert _own_action("{friend} salue M. Kaboré. Bonjour !", ["{friend}"]) == (
+        "{friend} salue M. Kaboré.",
+        "Bonjour !",
+    )
+    assert _own_action("{friend} montre la fig. 3 du livre.", ["{friend}"]) == (
+        "{friend} montre la fig. 3 du livre.",
+        "",
+    )
+
+
+def test_the_chapter_prompt_shows_a_stored_label_without_its_ellipsis():
+    from app.ai.prompts.story_from_lesson import build_chapter_story_message
+
+    ctx = chapter_ctx()
+    plan = copy.deepcopy(ctx.plan)
+    plan["props"][0]["fr"] = "le diagramme des niveaux du vivant…"
+    plan["props"][0]["en"] = "the diagram of the levels of life…"
+    ctx.plan = plan
+    message = build_chapter_story_message(ctx, pack("1.1", LANGUAGE))
+    assert "…" not in message.split("=== THE EPISODE PLAN ===")[1].split("===")[0]
+    assert "the diagram of the levels of life (planted" in message

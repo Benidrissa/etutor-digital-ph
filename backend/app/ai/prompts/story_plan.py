@@ -196,7 +196,10 @@ def build_plan_user_message(request: PlanRequest) -> str:
         ),
         '- "props": at most 4; each is planted in one chapter ("planted": its unit) and paid'
         ' off later ("paid_off": a later unit or "rally"); "query" is 2 to 5 English words a'
-        ' picture search needs; "kind" is "real" or "sticker".',
+        ' picture search needs; "kind" is "real" or "sticker". "en" and "fr" are the name'
+        ' tag: a short noun with its article, at most 4 words and 40 characters ("the'
+        ' jar", "le bocal"), never a description ("le bocal fermé avec quelque chose de'
+        ' gris" is wrong).',
     ]
     last = request.lessons[-1].unit_number if request.lessons else first
     if request.has_rally:

@@ -700,6 +700,43 @@ async def test_a_provider_outage_on_the_retry_serves_the_plan_made_in_code(maker
         assert await find_plan_digests(session, req.module_id, req.language) is None
 
 
+def test_a_long_plan_prop_label_is_a_plan_issue_and_is_cut_without_an_ellipsis():
+    raw = answer()
+    raw["props"][0]["fr"] = "le panier de Mamie avec tous les trésors du marché"
+    assert "plan_prop_label_long" in plan_codes(raw)
+    plan, gaps = normalise_plan(raw, request())
+    label = plan["props"][0]["fr"]
+    assert label == "le panier de Mamie" and "…" not in label
+    assert any("label shortened" in gap for gap in gaps)
+    assert "plan_prop_label_long" not in plan_codes(answer())
+
+
+async def test_a_long_prop_label_alone_never_costs_a_plan_repair(maker):
+    req = await seeded_request(maker)
+    long = answer()
+    long["props"][0]["fr"] = "le panier de Mamie avec tous les trésors du marché"
+    model = FakeModel({**long, "__complete": True})
+    async with maker() as session:
+        plan = await StoryPlanService(model).get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 1  # settled in code, no repair call
+    assert plan.plan["props"][0]["fr"] == "le panier de Mamie"
+    # With an issue worth a repair, the label is listed in that repair too.
+    both = copy.deepcopy(long)
+    both["chapters"][0]["beats"][0]["place"] = "mars"
+    model = FakeModel(both, both)
+    req2 = await seeded_request(maker)
+    async with maker() as session:
+        await StoryPlanService(model).get_or_create(session, req2, system_prompt="s")
+    assert len(model.messages) == 2
+    assert "[plan_prop_label_long]" in model.messages[1]
+    assert "[plan_unknown_place]" in model.messages[1]
+
+
+def test_the_plan_message_asks_for_short_prop_labels():
+    message = build_plan_user_message(request("fr"))
+    assert "a short noun with its article" in message and "never a description" in message
+
+
 def test_candidates_keep_their_content_key():
     req = request()
     candidate = req.candidates[0]
