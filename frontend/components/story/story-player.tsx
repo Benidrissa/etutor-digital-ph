@@ -104,7 +104,14 @@ import {
 import { planSteps, presenterOf, reactorOf, type PlannedStep } from "./stage/scene-plan";
 import { reveal } from "./stage/scroll";
 import { playSfx, unlockAudio, type Sfx } from "./stage/sound";
-import { speak, speechAvailable, stopSpeaking, type SpeechVoice } from "./stage/speech";
+import {
+  prefetchSpeech,
+  speak,
+  speechAvailable,
+  stopSpeaking,
+  unlockSpeech,
+  type SpeechVoice,
+} from "./stage/speech";
 import { StageCharacter, preloadImages, type Gesture } from "./stage/stage-character";
 import { StageProp } from "./stage/stage-prop";
 import styles from "./stage/stage.module.css";
@@ -136,7 +143,7 @@ const TAP_THROUGH: ReadonlySet<string> = new Set(["say", "narrate", "concept", "
 /** Steps that put a panel on the stage with a pop. */
 const POP_STEPS: ReadonlySet<string> = new Set(["concept", "show", "ask", "game", "photo", "video"]);
 
-const NARRATOR: SpeechVoice = { pitch: 1, rate: 0.95 };
+const NARRATOR: SpeechVoice = { pitch: 1, rate: 0.95, profile: "narrator" };
 
 /**
  * How long a chapter's title card stays up on its own before the first line,
@@ -325,7 +332,8 @@ export function StoryPlayer({
     const next = !readAloud;
     setReadAloud(next);
     writeReadAloud(next);
-    if (!next) stopSpeaking();
+    if (next) unlockSpeech();
+    else stopSpeaking();
   };
 
   // The learner's choices at the start of a course's story (#2672): the
@@ -496,6 +504,8 @@ export function StoryPlayer({
   }, [titleBeat, revealStep]);
 
   const advance = useCallback(() => {
+    // A tap or a key: iOS lets the read-aloud player start on its own after it.
+    if (readAloud) unlockSpeech();
     // During a title beat, Next only ends the beat: the first line comes up.
     if (titleBeat !== null) {
       setTitleBeat(null);
@@ -512,7 +522,7 @@ export function StoryPlayer({
       setTitleBeat(null);
     }
     revealStep();
-  }, [titleBeat, index, furthest, flat.length, beatAt, revealStep]);
+  }, [readAloud, titleBeat, index, furthest, flat.length, beatAt, revealStep]);
 
   // One line back, across scenes and chapters, never to the start card or a
   // title beat. What was answered is shown answered. On the first line, the
@@ -660,13 +670,16 @@ export function StoryPlayer({
   // Read-aloud: the step's target-language text, in its speaker's voice. It
   // is keyed as a string (with the step's index, so a repeated line is read
   // again) and parsed back in the effect, which then runs once per step.
-  const speechKey = (() => {
+  type Speech = { lines: string[]; lang: string; voice: SpeechVoice };
+  const speechOf = (planned: PlannedStep | undefined): Speech | null => {
+    const step = planned?.step;
     if (!step) return null;
+    const presenter = presenterOf(planned.cast ?? [], actors);
     const targetLine = lineOf(stepText(step, target));
     const homeLine = lineOf(stepText(step, home));
     const lang = targetLine ? target : home;
     const voiceOf = (id: string | undefined) => (id ? actors.get(id)?.voice : undefined) ?? NARRATOR;
-    let speech: { lines: string[]; lang: string; voice: SpeechVoice } | null = null;
+    let speech: Speech | null = null;
     switch (step.type) {
       case "say":
         speech = { lines: [targetLine || homeLine], lang, voice: voiceOf(step.who) };
@@ -712,8 +725,13 @@ export function StoryPlayer({
         break;
       }
     }
-    return speech ? JSON.stringify({ index, ...speech }) : null;
-  })();
+    return speech;
+  };
+  const speechNow = speechOf(current);
+  const speechKey = speechNow ? JSON.stringify({ index, ...speechNow }) : null;
+  // The next step's clips are asked for while this one plays, so it speaks at once.
+  const nextSpeech = speechOf(flat[index + 1]);
+  const nextSpeechKey = nextSpeech ? JSON.stringify(nextSpeech) : null;
 
   useEffect(() => {
     if (!readAloud || !active || introOpen || beatOn || !speechKey) return;
@@ -721,6 +739,12 @@ export function StoryPlayer({
     speak(speech.lines, speech.lang, speech.voice);
     return () => stopSpeaking();
   }, [speechKey, readAloud, active, introOpen, beatOn]);
+
+  useEffect(() => {
+    if (!readAloud || !active || introOpen || !nextSpeechKey) return;
+    const next = JSON.parse(nextSpeechKey) as Speech;
+    prefetchSpeech(next.lines, next.lang, next.voice);
+  }, [nextSpeechKey, readAloud, active, introOpen]);
 
   // Only the poses of the cast on stage are fetched ahead: the whole story's
   // art is too much for a 3G link.
@@ -868,6 +892,7 @@ export function StoryPlayer({
 
   const startStory = (picked: StoryChoices) => {
     unlockAudio();
+    if (readAloud) unlockSpeech();
     const next: StoryChoices = {
       friend: picked.friend,
       variant: picked.variant,

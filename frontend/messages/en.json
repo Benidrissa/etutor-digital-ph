@@ -1278,6 +1278,7 @@
         "preassessment": "Pre-assessment",
         "tutor_chat": "AI tutor (chat)",
         "tutor_tts": "AI tutor (audio)",
+        "story_tts": "Story mode (read-aloud)",
         "lesson_audio": "Lesson audio",
         "qbank_audio": "Question bank audio",
         "transcription": "Voice transcription",

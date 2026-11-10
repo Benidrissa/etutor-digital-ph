@@ -5,6 +5,7 @@ import {
   CacheFirst,
   StaleWhileRevalidate,
   ExpirationPlugin,
+  RangeRequestsPlugin,
 } from "serwist";
 
 declare global {
@@ -34,7 +35,10 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // props and the Previous button (#2682) replaces the cached one.
 // v11 replaces the v10 story player, whose Previous handed out fresh first
 // tries (#2688), and course figures get a cache of their own.
-const CACHE_VERSION = "v11-story-fixes";
+// v12 replaces the story player whose read-aloud used the browser's voice:
+// lines are now spoken with the AI voice (#2704), its clips kept in a stable
+// cache of their own.
+const CACHE_VERSION = "v12-story-voice";
 
 // Story pictures (#2681): character poses, backdrops, prop stickers and
 // photos. Not versioned with CACHE_VERSION on purpose, so a downloaded story
@@ -43,6 +47,11 @@ const CACHE_VERSION = "v11-story-fixes";
 const STORY_MEDIA_CACHE = "story-media-v1";
 const COURSE_FIGURES_CACHE = "course-figures-v1";
 const STORY_MEDIA_PATH = /^\/api\/v1\/(story-art|story-props)\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
+// Read-aloud clips (#2704): one per spoken line and voice, never changed in
+// place. Stable like the story media, in a cache of their own so a chatty
+// story never pushes its pictures out.
+const STORY_AUDIO_CACHE = "story-audio-v1";
+const STORY_AUDIO_PATH = /^\/api\/v1\/story-audio\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
 const SOURCE_IMAGE_PATH = /^\/api\/v1\/source-images\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
 
 /** Only whole, successful answers are kept: never an error page. */
@@ -62,6 +71,18 @@ const storyMediaPlugins = [
     purgeOnQuotaError: true,
   }),
   okOnly,
+];
+// An <audio> element asks for byte ranges: a clip answered from the cache is
+// cut to the range asked for (Safari plays nothing from a plain 200).
+const storyAudioPlugins = [
+  new ExpirationPlugin({
+    maxEntries: 2000,
+    maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    maxAgeFrom: "last-used",
+    purgeOnQuotaError: true,
+  }),
+  okOnly,
+  new RangeRequestsPlugin(),
 ];
 const courseFigurePlugins = [
   new ExpirationPlugin({
@@ -161,6 +182,14 @@ const serwist = new Serwist({
       handler: new CacheFirst({
         cacheName: STORY_MEDIA_CACHE,
         plugins: storyMediaPlugins,
+      }),
+    },
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        request.method === "GET" && STORY_AUDIO_PATH.test(url.pathname),
+      handler: new CacheFirst({
+        cacheName: STORY_AUDIO_CACHE,
+        plugins: storyAudioPlugins,
       }),
     },
     // Course figures have been fixed in place before: shown from the cache,

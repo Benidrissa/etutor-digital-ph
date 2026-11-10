@@ -11,6 +11,7 @@
  */
 
 import type { CastMember, CastRole, Mood, StoryArt, StoryCourse } from "@/lib/story-course/types";
+import type { VoiceProfile } from "./speech";
 
 /** The poses a figure is drawn in: one per mood. */
 export type Pose = Mood;
@@ -49,7 +50,7 @@ export interface StageActor {
   /** The key of this actor's pictures in `course.art.characters`. */
   artKey: string;
   look: Look;
-  voice: { pitch: number; rate: number };
+  voice: { pitch: number; rate: number; profile: VoiceProfile };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -293,6 +294,13 @@ function clampVoice(value: unknown, fallback: number, min: number, max: number):
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
 }
 
+/** Which AI voice speaks for a cast member (#2704): Margo, a child or an adult. */
+export function voiceProfileOf(figure: FigureKind, look: Pick<Look, "feminine">, tutor: boolean): VoiceProfile {
+  if (tutor || figure === "gecko") return "tutor";
+  if (figure === "child") return look.feminine ? "girl" : "boy";
+  return look.feminine ? "woman" : "man";
+}
+
 /** Every cast member, ready for the stage. `variant` is the hero's chosen look. */
 export function buildActors(
   course: Pick<StoryCourse, "cast" | "learner">,
@@ -305,6 +313,7 @@ export function buildActors(
     const heroVariant = hero && member.variants?.some((v) => v?.id === variant) ? variant : undefined;
     const figure = figureOf(member, heroVariant);
     const defaults = DEFAULT_VOICES[figure];
+    const look = lookFor(member, heroVariant);
     actors.set(member.id, {
       id: member.id,
       name: member.name || member.id,
@@ -314,10 +323,11 @@ export function buildActors(
       isMentor: member.role === "mentor" || member.id === "mentor",
       role: member.role,
       artKey: heroVariant ? `hero:${heroVariant}` : member.id,
-      look: lookFor(member, heroVariant),
+      look,
       voice: {
         pitch: clampVoice(member.voice?.pitch, defaults.pitch, 0, 2),
         rate: clampVoice(member.voice?.rate, defaults.rate, 0.5, 2),
+        profile: voiceProfileOf(figure, look, isTutor(member)),
       },
     });
   }

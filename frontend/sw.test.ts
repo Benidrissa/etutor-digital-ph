@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from "serwist";
+import { CacheFirst, NetworkFirst, RangeRequestsPlugin, StaleWhileRevalidate } from "serwist";
 
 import { PAGES_CACHE_NAME } from "@/lib/offline/prewarm";
 
@@ -36,13 +36,14 @@ vi.mock("serwist", () => {
   class ExpirationPlugin {
     constructor(public options: Record<string, unknown>) {}
   }
+  class RangeRequestsPlugin {}
   class Serwist {
     constructor(options: { runtimeCaching: RuntimeCaching[] }) {
       recorded.options = options;
     }
     addEventListeners() {}
   }
-  return { Serwist, NetworkFirst, CacheFirst, StaleWhileRevalidate, ExpirationPlugin };
+  return { Serwist, NetworkFirst, CacheFirst, StaleWhileRevalidate, ExpirationPlugin, RangeRequestsPlugin };
 });
 
 function rule(handler: abstract new (...args: never[]) => unknown): RuntimeCaching {
@@ -142,14 +143,34 @@ describe("service worker story media cache (#2681)", () => {
   });
 
   it("bumps the page cache with the service worker", () => {
-    expect(PAGES_CACHE_NAME).toBe("pages-v11-story-fixes");
+    expect(PAGES_CACHE_NAME).toBe("pages-v12-story-voice");
     expect(rule(NetworkFirst).handler.options.cacheName).toBe(PAGES_CACHE_NAME);
+  });
+});
+
+describe("service worker story audio cache (#2704)", () => {
+  const CLIP = "/api/v1/story-audio/3f2c9a1e-0b7d-4c55-9e2a-1d2f3a4b5c6d/data";
+
+  it("keeps read-aloud clips in a stable cache of their own, cache first, ranges served", () => {
+    const found = ruleFor(CLIP);
+    expect(found?.handler).toBeInstanceOf(CacheFirst);
+    expect(found?.handler.options.cacheName).toBe("story-audio-v1");
+    const plugins = (found?.handler.options as { plugins?: unknown[] }).plugins ?? [];
+    expect(plugins.some((plugin) => plugin instanceof RangeRequestsPlugin)).toBe(true);
+    const expiration = (plugins as Array<{ options?: Record<string, unknown> }>).find((p) => p.options)?.options;
+    expect(expiration).toMatchObject({ maxAgeFrom: "last-used", purgeOnQuotaError: true });
+  });
+
+  it("never caches the request for a clip", () => {
+    expect(apiCacheTakes("/api/v1/story-audio", "POST")).toBe(false);
   });
 });
 
 describe("service worker clean-up of older caches (#2688)", () => {
   it("deletes the runtime caches of older versions only", () => {
     for (const stale of [
+      "pages-v11-story-fixes",
+      "static-assets-v11-story-fixes",
       "pages-v10-story-media",
       "pages-v9-api-keys-tab",
       "static-assets-v9-api-keys-tab",
@@ -165,12 +186,13 @@ describe("service worker clean-up of older caches (#2688)", () => {
       expect(isStaleRuntimeCache(stale)).toBe(true);
     }
     for (const kept of [
-      "pages-v11-story-fixes",
-      "static-images-v11-story-fixes",
-      "static-assets-v11-story-fixes",
-      "api-responses-v11-story-fixes",
-      "google-fonts-v11-story-fixes",
+      "pages-v12-story-voice",
+      "static-images-v12-story-voice",
+      "static-assets-v12-story-voice",
+      "api-responses-v12-story-voice",
+      "google-fonts-v12-story-voice",
       "story-media-v1",
+      "story-audio-v1",
       "course-figures-v1",
       "serwist-precache-v2-https://sira.example/",
       "some-other-cache",

@@ -12,7 +12,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import frMessages from "@/messages/fr.json";
 import type { StoryCourse } from "@/lib/story-course/types";
 
+import { apiFetch } from "@/lib/api";
 import { CHOICES_KEY_PREFIX, READ_ALOUD_KEY, SOUND_KEY } from "./stage/prefs";
+import { resetSpeech } from "./stage/speech";
 import { StoryPlayer, TITLE_BEAT_MS } from "./story-player";
 import { cardReady, clickInCard } from "./story-test-utils";
 
@@ -20,7 +22,14 @@ import { cardReady, clickInCard } from "./story-test-utils";
 // on a busy CI runner.
 vi.setConfig({ testTimeout: 20_000 });
 
+// Read-aloud asks the server for AI clips (#2704). Offline by default here, so
+// every line falls back to the browser's voice unless a test serves clips.
+vi.mock("@/lib/api", () => ({ apiFetch: vi.fn(() => Promise.reject(new Error("offline"))) }));
+
 afterEach(() => {
+  resetSpeech();
+  vi.mocked(apiFetch).mockReset();
+  vi.mocked(apiFetch).mockImplementation(() => Promise.reject(new Error("offline")));
   window.localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -555,8 +564,28 @@ describe("Stage — sound", () => {
     }
     vi.stubGlobal("speechSynthesis", { speak, cancel, getVoices: () => [] });
     vi.stubGlobal("SpeechSynthesisUtterance", Utterance);
-    return { speak, cancel };
+    const played: string[] = [];
+    class FakeAudio {
+      src = "";
+      preload = "";
+      addEventListener() {}
+      removeEventListener() {}
+      pause() {}
+      play() {
+        played.push(this.src);
+        return Promise.resolve();
+      }
+    }
+    vi.stubGlobal("Audio", FakeAudio);
+    return { speak, cancel, played };
   }
+
+  /** The bodies of the read-aloud requests sent so far. */
+  const clipRequests = () =>
+    vi
+      .mocked(apiFetch)
+      .mock.calls.filter(([path]) => path === "/api/v1/story-audio")
+      .map(([, init]) => JSON.parse(String(init?.body)));
 
   const readAloudToggle = () => screen.getByRole("button", { name: "Lire à voix haute" });
   const effectsToggle = () => screen.getByRole("button", { name: "Effets sonores" });
@@ -579,13 +608,45 @@ describe("Stage — sound", () => {
 
     await user.click(readAloudToggle());
     expect(window.localStorage.getItem(READ_ALOUD_KEY)).toBe("on");
-    expect(speak).toHaveBeenCalledTimes(1);
+    // No AI clip (offline): the browser's voice reads the line.
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
     expect(speak.mock.calls[0][0]).toMatchObject({ text: "Un mystère t'attend.", lang: "fr-FR" });
     // Read aloud, the screen reader does not announce the same line again.
     expect(screen.getByTestId("story-stage").lastElementChild).toHaveAttribute("aria-live", "off");
 
     await user.click(screen.getByRole("button", { name: "Suite" }));
-    expect(speak.mock.calls.at(-1)?.[0]).toMatchObject({ text: "Observe bien.", pitch: 0.8, rate: 0.9 });
+    await waitFor(() =>
+      expect(speak.mock.calls.at(-1)?.[0]).toMatchObject({ text: "Observe bien.", pitch: 0.8, rate: 0.9 }),
+    );
+  });
+
+  it("reads each line with the AI voice, one per character, the next line asked for ahead (#2704)", async () => {
+    const user = userEvent.setup();
+    const { speak, played } = stubSpeech();
+    vi.mocked(apiFetch).mockImplementation(async (_path, init) => {
+      const body = JSON.parse(String(init?.body));
+      return { id: "x", url: `/api/v1/story-audio/${encodeURIComponent(body.text)}/data` };
+    });
+    renderPlayer(oldStory());
+
+    await user.click(readAloudToggle());
+    await waitFor(() => expect(played).toContain(`/api/v1/story-audio/${encodeURIComponent("Un mystère t'attend.")}/data`));
+    expect(clipRequests()).toEqual(
+      expect.arrayContaining([
+        { text: "Un mystère t'attend.", language: "fr", voice: "narrator" },
+        // The next step's line, asked for while this one plays.
+        expect.objectContaining({ text: "Observe bien.", language: "fr" }),
+      ]),
+    );
+    const next = clipRequests().find((body) => body.text === "Observe bien.");
+    expect(next.voice).not.toBe("narrator");
+    expect(speak).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    await waitFor(() => expect(played.at(-1)).toBe(`/api/v1/story-audio/${encodeURIComponent("Observe bien.")}/data`));
+    // The prefetched clip is not asked for twice.
+    expect(clipRequests().filter((body) => body.text === "Observe bien.")).toHaveLength(1);
+    expect(speak).not.toHaveBeenCalled();
   });
 
   it("stops reading once switched off, and remembers both switches", async () => {
@@ -593,7 +654,7 @@ describe("Stage — sound", () => {
     const { speak, cancel } = stubSpeech();
     window.localStorage.setItem(READ_ALOUD_KEY, "on");
     const { unmount } = renderPlayer(oldStory());
-    expect(speak).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
     expect(readAloudToggle().className).toMatch(/\bmin-h-11\b/);
     expect(effectsToggle().className).toMatch(/\bmin-h-11\b/);
 
