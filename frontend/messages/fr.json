@@ -1107,6 +1107,8 @@
       "resetCategory": "Réinitialiser la catégorie",
       "resetConfirm": "Êtes-vous sûr ? Tous les paramètres de cette catégorie seront réinitialisés.",
       "saved": "Paramètre enregistré",
+      "saveFailed": "Paramètre non enregistré : la valeur a été refusée",
+      "notOffered": "n'est plus proposé",
       "resetDone": "Paramètre réinitialisé",
       "categoryResetDone": "{count} paramètres réinitialisés",
       "sensitive": "Paramètre de sécurité",

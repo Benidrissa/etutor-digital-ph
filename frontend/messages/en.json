@@ -1107,6 +1107,8 @@
       "resetCategory": "Reset All in Category",
       "resetConfirm": "Are you sure? This will reset all settings in this category to their defaults.",
       "saved": "Setting saved successfully",
+      "saveFailed": "Setting not saved: the value was refused",
+      "notOffered": "no longer offered",
       "resetDone": "Setting reset to default",
       "categoryResetDone": "{count} settings reset to default",
       "sensitive": "Security setting",

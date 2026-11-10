@@ -138,6 +138,17 @@ class TestModelId:
         } == set(setting.allowed_options)
         assert "gpt-image-1" not in setting.allowed_options
 
+    @pytest.mark.parametrize("option", list(IMAGE_MODEL_OPTIONS))
+    def test_a_stored_retired_value_can_be_replaced_by_any_option(self, option):
+        # Saving validates only the new value: whatever is stored (gpt-image-1),
+        # any offered model is accepted, and the retired one is refused.
+        from app.domain.services.platform_settings_service import _validate_value
+
+        setting = DEFAULTS_BY_KEY["ai-model-image"]
+        assert _validate_value(setting, option) == option
+        with pytest.raises(ValueError, match="must be one of"):
+            _validate_value(setting, "gpt-image-1")
+
     def test_no_model_resolves_to_the_current_one(self, openai_client):
         assert resolve_image_provider(None).model == OPENAI_IMAGE_MODEL
 
@@ -173,7 +184,7 @@ class TestErrorRecognition:
         "param", ["background", "input_fidelity", "quality", "output_format", "size"]
     )
     @pytest.mark.parametrize(
-        "code", ["invalid_value", "unknown_parameter", "unsupported_parameter"]
+        "code", ["invalid_value", "unknown_parameter", "unsupported_parameter", "unsupported_value"]
     )
     def test_a_droppable_parameter_refused(self, param, code):
         assert refused_param(param_refused(param, code)) == param
@@ -202,7 +213,7 @@ class TestParameterCompatibility:
         assert first["background"] == "transparent"
         assert "background" not in second
         # No transparency: a plain one-colour background the flood fill clears.
-        assert second["prompt"] == "a girl" + PLAIN_BACKGROUND
+        assert second["prompt"] == "a girl" + PLAIN_BACKGROUND  # no wording to replace
         assert unsupported_params(OPENAI_IMAGE_MODEL) == {"background"}
         rows = _rows(ledger)
         assert [r.get("success", True) for r in rows] == [False, True]
@@ -239,16 +250,58 @@ class TestParameterCompatibility:
         second = openai_client.images.generate.call_args_list[1].kwargs
         assert param not in second
 
-    async def test_only_one_retry_and_a_second_refusal_is_remembered(self, openai_client, ledger):
+    async def test_each_refused_parameter_is_dropped_in_turn(self, openai_client, ledger):
         openai_client.images.edit.side_effect = [
             param_refused("background"),
-            param_refused("input_fidelity"),
+            param_refused("input_fidelity", "unsupported_value"),
+            _response(b"EDIT"),
         ]
-        with pytest.raises(openai.BadRequestError):
-            await edit_image("p", b"REF", model=OPENAI_IMAGE_MODEL, background="transparent")
-        assert openai_client.images.edit.await_count == 2
-        assert [r["success"] for r in _rows(ledger)] == [False, False]
+        data, _ = await edit_image("p", b"REF", model=OPENAI_IMAGE_MODEL, background="transparent")
+        assert data == b"EDIT"
+        assert openai_client.images.edit.await_count == 3
+        last = openai_client.images.edit.call_args_list[-1].kwargs
+        assert "background" not in last and "input_fidelity" not in last
+        assert [r.get("success", True) for r in _rows(ledger)] == [False, False, True]
         assert unsupported_params(OPENAI_IMAGE_MODEL) == {"background", "input_fidelity"}
+
+    async def test_the_retries_are_bounded_by_the_droppable_parameters(self, openai_client, ledger):
+        # Every droppable parameter refused in turn: one retry each, then the
+        # image is drawn with none of them.
+        refusals = [param_refused(p) for p in ("background", "output_format", "quality", "size")]
+        openai_client.images.generate.side_effect = [*refusals, _response(b"OK")]
+        data, _ = await generate_image("p", model=OPENAI_IMAGE_MODEL, background="transparent")
+        assert data == b"OK" and openai_client.images.generate.await_count == 5
+        last = openai_client.images.generate.call_args_list[-1].kwargs
+        assert set(last) == {"model", "prompt"}
+
+    async def test_a_refusal_of_a_parameter_not_sent_is_not_retried(self, openai_client, ledger):
+        image_provider._UNSUPPORTED_PARAMS[OPENAI_IMAGE_MODEL] = {"quality"}
+        openai_client.images.generate.side_effect = [param_refused("quality")]
+        with pytest.raises(openai.BadRequestError):
+            await generate_image("p", model=OPENAI_IMAGE_MODEL)
+        assert openai_client.images.generate.await_count == 1
+
+    async def test_concurrent_calls_refused_for_one_parameter_all_retry(
+        self, openai_client, ledger
+    ):
+        # Story art draws 3 images at once: all three send `quality` and are
+        # refused; the first to handle it remembers it, and the other two must
+        # still retry (their own request sent it), not fail.
+        import asyncio
+
+        async def generate(**kwargs):
+            await asyncio.sleep(0.01)
+            if "quality" in kwargs:
+                raise param_refused("quality", "invalid_value")
+            return _response(b"OK")
+
+        openai_client.images.generate.side_effect = generate
+        results = await asyncio.gather(
+            *(generate_image(f"p{i}", model=OPENAI_IMAGE_MODEL) for i in range(3)),
+            return_exceptions=True,
+        )
+        assert all(result == (b"OK", OPENAI_IMAGE_MODEL) for result in results), results
+        assert openai_client.images.generate.await_count == 6
 
     async def test_an_undroppable_refusal_is_not_retried(self, openai_client, ledger):
         openai_client.images.generate.side_effect = [param_refused("prompt")]
@@ -373,3 +426,98 @@ class TestArtVersionBump:
     async def test_a_run_stores_the_new_version(self):
         _, _, sessions = await run_generator([MARKET], sessions=FakeSessions())
         assert {art.art_version for art in sessions.written} == {2}
+
+
+# --------------------------------------------------------------------------
+# One background instruction when transparency is refused (round 4, item 3)
+# --------------------------------------------------------------------------
+
+
+class TestPlainBackgroundPrompt:
+    @pytest.mark.parametrize(
+        "prompt",
+        [svc.character_prompt("a teacher"), svc.pose_prompt("a teacher", "talk")],
+        ids=["idle", "pose"],
+    )
+    def test_the_transparent_wording_is_replaced_not_contradicted(self, prompt):
+        assert "transparent background" in prompt.lower()
+        plain = image_provider.plain_background_prompt(prompt)
+        assert "transparent" not in plain.lower()
+        assert plain.lower().count("plain flat solid light-grey background") >= 1
+        assert "a teacher" in plain
+
+    def test_a_prompt_without_the_wording_gets_the_plain_sentence(self):
+        assert image_provider.plain_background_prompt("a girl") == "a girl" + PLAIN_BACKGROUND
+
+    async def test_a_refused_background_sends_one_background_instruction(
+        self, openai_client, ledger
+    ):
+        image_provider._UNSUPPORTED_PARAMS[OPENAI_IMAGE_MODEL] = {"background"}
+        prompt = svc.character_prompt("a teacher")
+        await generate_image(prompt, model=OPENAI_IMAGE_MODEL, background="transparent")
+        sent = openai_client.images.generate.call_args.kwargs["prompt"]
+        assert "transparent" not in sent.lower()
+        assert "background" not in openai_client.images.generate.call_args.kwargs
+
+
+# --------------------------------------------------------------------------
+# Classifying a failure by the whole chain (round 4, items 1-2)
+# --------------------------------------------------------------------------
+
+
+class TestChainClassification:
+    async def _gemini_then_openai(self, openai_client, first: Exception, second: Exception):
+        """A Gemini backdrop failing with ``first``, its OpenAI fallback with ``second``."""
+        openai_client.images.generate.side_effect = [first, second]
+        with (
+            patch(
+                "app.ai.providers.image_provider.get_settings",
+                return_value=_settings(google="gk"),
+            ),
+            pytest.raises(Exception) as raised,
+        ):
+            await generate_image("p", model="gemini-2.5-flash-image")
+        return raised.value
+
+    async def test_a_billed_primary_failure_is_not_a_configuration_failure(
+        self, openai_client, ledger
+    ):
+        timeout = openai.APITimeoutError(request=httpx.Request("POST", "https://g.test"))
+        exc = await self._gemini_then_openai(openai_client, timeout, model_missing())
+        assert exc.image_primary_error is timeout
+        assert not svc.failure_is_config(exc)
+        failure = svc.classify_failure(exc, None, MARKET.digest, now=NOW)
+        # Judged as the primary's timeout: one later run, then final.
+        assert not failure.error.startswith("configuration")
+        assert failure.error.startswith("APITimeoutError")
+        assert failure.failed_runs == 1 and failure.retry_after == NOW + timedelta(hours=1)
+        previous = row(
+            MARKET, "backdrop", status="failed", failed_runs=1, retry_after=NOW - timedelta(1)
+        )
+        assert svc.classify_failure(exc, previous, MARKET.digest, now=NOW).retry_after is None
+
+    async def test_model_errors_all_along_are_a_configuration_failure(self, openai_client, ledger):
+        exc = await self._gemini_then_openai(
+            openai_client,
+            _api_error(openai.NotFoundError, 404, code="model_not_found"),
+            model_missing(OPENAI_IMAGE_MODEL),
+        )
+        assert svc.failure_is_config(exc)
+        assert svc.classify_failure(exc, None, MARKET.digest, now=NOW).error.startswith(
+            "configuration"
+        )
+
+    def test_a_refused_parameter_is_not_final(self):
+        exc = param_refused("input_fidelity", "unsupported_value")
+        failure = svc.classify_failure(exc, None, GIRL.digest, now=NOW)
+        assert failure.retry_after == NOW + svc.PARAM_RETRY_AFTER
+        assert failure.failed_runs == 1
+        # Bounded: once every droppable parameter could have been dropped, final.
+        previous = row(
+            GIRL,
+            "talk",
+            status="failed",
+            failed_runs=len(image_provider.DROPPABLE_PARAMS),
+            retry_after=NOW - timedelta(1),
+        )
+        assert svc.classify_failure(exc, previous, GIRL.digest, now=NOW).retry_after is None

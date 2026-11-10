@@ -35,6 +35,7 @@ post-processing removes.
 from __future__ import annotations
 
 import base64
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -61,18 +62,40 @@ _FALLBACK_IMAGE_MODEL = OPENAI_IMAGE_MODEL
 _RETIRED_IMAGE_MODELS: dict[str, str] = {"gpt-image-1": OPENAI_IMAGE_MODEL}
 
 #: Parameters a model may refuse (400 ``invalid_value`` / ``unknown_parameter``
-#: / ``unsupported_parameter``) that can be dropped without failing the image.
+#: / ``unsupported_parameter`` / ``unsupported_value``) that can be dropped
+#: without failing the image.
 DROPPABLE_PARAMS = frozenset({"background", "input_fidelity", "quality", "output_format", "size"})
-_PARAM_ERROR_CODES = frozenset({"invalid_value", "unknown_parameter", "unsupported_parameter"})
+_PARAM_ERROR_CODES = frozenset(
+    {"invalid_value", "unknown_parameter", "unsupported_parameter", "unsupported_value"}
+)
 #: Per process: the parameters each model refused, never sent to it again.
 _UNSUPPORTED_PARAMS: dict[str, set[str]] = {}
 
 #: Asked for instead of a transparent background a model refuses: a background
-#: the post-processing (story art's flood fill) can clear.
-PLAIN_BACKGROUND = (
-    " Background: one plain flat solid colour (light grey), no gradient, no texture, "
-    "no shadow, no scenery, no frame."
+#: the post-processing (story art's flood fill) can clear. It *replaces* the
+#: prompt's transparent-background wording, so the model gets one instruction.
+PLAIN_BACKGROUND_WORDS = (
+    "plain flat solid light-grey background (one colour: no gradient, no texture, "
+    "no pattern, no checkerboard, no shadow)"
 )
+PLAIN_BACKGROUND = f" Background: one {PLAIN_BACKGROUND_WORDS}, no scenery, no frame."
+_TRANSPARENT_WORDING = re.compile(r"\btransparent background\b", re.IGNORECASE)
+
+
+def plain_background_prompt(prompt: str) -> str:
+    """``prompt`` asking for a plain one-colour background instead of a transparent one.
+
+    Each "transparent background" becomes the plain background; a prompt that
+    does not mention one gets the plain-background sentence appended.
+    """
+
+    def plain(match: re.Match[str]) -> str:
+        words = PLAIN_BACKGROUND_WORDS
+        return words[0].upper() + words[1:] if match.group(0)[0].isupper() else words
+
+    replaced, count = _TRANSPARENT_WORDING.subn(plain, prompt)
+    return replaced if count else prompt + PLAIN_BACKGROUND
+
 
 #: ``background`` values the GPT image models accept; ``None`` leaves it unset
 #: (the model's own default, ``auto``).
@@ -182,6 +205,8 @@ class ImageProvider(Protocol):
     supports_transparency: bool
     #: Token usage of the last successful call, when the backend reports it.
     last_usage: dict[str, int] | None
+    #: The droppable parameters the last request actually sent (see ``_attempt``).
+    last_sent: frozenset[str]
 
     async def generate(
         self,
@@ -215,19 +240,24 @@ class OpenAIImageProvider:
         self._client = AsyncOpenAI(api_key=api_key, timeout=_TIMEOUT_SECONDS)
         self.model = model
         self.last_usage: dict[str, int] | None = None
+        self.last_sent: frozenset[str] = frozenset()
 
     def _request(
         self, prompt: str, params: dict[str, Any], *, transparent: bool
     ) -> tuple[str, dict[str, Any]]:
         """``(prompt, params)`` without what this model refused in this process.
 
-        A refused transparent background becomes a plain one-colour background
-        in the prompt, which the post-processing can clear.
+        Takes one snapshot of the refused parameters, and records in
+        ``last_sent`` what this very request sends: a concurrent call that
+        learns a refusal meanwhile cannot change it. A refused transparent
+        background becomes a plain one-colour background in the prompt (its
+        transparent wording replaced), which the post-processing can clear.
         """
         refused = unsupported_params(self.model)
         kept = {name: value for name, value in params.items() if name not in refused}
         if transparent and "background" in refused:
-            prompt += PLAIN_BACKGROUND
+            prompt = plain_background_prompt(prompt)
+        self.last_sent = frozenset(kept) & DROPPABLE_PARAMS
         return prompt, kept
 
     async def generate(
@@ -293,6 +323,8 @@ class GeminiImageProvider:
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=_TIMEOUT_SECONDS)
         self.model = model
         self.last_usage: dict[str, int] | None = None
+        #: The compat endpoint is sent none of the droppable parameters.
+        self.last_sent: frozenset[str] = frozenset()
 
     async def generate(
         self,
@@ -403,37 +435,36 @@ async def _record_attempt(
 
 
 async def _attempt(provider: ImageProvider, call: Callable[[ImageProvider], Awaitable[bytes]]):
-    """One call on ``provider``; once more if the model refused a droppable parameter.
+    """One call on ``provider``, retried without each droppable parameter it refuses.
 
-    Each HTTP request writes its own ledger row. The refused parameter is
-    remembered for the model (this process), so later calls never send it.
+    A refusal is retried when the refused parameter was sent in *this*
+    request (``provider.last_sent``), whatever concurrent calls have learnt
+    meanwhile; the parameter is remembered for the model (this process), so
+    the retry and every later call leave it out. Each retry drops one more
+    parameter, so there are at most ``len(DROPPABLE_PARAMS)`` of them. Each
+    HTTP request writes its own ledger row.
     """
-    try:
-        image = await call(provider)
-    except Exception as exc:
-        await _record_attempt(provider.model, error=exc)
-        param = refused_param(exc)
-        if param is None or param in unsupported_params(provider.model):
-            raise
-        _remember_unsupported(provider.model, param)
-        logger.warning(
-            "image model refused a parameter — retrying without it",
-            model=provider.model,
-            param=param,
-            error=str(exc),
-        )
+    retries = 0
+    while True:
         try:
             image = await call(provider)
-        except Exception as again:
-            await _record_attempt(provider.model, error=again)
-            # Another refused parameter: not retried now (one retry per call),
-            # but never sent again.
-            other = refused_param(again)
-            if other is not None:
-                _remember_unsupported(provider.model, other)
-            raise
-    await _record_attempt(provider.model, usage=provider.last_usage)
-    return image
+        except Exception as exc:
+            await _record_attempt(provider.model, error=exc)
+            param = refused_param(exc)
+            sent = getattr(provider, "last_sent", frozenset())
+            if param is None or param not in sent or retries >= len(DROPPABLE_PARAMS):
+                raise
+            _remember_unsupported(provider.model, param)
+            retries += 1
+            logger.warning(
+                "image model refused a parameter — retrying without it",
+                model=provider.model,
+                param=param,
+                error=str(exc),
+            )
+            continue
+        await _record_attempt(provider.model, usage=provider.last_usage)
+        return image
 
 
 def _falls_back(provider: ImageProvider, exc: Exception) -> bool:
@@ -472,7 +503,13 @@ async def _call_with_fallback(
             error=str(exc),
         )
         fallback = _openai_provider(get_settings(), _FALLBACK_IMAGE_MODEL)
-        return await _attempt(fallback, call), fallback.model
+        try:
+            return await _attempt(fallback, call), fallback.model
+        except Exception as fallback_exc:
+            # Keep the primary's failure: callers classify the whole chain
+            # (a billed primary failure must not pass for a configuration one).
+            fallback_exc.image_primary_error = exc  # type: ignore[attr-defined]
+            raise fallback_exc from exc
 
 
 def _capable_provider(model: str, *, edit: bool, transparent: bool) -> ImageProvider:

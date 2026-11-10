@@ -78,6 +78,9 @@ ART_VERSION = 2
 #: never final: it is tried again after this wait, or at once when the
 #: ``ai-model-image`` setting changes.
 CONFIG_RETRY_AFTER = timedelta(hours=1)
+#: A parameter the model refused is left out from then on: the image is tried
+#: again soon.
+PARAM_RETRY_AFTER = timedelta(minutes=10)
 
 #: Cost guard: images one run may draw (about 26 for a usual course: two hero
 #: variants and four other cast members at four poses each, plus the places).
@@ -865,15 +868,23 @@ def failure_is_timeout(exc: BaseException | None) -> bool:
     return isinstance(exc, openai.APITimeoutError | TimeoutError | httpx.TimeoutException)
 
 
+def _primary_error(exc: BaseException | None) -> BaseException | None:
+    """The failure of the primary backend when ``exc`` is its fallback's (else None)."""
+    return getattr(exc, "image_primary_error", None)
+
+
 def failure_is_config(exc: BaseException | None) -> bool:
-    """The configured image model does not exist (or is no longer offered).
+    """The image model does not exist (or is no longer offered), on every attempt.
 
     Not a property of the image: it succeeds once ``ai-model-image`` names a
-    model OpenAI serves (#2689), so it is never stored as final.
+    model OpenAI serves (#2689), so it is never stored as final. Only when the
+    whole chain failed on the model: a primary that failed otherwise (a billed
+    Gemini timeout) before a fallback's model error is judged by its own error.
     """
     from app.ai.providers.image_provider import is_model_error
 
-    return is_model_error(exc)
+    primary = _primary_error(exc)
+    return is_model_error(exc) and (primary is None or is_model_error(primary))
 
 
 def failure_is_transient(exc: BaseException | None) -> bool:
@@ -932,14 +943,22 @@ def classify_failure(
     is final. ``previous`` is the row the run found; only this image's own
     failed runs count (a pose never attempted because its idle failed is
     stored with ``failed_runs=0``). A configuration failure (the model does
-    not exist) is never final and counts no run: it waits
-    :data:`CONFIG_RETRY_AFTER`, or less if the model setting changes.
+    not exist on every attempt, :func:`failure_is_config`) is never final and
+    counts no run: it waits :data:`CONFIG_RETRY_AFTER`, or less if the model
+    setting changes. When only a fallback failed on the model, the primary's
+    own failure is judged instead. A refused parameter is left out from then
+    on, so it waits only :data:`PARAM_RETRY_AFTER`.
     """
-    error = _error_text(exc or ImageFailed())
+    from app.ai.providers.image_provider import DROPPABLE_PARAMS, is_model_error, refused_param
+
     if failure_is_config(exc):
+        error = _error_text(exc or ImageFailed())
         return Failure(error=f"configuration: {error}"[:500], retry_after=now + CONFIG_RETRY_AFTER)
-    if not failure_is_transient(exc):
-        return Failure(error=error)
+    primary = _primary_error(exc)
+    if primary is not None and is_model_error(exc):
+        # The fallback's model error is not this image's failure: the primary's is.
+        exc = primary
+    error = _error_text(exc or ImageFailed())
     runs = 1
     if (
         previous is not None
@@ -949,6 +968,14 @@ def classify_failure(
         and previous.failed_runs
     ):
         runs = previous.failed_runs + 1
+    if refused_param(exc) is not None:
+        # A parameter the model refused: it is remembered and left out next
+        # time, so a later run soon succeeds. Never final while parameters are
+        # left to drop.
+        retry_after = now + PARAM_RETRY_AFTER if runs <= len(DROPPABLE_PARAMS) else None
+        return Failure(error=error, failed_runs=runs, retry_after=retry_after)
+    if not failure_is_transient(exc):
+        return Failure(error=error)
     later_runs = TIMEOUT_LATER_RUNS if failure_is_timeout(exc) else len(TRANSIENT_RETRY_BACKOFF)
     retry_after = now + TRANSIENT_RETRY_BACKOFF[runs - 1] if runs <= later_runs else None
     return Failure(error=error, failed_runs=runs, retry_after=retry_after)
