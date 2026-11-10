@@ -1262,8 +1262,11 @@ class StoryPlanService:
             StoryCallTimeout,
             TruncatedResponse,
             concise,
+            plan_max_tokens,
             structured_call,
         )
+
+        max_tokens = plan_max_tokens(len(request.lessons))
 
         calls = 0
         feedback: tuple[list[ValidationIssue], dict[str, Any] | None] | None = None
@@ -1281,9 +1284,18 @@ class StoryPlanService:
                 )
             calls += 1
             try:
-                raw = await structured_call(self.claude_service, system_prompt, prompt, kind="plan")
-            except (SoftTimeLimitExceeded, StoryCallTimeout):
+                raw = await structured_call(
+                    self.claude_service, system_prompt, prompt, kind="plan", max_tokens=max_tokens
+                )
+            except SoftTimeLimitExceeded:
                 raise
+            except StoryCallTimeout as exc:
+                if exc.at_deadline:
+                    raise
+                # Past its cap with time left: like a provider error.
+                if best is not None:
+                    break
+                raise PlanCallImpossible(str(exc)[:300]) from exc
             except TruncatedResponse as exc:
                 logger.warning(
                     "Story plan answer cut at max_tokens",

@@ -158,10 +158,61 @@ def test_a_call_past_its_time_is_a_story_call_timeout(monkeypatch):
     with pytest.raises(StoryCallTimeout) as raised:
         asyncio.run(structured_call(slow, "s", "u", kind="story"))
     assert time.monotonic() - started < 2 and raised.value.kind == "story"
-    # No time left before the deadline: not even started.
-    with run_deadline(time.monotonic() + 10, time.monotonic), pytest.raises(StoryCallTimeout):
+    # Past its cap with time left: a failure of the call, not the deadline.
+    assert raised.value.reason == "cap" and not raised.value.at_deadline
+    # No time left before the deadline: not even started — the deadline.
+    with (
+        run_deadline(time.monotonic() + 10, time.monotonic),
+        pytest.raises(StoryCallTimeout) as late,
+    ):
         asyncio.run(structured_call(slow, "s", "u", kind="story"))
+    assert late.value.at_deadline
     assert slow.calls == 1
+
+
+def test_a_call_bounded_by_the_deadline_says_so():
+    from app.domain.services.story_calls import call_bound
+
+    clock = {"now": 0.0}
+    with run_deadline(10_000.0, lambda: clock["now"]):
+        assert call_bound("story") == (CALL_CAPS["story"], "cap")
+        clock["now"] = 10_000.0 - CALL_MARGIN_S - 100
+        assert call_bound("story") == (100.0, "deadline")
+    slow = _Service(delay=5.0)
+
+    async def run() -> None:
+        with run_deadline(time.monotonic() + CALL_MARGIN_S + 0.05, time.monotonic):
+            await structured_call(slow, "s", "u", kind="story")
+
+    with pytest.raises(StoryCallTimeout) as raised:
+        asyncio.run(run())
+    assert raised.value.at_deadline
+
+
+def test_the_plans_max_tokens_grow_with_the_module():
+    from app.domain.services.story_calls import plan_max_tokens
+
+    assert [plan_max_tokens(n) for n in (1, 3, 6, 10, 14, 30)] == [
+        8_000,
+        8_500,
+        13_000,
+        19_000,
+        24_000,
+        24_000,
+    ]
+
+
+def test_the_plan_call_is_made_with_its_modules_max_tokens():
+    from app.domain.services.story_calls import plan_max_tokens
+    from app.domain.services.story_plan import StoryPlanService
+    from tests.test_story_plan import answer, request
+
+    req = request()
+    service = _Service(answer={**answer(), "__complete": True})
+    asyncio.run(
+        StoryPlanService(service)._make(req, system_prompt="s", previous=None, rewritten=None)
+    )
+    assert service.limits == [plan_max_tokens(len(req.lessons))]
 
 
 def test_the_providers_own_timeout_is_an_outage_not_a_deadline():
@@ -248,4 +299,7 @@ def test_the_calls_are_bounded_by_the_module_runs_deadline_inside_its_tasks():
 
 
 def test_story_calls_module_documents_the_choice():
-    assert "64,000" in story_calls.__doc__ and "continuation" in story_calls.__doc__
+    doc = story_calls.__doc__
+    assert "64,000" in doc and "continuation" in doc
+    # Only the Anthropic provider streams; the docstring does not claim more.
+    assert "providers stream already" not in doc and "does not" in doc

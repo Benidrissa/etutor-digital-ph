@@ -849,14 +849,71 @@ class SlowStoryModel(FakeModel):
         return await super().generate_structured_content(system, user, content_type, max_retries)
 
 
-async def test_a_call_past_its_time_hands_over_with_what_is_done_kept(sessions, monkeypatch):
+async def test_a_chapter_past_its_cap_fails_and_the_next_ones_are_told(sessions, monkeypatch):
+    """Time left, the call past its kind's cap: that chapter failed; the run goes on."""
     from app.domain.services import story_calls
 
     monkeypatch.setitem(story_calls.CALL_CAPS, "story", 0.5)
     seed_ = await seed(sessions)
     slow = SlowStoryModel()
-    with pytest.raises(StoryDeadlineReached) as stopped:
+    with pytest.raises(ChapterGenerationFailed) as failed:
         await run(service_for(slow), sessions, seed_)
+    assert failed.value.failed_units == ["1.2"]
+    # The next chapters were told in the same run (the rally waits for 1.2).
+    assert [u for k, u in slow.calls if k == "story"] == ["1.1", "1.2", "1.3"]
+    rows = await chapter_rows(sessions, seed_)
+    assert rows["1.1"].is_valid and rows["1.3"].is_valid
+    assert rows["1.2"].status == "draft" and rows["1.2"].source_rows["failures"] == 1
+    # The next run pays for 1.2 once more; then the failure cap stops paying.
+    record = await run(service_for(slow), sessions, seed_)
+    rows = await chapter_rows(sessions, seed_)
+    assert rows["1.2"].source_rows["failures"] == CHAPTER_FAILURE_CAP
+    chapter = next(c for c in record.content["chapters"] if c["covers"]["unit_number"] == "1.2")
+    assert chapter["covers"]["status"] == "unavailable"
+    slow.calls.clear()
+    await run(service_for(slow), sessions, seed_)
+    assert slow.calls == []
+    assert await fresh(sessions, seed_)
+
+
+async def test_a_pack_past_its_cap_is_a_chapter_failure_with_its_counter(sessions, monkeypatch):
+    from app.domain.services import story_calls
+
+    monkeypatch.setitem(story_calls.CALL_CAPS, "pack", 0.5)
+    seed_ = await seed(sessions)
+
+    class SlowPack(FakeModel):
+        async def generate_structured_content(self, system, user, content_type, max_retries=1):
+            if FakeModel.kind_of(user) == ("pack", "1.2"):
+                self.calls.append(("pack", "1.2"))
+                await asyncio.sleep(30)
+            return await super().generate_structured_content(
+                system, user, content_type, max_retries
+            )
+
+    slow = SlowPack()
+    with pytest.raises(ChapterGenerationFailed) as failed:
+        await run(service_for(slow), sessions, seed_)
+    assert failed.value.failed_units == ["1.2"]
+    assert [u for k, u in slow.calls if k == "story"] == ["1.1", "1.3"]
+    rows = await chapter_rows(sessions, seed_)
+    assert rows["1.2"].source_rows["failures"] == 1 and rows["1.2"].source_rows["pack"] is None
+    await run(service_for(slow), sessions, seed_)
+    slow.calls.clear()
+    await run(service_for(slow), sessions, seed_)
+    assert slow.calls == []
+
+
+async def test_a_call_cut_by_the_deadline_hands_over_with_what_is_done_kept(sessions, monkeypatch):
+    """The run's deadline, not the call's cap: a clean stop and a continuation."""
+    from app.domain.services import story_calls
+
+    # 260 s left (enough to start a story call); the margin leaves each call 0.5 s.
+    monkeypatch.setattr(story_calls, "CALL_MARGIN_S", 259.5)
+    seed_ = await seed(sessions)
+    slow = SlowStoryModel()
+    with pytest.raises(StoryDeadlineReached) as stopped:
+        await run(service_for(slow), sessions, seed_, deadline=1000.0, clock=lambda: 740.0)
     # A clean stop (the task continues), never the soft time limit.
     assert stopped.value.told == ["1.1"]
     assert set(await chapter_rows(sessions, seed_)) == {"1.1"}  # the chapter told is kept

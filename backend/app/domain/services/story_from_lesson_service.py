@@ -1313,6 +1313,26 @@ class StoryFromLessonService:
             spine=spine,
         )
 
+    def timed_out(self, ctx: repair.LessonStoryContext, exc: Any) -> StoryGeneration:
+        """The draft stored when a call ran past its kind's cap (#2702); never served.
+
+        Stored like a chapter that could not be made valid: its failure
+        counter goes up, so after ``CHAPTER_FAILURE_CAP`` runs it stops paying.
+        """
+        generation = self._unbuildable(ctx)
+        issue = ValidationIssue(
+            severity="error",
+            code="story_call_timeout",
+            path="",
+            message=f"the {getattr(exc, 'kind', 'story')} call ran past its"
+            f" {getattr(exc, 'timeout', 0):.0f} s",
+        )
+        report = ValidationReport(ok=False, errors=[issue])
+        report = report.model_copy(
+            update={"checks": report.checks.model_copy(update={"errors": 1})}
+        )
+        return StoryGeneration(doc=generation.doc, report=report, model_calls=1)
+
     def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:
         """The draft stored when no attempt could be built; it is never served.
 

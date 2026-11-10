@@ -723,6 +723,9 @@ class _Run:
     packs_kept: dict[str, Any] = field(default_factory=dict)
     #: The packs whose model call has started (a stop lets them finish).
     packs_started: set[str] = field(default_factory=set)
+    #: #2702: the chapters whose pack call ran past its cap, and the rally's.
+    pack_timeouts: set[str] = field(default_factory=set)
+    rally_timed_out: bool = False
 
     def time_left(self) -> float | None:
         return None if self.deadline is None else max(0.0, self.deadline - self.clock())
@@ -1463,8 +1466,17 @@ class ModuleStoryService:
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
                 ):
                     result = await self.chapters.generate_pack(chapter, system_prompt=system_prompt)
-        except (SoftTimeLimitExceeded, StoryCallTimeout):
+        except SoftTimeLimitExceeded:
             raise
+        except StoryCallTimeout as exc:
+            if exc.at_deadline:
+                raise
+            # Past its cap with time left: this chapter failed (its counter is
+            # kept when the chapter is recorded, _tell); the run goes on.
+            run.failures[unit.unit_number] = str(exc)[:300]
+            run.pack_timeouts.add(unit.unit_number)
+            logger.warning("Module story pack ran past its cap", unit=unit.unit_number)
+            return None
         except Exception as exc:
             run.failures[unit.unit_number] = f"{type(exc).__name__}: {exc}"[:300]
             logger.warning("Module story pack failed", unit=unit.unit_number, error=str(exc)[:300])
@@ -1487,8 +1499,14 @@ class ModuleStoryService:
                     result = await self.chapters.generate_pack(
                         rally_ctx, system_prompt=system_prompt
                     )
-        except (SoftTimeLimitExceeded, StoryCallTimeout):
+        except SoftTimeLimitExceeded:
             raise
+        except StoryCallTimeout as exc:
+            if exc.at_deadline:
+                raise
+            run.rally_timed_out = True  # the rally is kept as a draft (_rally)
+            logger.warning("Module story rally pack ran past its cap")
+            return None
         except Exception as exc:
             run.failures[rally_unit.unit_number] = f"{type(exc).__name__}: {exc}"[:300]
             return None
@@ -1557,6 +1575,24 @@ class ModuleStoryService:
             pack = await packs[unit.unit_number]
             if pack is None:
                 docs[unit.unit_number] = None
+                if unit.unit_number in run.pack_timeouts:
+                    # Recorded like a chapter that could not be made: its
+                    # failure counter goes up, the next chapter is told.
+                    chapter = self._chapter_ctx(run, ctx, unit)
+                    record = await self._persist_chapter(
+                        run,
+                        unit,
+                        chapter,
+                        self.chapters.timed_out(chapter, None),
+                        None,
+                        rows.get(unit.module_unit_id),
+                    )
+                    rows[unit.module_unit_id] = record
+                    extras[unit.unit_number] = dict(record.source_rows or {})
+                    if int((record.source_rows or {}).get("failures") or 0) >= (
+                        CHAPTER_FAILURE_CAP
+                    ):
+                        run.failures.pop(unit.unit_number, None)
                 continue
             run.check_deadline()
             chapter = self._chapter_ctx(run, ctx, unit)
@@ -1572,8 +1608,21 @@ class ModuleStoryService:
                     generation = await self.chapters.generate_story(
                         chapter, pack["spine"], system_prompt=system_prompt
                     )
-            except (SoftTimeLimitExceeded, StoryCallTimeout):
+            except SoftTimeLimitExceeded:
                 raise
+            except StoryCallTimeout as exc:
+                if exc.at_deadline:
+                    raise
+                # Past its cap with time left: this chapter failed, stored as a
+                # draft with its failure counter (the cap stops paying across
+                # runs); the next chapter is told in this run.
+                logger.warning(
+                    "Module story chapter ran past its cap",
+                    module_id=str(run.module_id),
+                    unit=unit.unit_number,
+                    timeout_s=round(exc.timeout),
+                )
+                generation = self.chapters.timed_out(chapter, exc)
             except Exception as exc:
                 run.failures[unit.unit_number] = f"{type(exc).__name__}: {exc}"[:300]
                 logger.warning(
@@ -1846,7 +1895,19 @@ class ModuleStoryService:
             and previous.get("status") in ("ready", "draft", "none")
         ):
             return {**previous, "quiz_rows": pinned}
+        timed_out = {
+            "inputs": inputs,
+            "quiz_rows": pinned,
+            "pack": pack,
+            "status": "draft",
+            "doc": None,
+            "errors": ["story_call_timeout"],
+        }
         if pack is None:
+            if run.rally_timed_out:
+                # Its pack ran past its cap: kept as a draft, like a rally that
+                # could not be made valid — not paid for again with these inputs.
+                return timed_out
             raise ChapterGenerationFailed(
                 [rally_unit.unit_number], {rally_unit.unit_number: "no practice pack"}
             )
@@ -1868,8 +1929,13 @@ class ModuleStoryService:
                     system_prompt=system_prompt,
                     max_repair_calls=RALLY_REPAIR_CALLS,
                 )
-        except (SoftTimeLimitExceeded, StoryCallTimeout):
+        except SoftTimeLimitExceeded:
             raise
+        except StoryCallTimeout as exc:
+            if exc.at_deadline:
+                raise
+            logger.warning("Module story rally ran past its cap", timeout_s=round(exc.timeout))
+            return timed_out
         except Exception as exc:
             number = rally_unit.unit_number
             logger.warning(

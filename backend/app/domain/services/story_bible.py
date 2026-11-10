@@ -844,8 +844,15 @@ class StoryBibleService:
             for attempt in range(self.MAX_CALLS):
                 try:
                     raw = await structured_call(self.claude_service, system, message, kind="bible")
-                except (SoftTimeLimitExceeded, StoryCallTimeout):
+                except SoftTimeLimitExceeded:
                     raise
+                except StoryCallTimeout as exc:
+                    if exc.at_deadline:
+                        raise
+                    # Past its cap with time left: an outage, nothing stored.
+                    raise StoryProviderUnavailable(
+                        f"The bible call ran past its cap for course {course.id}"
+                    ) from exc
                 except TruncatedResponse as exc:
                     # Asked again once, concise (#2702); never at a bigger budget.
                     logger.warning(

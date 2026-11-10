@@ -14,12 +14,19 @@ handed over to a continuation. So, here:
   never sent back for a repair at the same budget, but asked again once with
   a "be concise" notice (:func:`concise`); a second cut ends that call's loop;
 * **time** — each call runs under ``min(cap of its kind, the run's deadline −
-  margin)`` (:func:`call_timeout`); past it, :class:`StoryCallTimeout`: the run
-  stops cleanly, keeps what is done (packs, finished chapters) and the task
-  dispatches its continuation.
+  margin)`` (:func:`call_bound`); past it, :class:`StoryCallTimeout` with its
+  ``reason``. Past the **deadline**, the run stops cleanly, keeps what is done
+  (packs, finished chapters) and the task dispatches its continuation. Past the
+  kind's **cap** with time left, the call failed: a chapter, a pack or the
+  rally is recorded as failed like one that could not be made valid (its
+  failure counter is kept, so the cap stops paying across runs), and the run
+  goes on with the next one.
 
-There is no streaming abort: the providers stream already, and the tight
-``max_tokens`` makes a degenerate answer cost cents rather than a dollar.
+There is no streaming abort. The Anthropic provider streams, but the
+OpenAI-compatible one (Kimi) does not (``complete()`` makes one request), and
+a length or repetition abort would need both: the tight ``max_tokens`` is
+what makes a degenerate answer cost cents rather than a dollar. Streaming for
+Kimi is out of scope here.
 """
 
 from __future__ import annotations
@@ -50,10 +57,30 @@ MAX_TOKENS: dict[str, int] = {
     "rally": 10_000,
     "judge": 2_000,
 }
-#: The longest a call of each kind may run, in seconds: its token limit at a
-#: slow 25 tokens a second, plus a minute for the request (a 64k answer took
-#: 1,068 s at about 60 a second).
-CALL_CAPS: dict[str, float] = {kind: tokens / 25 + 60 for kind, tokens in MAX_TOKENS.items()}
+#: The episode plan grows with the module: a global block, then a few beats per
+#: chapter. Its limit is this base plus this much per chapter, within bounds.
+PLAN_BASE_TOKENS, PLAN_TOKENS_PER_CHAPTER = 4_000, 1_500
+PLAN_MIN_TOKENS, PLAN_MAX_TOKENS = 8_000, 24_000
+
+
+def plan_max_tokens(chapters: int) -> int:
+    """The plan's ``max_tokens`` for a module of ``chapters`` lesson chapters.
+
+    3 chapters → 8,500; 6 → 13,000; 10 → 19,000; 14 or more → 24,000. A long
+    module's plan is never cut twice and dropped for one made in code.
+    """
+    tokens = PLAN_BASE_TOKENS + PLAN_TOKENS_PER_CHAPTER * max(int(chapters), 1)
+    return max(PLAN_MIN_TOKENS, min(PLAN_MAX_TOKENS, tokens))
+
+
+def _cap_for(tokens: int) -> float:
+    """The longest a call may run: its token limit at a slow 25 tokens a second,
+    plus a minute for the request (a 64k answer took 1,068 s at about 60 a second)."""
+    return tokens / 25 + 60
+
+
+#: The longest a call of each kind may run, in seconds (:func:`_cap_for`).
+CALL_CAPS: dict[str, float] = {kind: _cap_for(tokens) for kind, tokens in MAX_TOKENS.items()}
 #: Kept before the run's deadline when bounding a call: time to save what is
 #: done and dispatch the continuation (the deadline itself is 150 s before the
 #: task's soft time limit).
@@ -67,13 +94,23 @@ CONCISE_NOTICE = (
 )
 
 
-class StoryCallTimeout(Exception):
-    """A model call ran past its time: the run stops and hands over (never a failure)."""
+#: Why a call was stopped: the run's deadline came (hand over), or the call
+#: ran past its kind's cap with time left (a failure of that call).
+DEADLINE, CAP = "deadline", "cap"
 
-    def __init__(self, kind: str, timeout: float) -> None:
-        super().__init__(f"The {kind} call ran past {timeout:.0f} s")
+
+class StoryCallTimeout(Exception):
+    """A model call ran past its time; ``reason`` says which (:data:`DEADLINE`, :data:`CAP`)."""
+
+    def __init__(self, kind: str, timeout: float, reason: str = DEADLINE) -> None:
+        super().__init__(f"The {kind} call ran past {timeout:.0f} s ({reason})")
         self.kind = kind
         self.timeout = timeout
+        self.reason = reason
+
+    @property
+    def at_deadline(self) -> bool:
+        return self.reason == DEADLINE
 
 
 #: The run's deadline: ``(deadline, clock)``; ``None`` outside a module run.
@@ -94,20 +131,30 @@ def run_deadline(
         _DEADLINE.reset(token)
 
 
-def call_timeout(kind: str) -> float:
-    """``min(cap of the kind, time left before the run's deadline − margin)``, at least 0."""
-    cap = CALL_CAPS.get(kind, CALL_CAPS["story"])
+def call_bound(kind: str, *, max_tokens: int | None = None) -> tuple[float, str]:
+    """``(timeout, reason)``: the kind's cap, or the time left before the run's
+    deadline less the margin when that is shorter (then the reason is the deadline)."""
+    cap = _cap_for(max_tokens) if max_tokens else CALL_CAPS.get(kind, CALL_CAPS["story"])
     bound = _DEADLINE.get()
     if bound is None:
-        return cap
+        return cap, CAP
     deadline, clock = bound
-    return max(0.0, min(cap, deadline - clock() - CALL_MARGIN_S))
+    left = deadline - clock() - CALL_MARGIN_S
+    if left < cap:
+        return max(0.0, left), DEADLINE
+    return cap, CAP
 
 
-def bounded(service: Any, kind: str) -> Any:
+def call_timeout(kind: str, *, max_tokens: int | None = None) -> float:
+    """``min(cap of the kind, time left before the run's deadline − margin)``, at least 0."""
+    return call_bound(kind, max_tokens=max_tokens)[0]
+
+
+def bounded(service: Any, kind: str, max_tokens: int | None = None) -> Any:
     """``service`` writing at most :data:`MAX_TOKENS` of ``kind`` (a fake is used as is)."""
     limit = getattr(service, "with_max_tokens", None)
-    return limit(MAX_TOKENS.get(kind, MAX_TOKENS["story"])) if callable(limit) else service
+    tokens = max_tokens or MAX_TOKENS.get(kind, MAX_TOKENS["story"])
+    return limit(tokens) if callable(limit) else service
 
 
 def concise(message: str) -> str:
@@ -115,17 +162,19 @@ def concise(message: str) -> str:
     return f"{CONCISE_NOTICE}\n\n{message}"
 
 
-async def structured_call(service: Any, system: str, user: str, *, kind: str) -> Any:
-    """One model call of ``kind``: its ``max_tokens``, under its timeout.
+async def structured_call(
+    service: Any, system: str, user: str, *, kind: str, max_tokens: int | None = None
+) -> Any:
+    """One model call of ``kind``: its ``max_tokens`` (or ``max_tokens``), under its timeout.
 
     Raises :class:`StoryCallTimeout` past the timeout (or when no time is
-    left), :class:`TruncatedResponse` for an answer cut at ``max_tokens``, and
-    lets every other error through.
+    left), with its reason; :class:`TruncatedResponse` for an answer cut at
+    ``max_tokens``; and lets every other error through.
     """
-    timeout = call_timeout(kind)
+    timeout, reason = call_bound(kind, max_tokens=max_tokens)
     if timeout <= 0:
-        raise StoryCallTimeout(kind, 0.0)
-    client = bounded(service, kind)
+        raise StoryCallTimeout(kind, 0.0, DEADLINE)
+    client = bounded(service, kind, max_tokens)
     scope = asyncio.timeout(timeout)
     try:
         async with scope:
@@ -133,18 +182,24 @@ async def structured_call(service: Any, system: str, user: str, *, kind: str) ->
     except TimeoutError as exc:
         if not scope.expired():
             raise  # the provider's own timeout: an outage, not our deadline
-        logger.warning("Story model call timed out", kind=kind, timeout_s=round(timeout))
-        raise StoryCallTimeout(kind, timeout) from exc
+        logger.warning(
+            "Story model call timed out", kind=kind, timeout_s=round(timeout), reason=reason
+        )
+        raise StoryCallTimeout(kind, timeout, reason) from exc
 
 
 __all__ = [
+    "CAP",
+    "DEADLINE",
     "CALL_CAPS",
     "CALL_MARGIN_S",
     "MAX_TOKENS",
     "StoryCallTimeout",
     "TruncatedResponse",
     "bounded",
+    "call_bound",
     "call_timeout",
+    "plan_max_tokens",
     "concise",
     "run_deadline",
     "structured_call",
