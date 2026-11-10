@@ -54,6 +54,7 @@ from app.domain.models.source_image import ImageType, SourceImage, SourceImageCh
 from app.domain.models.story_art import StoryArt
 from app.domain.models.story_bible import StoryCourseBible
 from app.domain.models.story_course import StoryCourseRecord, StoryCourseStatus
+from app.domain.models.story_module_plan import StoryModulePlan
 from app.domain.models.subscription import (
     PaymentStatus,
     PaymentType,
@@ -139,6 +140,7 @@ __all__ = [
     "SourceImageChunk",
     "StoryArt",
     "StoryCourseBible",
+    "StoryModulePlan",
     "StoryCourseRecord",
     "StoryCourseStatus",
     "Subscription",

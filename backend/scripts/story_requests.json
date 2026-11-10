@@ -1,8 +1,6 @@
 {
-  "_comment": "Module stories generated on the server after every successful deploy (.github/workflows/generate-lesson-story.yml). Each entry asks for the story of one module: module_index (default 1, the first module by number) of the course its query matches, or the module module_id, in the given languages. An entry that matches nothing on a server is skipped there; a cached, fresh module story is reused at no cost, so entries can stay. The module_id entry is the staging test module. See load_requests in generate_lesson_stories.py for the fields.",
+  "_comment": "Module stories generated on the server after every successful deploy (.github/workflows/generate-lesson-story.yml). Each entry asks for the story of one module: module_index (default 1, the first module by number) of the course its query matches, or the module module_id, in the given languages. An entry that matches nothing on a server is skipped there; a cached, fresh module story is reused at no cost, so entries can stay. The module_id entry is the staging test module. See load_requests in generate_lesson_stories.py for the fields. #2680 (story generator v4) makes every stored story stale once, so until the owner approves the v4 story of aab749f1 this file asks for that one module only; then restore {\"query\": \"biolog\", \"kids_only\": true, \"module_index\": 1, \"languages\": [\"fr\", \"en\"]} and {\"query\": \"math\", \"kids_only\": true, \"module_index\": 1, \"languages\": [\"fr\", \"en\"]}.",
   "requests": [
-    {"query": "biolog", "kids_only": true, "module_index": 1, "languages": ["fr", "en"]},
-    {"query": "math", "kids_only": true, "module_index": 1, "languages": ["fr", "en"]},
     {"module_id": "aab749f1-fba3-45d3-bcff-e0f4f925475a", "languages": ["fr"]}
   ]
 }

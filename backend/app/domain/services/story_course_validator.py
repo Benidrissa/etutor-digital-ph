@@ -34,9 +34,14 @@ from app.api.v1.schemas.story_course import (
     COPY_SHAPES,
     DRAWN_VISUALS,
     LENGTH_LIMITS,
+    MAX_CLOSEUPS_PER_SCENE,
+    MAX_PROPS_PER_LINE,
+    MAX_PROPS_PER_MODULE,
+    MAX_PROPS_PER_SCENE,
     MINIGAME_ENGINES,
     MOODS,
     PLACES,
+    PROP_QUERY_LIMIT,
     VISUALS,
     Checks,
     StoryCourse,
@@ -44,6 +49,7 @@ from app.api.v1.schemas.story_course import (
     ValidationReport,
 )
 from app.domain.services import mcq_checks
+from app.domain.services.story_props import is_one_emoji
 
 logger = structlog.get_logger(__name__)
 
@@ -56,6 +62,12 @@ _MIN_LEAK_LENGTH = 3
 
 #: Lines shorter than this ("Yes!", "Merci !") may come back in any chapter.
 MIN_REPEAT_LENGTH = 12
+
+#: #2680: a generated chapter whose story lines are fewer than this share of
+#: its steps gets a ``story_ratio_low`` warning.
+STORY_RATIO_FLOOR = 0.55
+
+_PROP_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
 
 
 def longest_ask_run(step_types: list[str]) -> int:
@@ -120,10 +132,51 @@ SPEECH_VERBS = (
 )
 _HONORIFIC = rf"(?:(?:{'|'.join(HONORIFICS)})\.?\s+)?"
 _OPENING_QUOTES = "«\"“‘'"
+#: Each opening quote and the quotes that close it.
+_QUOTE_PAIRS = {"«": "»", '"': '"', "“": '”"', "‘": "’'", "'": "'’"}
 #: ``Name:`` — or ``Name <speech verb>`` followed by a colon or an opening
-#: quote. ``Kaboré dit que…`` or ``Margo says the…`` is reported speech, not
-#: a label.
-_SPEECH_TAG = rf"(?:\s*:|\s+(?:{'|'.join(SPEECH_VERBS)})\s*(?::|(?=[{_OPENING_QUOTES}])))"
+#: quote, with or without a comma (``Margo says, "Look!"``). ``Kaboré dit
+#: que…`` or ``Margo says the…`` is reported speech, not a label.
+_SPEECH_TAG = rf"(?:\s*:|\s+(?:{'|'.join(SPEECH_VERBS)})\s*,?\s*(?::|(?=[{_OPENING_QUOTES}])))"
+#: What may follow the closing quote of a labelled line: punctuation, or the
+#: name of the one spoken to (``“Look at the clock”, {child}.``).
+_AFTER_QUOTE_RE = re.compile(r"^[\s,]*(?:\{(?:child|friend)\})?[\s.!?…,;:]*$", re.IGNORECASE)
+
+
+def _closing_quote(text: str) -> int | None:
+    """Where the quote opening ``text`` closes, or ``None``."""
+    closers = _QUOTE_PAIRS.get(text[:1])
+    if not closers:
+        return None
+    index = max(text.rfind(c) for c in closers)
+    return index if index > 0 else None
+
+
+def speaker_label(text: Any, pattern: re.Pattern[str] | None) -> str | None:
+    """The words of a line that opens with a speaker label, or ``None``.
+
+    ``Kaboré: « Regarde ! »`` and ``Margo says, "Look!"`` are labels: the
+    words are returned without the label, and without their quotes when the
+    quoted words are the whole line (punctuation, or ``{child}`` after the
+    closing quote, may follow it; quotes are only ever removed as a pair).
+    ``Kaboré says 'prime' means…`` — a speech verb, then a quoted word in a
+    longer sentence — is reported speech, not a label: ``None``.
+    """
+    if pattern is None or not isinstance(text, str):
+        return None
+    match = pattern.match(text)
+    if not match:
+        return None
+    colon = match.group(0).rstrip().endswith(":")
+    rest = text[match.end() :].strip()
+    close = _closing_quote(rest)
+    if close is not None and _AFTER_QUOTE_RE.match(rest[close + 1 :]):
+        words = (rest[1:close].strip() + rest[close + 1 :]).strip()
+        return words or None
+    if not colon:
+        # "Name says «x» to everyone": a verb and a quote in a longer sentence.
+        return None
+    return rest or None
 
 
 def speaker_prefix_pattern(names: list[str]) -> re.Pattern[str] | None:
@@ -225,6 +278,11 @@ class StoryCourseValidator:
         names = [c.name for c in course.cast] + [c.id for c in course.cast]
         names += [c.default_name for c in course.cast if c.default_name]
         self._prefix = speaker_prefix_pattern(names)
+        #: #2681: the declared props, and which were pointed at or shown close up.
+        self._props = {p.id: p for p in course.props}
+        self._pointed: set[str] = set()
+        self._shown: set[str] = set()
+        self._scenes_without_visual = 0
 
     # -- issue helpers ------------------------------------------------------
 
@@ -255,6 +313,9 @@ class StoryCourseValidator:
         self._check_photo_checks()
         self._check_tutor()
         checks = self._check_scores()
+        checks.props = self._props_checks()
+        if self.generated and self._told_from_plan():
+            self._check_story_shape()
 
         checks.errors = len(self.errors)
         checks.warnings = len(self.warnings)
@@ -280,8 +341,21 @@ class StoryCourseValidator:
 
         if not course.objectives:
             self._error("missing_objectives", "objectives", "A week needs at least one objective")
-        if not course.minigames:
-            self._error("missing_minigame", "minigames", "A.3 requires at least one mini-game")
+        # A generated chapter (#2680) has the episode's one game only if the
+        # plan gives it to it. A module story told from a plan has its game in
+        # one chapter: while that chapter is not ready, the story still plays
+        # (a warning, not an error).
+        chapter_only = self.generated and getattr(course, "sira_chapter", None) is not None
+        if not course.minigames and not chapter_only:
+            if self.generated and self._told_from_plan():
+                self._warn(
+                    "missing_minigame",
+                    "minigames",
+                    "the chapter with the episode's game is not ready yet",
+                )
+            else:
+                self._error("missing_minigame", "minigames", "A.3 requires at least one mini-game")
+        self._check_props()
         if not course.chapters:
             self._error("missing_chapters", "chapters", "A week needs at least one chapter")
 
@@ -349,8 +423,161 @@ class StoryCourseValidator:
                     self._error("duplicate_id", name, f"id {an_id!r} is used more than once")
                 seen.add(an_id)
 
+    # -- props (#2681) ------------------------------------------------------
+
+    def _check_props(self) -> None:
+        """Each declared prop: a unique id, both labels, a query, its figure."""
+        seen: set[str] = set()
+        for index, prop in enumerate(self.course.props):
+            path = f"props[{index}]"
+            if not _PROP_ID_RE.match(prop.id):
+                self._error("prop_id_invalid", f"{path}.id", f"{prop.id!r} is not snake_case")
+            if prop.id in seen:
+                self._error("prop_id_duplicate", f"{path}.id", f"{prop.id!r} is declared twice")
+            seen.add(prop.id)
+            for lang in (self._target, self._home):
+                if not str((prop.label or {}).get(lang) or "").strip():
+                    self._error(
+                        "prop_label_missing", f"{path}.label.{lang}", "the label has no text"
+                    )
+            if not prop.query.strip() or len(prop.query) > PROP_QUERY_LIMIT:
+                self._error(
+                    "prop_query_invalid",
+                    f"{path}.query",
+                    f"a query is 1 to {PROP_QUERY_LIMIT} characters",
+                )
+            if prop.kind == "figure" and (prop.figure is None or not prop.figure.source_image_id):
+                self._error(
+                    "prop_figure_missing", f"{path}.figure", "a figure prop names its figure"
+                )
+            if prop.emoji is not None and not is_one_emoji(prop.emoji):
+                self._warn("prop_emoji_invalid", f"{path}.emoji", "not one emoji")
+        if len(self.course.props) > MAX_PROPS_PER_MODULE:
+            self._warn(
+                "module_props_too_many",
+                "props",
+                f"{len(self.course.props)} props: at most {MAX_PROPS_PER_MODULE}",
+            )
+
+    def _check_scene_props(self, scene: Any, path: str) -> None:
+        listed = list(scene.props or [])
+        for pid in listed:
+            if pid not in self._props:
+                self._error("unknown_prop", f"{path}.props", f"{pid!r} is not a declared prop")
+        if len(listed) > MAX_PROPS_PER_SCENE:
+            self._error(
+                "scene_props_too_many",
+                f"{path}.props",
+                f"{len(listed)} props: at most {MAX_PROPS_PER_SCENE} in a scene",
+            )
+        cast = set(scene.cast or [])
+        for pid in listed:
+            prop = self._props.get(pid)
+            if prop is not None and prop.at == "held" and prop.holder not in cast:
+                self._strict(
+                    "holder_not_in_cast",
+                    f"{path}.props",
+                    f"{pid!r} is held by {prop.holder!r}, who is not on stage",
+                )
+        closeups = 0
+        lines = 0
+        visual = bool(listed)
+        for index, step in enumerate(scene.steps):
+            step_path = f"{path}.steps[{index}]"
+            refs = step.props or []
+            if refs and step.type not in ("say", "narrate", "concept"):
+                self._error(
+                    "step_props_wrong_type",
+                    f"{step_path}.props",
+                    "only a say, narrate or concept step points at props",
+                )
+            if len(refs) > MAX_PROPS_PER_LINE:
+                self._error(
+                    "step_props_too_many",
+                    f"{step_path}.props",
+                    f"a line points at {MAX_PROPS_PER_LINE} props at most",
+                )
+            for pid in refs:
+                if pid not in self._props:
+                    self._error("unknown_prop", f"{step_path}.props", f"{pid!r} is not declared")
+                elif pid not in listed:
+                    self._strict(
+                        "prop_not_in_scene",
+                        f"{step_path}.props",
+                        f"{pid!r} is not among the scene's props",
+                    )
+                else:
+                    self._pointed.add(pid)
+            if step.type in ("say", "narrate"):
+                lines += 1
+            if step.type == "show":
+                visual = True
+            if step.type == "show" and step.visual == "prop":
+                closeups += 1
+                pid = (step.params or {}).get("prop")
+                if not pid:
+                    self._error(
+                        "missing_prop", f"{step_path}.params", 'a close-up needs "params.prop"'
+                    )
+                elif pid not in self._props:
+                    self._error("unknown_prop", f"{step_path}.params.prop", f"{pid!r} is unknown")
+                else:
+                    self._shown.add(pid)
+                    if self._props[pid].kind == "sticker":
+                        self._strict(
+                            "closeup_of_sticker",
+                            step_path,
+                            f"{pid!r} is a sticker: it is not shown close up",
+                        )
+        if closeups > MAX_CLOSEUPS_PER_SCENE:
+            self._strict(
+                "too_many_closeups_in_scene",
+                path,
+                f"{closeups} close-ups: at most {MAX_CLOSEUPS_PER_SCENE} in a scene",
+            )
+        if lines >= 3 and not visual:
+            self._scenes_without_visual += 1
+            if self._props:
+                self._warn(
+                    "scene_without_visual",
+                    path,
+                    "3 or more lines and nothing to see: no prop and no picture",
+                )
+
+    def _props_checks(self) -> dict[str, Any] | None:
+        """``checks.props``: what the story shows, for staging review."""
+        if not self._props:
+            return None
+        for pid, prop in self._props.items():
+            if prop.educational and pid in self._pointed and pid not in self._shown:
+                self._warn(
+                    "educational_prop_not_shown",
+                    "props",
+                    f"{pid!r} is named but never shown close up",
+                )
+        lines = with_props = 0
+        for chapter in self.course.chapters:
+            for scene in chapter.scenes:
+                for step in scene.steps:
+                    if step.type in ("say", "narrate") and not getattr(step, "frame", None):
+                        lines += 1
+                        with_props += bool(step.props)
+        props = list(self._props.values())
+        return {
+            "declared": len(props),
+            "educational": sum(1 for p in props if p.educational),
+            "stickers": sum(1 for p in props if p.kind == "sticker"),
+            "figures": sum(1 for p in props if p.kind == "figure"),
+            "lines": lines,
+            "lines_with_props": with_props,
+            "coverage": round(with_props / lines, 2) if lines else 0.0,
+            "closeups": len(self._shown),
+            "scenes_without_visual": self._scenes_without_visual,
+        }
+
     def _check_scene(self, chapter_id: str, scene: Any) -> None:
         path = f"chapters[{chapter_id}].scenes[{scene.id}]"
+        self._check_scene_props(scene, path)
         if (
             scene.place not in PLACES
             and scene.place not in self._place_ids
@@ -387,7 +614,7 @@ class StoryCourseValidator:
                         f"{step.visual!r} is not in the visual catalog and has no "
                         "art_requests entry",
                     )
-                elif step.visual != "image" and (
+                elif step.visual not in ("image", "prop") and (
                     problem := drawn_visual_problem(step.visual, step.params)
                 ):
                     self._strict("visual_not_drawn", f"{step_path}.visual", problem)
@@ -407,7 +634,7 @@ class StoryCourseValidator:
             return
         for lang in ("en", "fr"):
             value = getattr(step, lang, None)
-            if isinstance(value, str) and self._prefix.match(value):
+            if speaker_label(value, self._prefix) is not None:
                 self._strict(
                     "speaker_prefix",
                     f"{step_path}.{lang}",
@@ -802,6 +1029,10 @@ class StoryCourseValidator:
             flat_types: list[str] = []
             for scene in chapter.scenes:
                 for step in scene.steps:
+                    if step.type == "show" and step.visual == "prop":
+                        # A close-up does not end a run: the player drops one
+                        # it has no picture for.
+                        continue
                     flat_types.append(step.type)
                     if step.type == "ask" and step.ref:
                         asked.append(step.ref)
@@ -819,7 +1050,8 @@ class StoryCourseValidator:
             self._error(
                 "too_many_questions_in_a_row",
                 "chapters",
-                "more than 3 questions in a row — put a concept or visual between them",
+                "more than 3 questions in a row — put a line, a concept card or a figure"
+                " between them (a prop close-up does not count)",
             )
         self._check_lines_not_repeated()
 
@@ -868,6 +1100,7 @@ class StoryCourseValidator:
                         step.type not in ("narrate", "say")
                         or getattr(step, "frame", None)
                         or getattr(step, "retold", None)
+                        or getattr(step, "refrain", None)
                     ):
                         continue
                     for lang in ("en", "fr"):
@@ -883,6 +1116,47 @@ class StoryCourseValidator:
                                 f"this line was already told in chapter {seen_in}: every"
                                 " line of the story is written for its own moment",
                             )
+
+    def _told_from_plan(self) -> bool:
+        """A module story, or a chapter told from an episode plan (#2680)."""
+        marker = getattr(self.course, "sira_chapter", None)
+        if isinstance(marker, dict):
+            return bool(marker.get("plan"))
+        return isinstance(getattr(self.course, "module_story", None), dict)
+
+    def _check_story_shape(self) -> None:
+        """#2680, generated stories: warnings that never block publishing.
+
+        A lesson chapter that ends on a question, the game or a paper task
+        (``chapter_ends_on_task``), and a chapter whose story lines are under
+        :data:`STORY_RATIO_FLOOR` of its steps (``story_ratio_low``). The
+        application's placeholder chapters (``frame``) are not judged.
+        """
+        for chapter in self.course.chapters:
+            steps = [step for scene in chapter.scenes for step in scene.steps]
+            if not steps or any(getattr(step, "frame", None) for step in steps):
+                continue
+            covers = getattr(chapter, "covers", None)
+            rally = isinstance(covers, dict) and covers.get("rally")
+            if not rally and steps[-1].type in ("ask", "game", "photo"):
+                self._warn(
+                    "chapter_ends_on_task",
+                    f"chapters[{chapter.id}]",
+                    f"the chapter ends on a {steps[-1].type}: end on a story line",
+                )
+            counted = [
+                s
+                for s in steps
+                if not (s.type == "show" and s.visual == "prop")
+                and not str(s.id or "").startswith("situation-")
+            ]
+            lines = sum(1 for s in counted if s.type in ("say", "narrate"))
+            if counted and lines / len(counted) < STORY_RATIO_FLOOR:
+                self._warn(
+                    "story_ratio_low",
+                    f"chapters[{chapter.id}]",
+                    f"{lines} story lines in {len(counted)} steps: the story is thin",
+                )
 
     def _check_test_mistakes_practised(self) -> None:
         """Every mistake from the marked test must be practised by a trap."""

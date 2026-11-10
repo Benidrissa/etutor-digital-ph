@@ -621,26 +621,55 @@ class StoryBibleUnavailable(RuntimeError):
     """The model's answers for the bible could not be read or used."""
 
 
-class _CallImpossible(RuntimeError):
-    """The model could not be called at all (no answer, not a bad one)."""
+class StoryProviderUnavailable(StoryBibleUnavailable):
+    """The model could not be called at all — an outage (401, 429, 529, timeout).
+
+    Nothing is stored: an outage never freezes a bible of defaults (#2680).
+    """
 
 
-#: ``story_course_bibles.model`` of a bible made of defaults because the model
-#: could not be called: the next story of the course tries the call once more.
+#: ``story_course_bibles.model`` of a bible made of defaults because the
+#: model's answers could not be used (twice): the next story of the course
+#: tries once more.
 DEFAULTED = "defaulted"
-#: ... and once that retry failed too: kept for good (no retry, no churn).
+#: ... and once that retry gave unusable answers too: kept (no retry, no
+#: churn) until an admin resets it (:func:`reset_defaulted_bible`).
 DEFAULTED_KEPT = "defaulted-kept"
 
 
-async def find_bible(session: AsyncSession, course_id: uuid.UUID) -> Any | None:
-    """The stored bible row of a course, if any."""
+async def find_bible(
+    session: AsyncSession, course_id: uuid.UUID, *, fresh: bool = False
+) -> Any | None:
+    """The stored bible row of a course, if any.
+
+    ``fresh``: read from the database even when the session already holds the
+    row (after waiting on the creation lock, another worker may have
+    replaced it).
+    """
     from app.domain.models.story_bible import StoryCourseBible
 
-    return (
-        await session.execute(
-            select(StoryCourseBible).where(StoryCourseBible.course_id == course_id)
-        )
-    ).scalar_one_or_none()
+    statement = select(StoryCourseBible).where(StoryCourseBible.course_id == course_id)
+    if fresh:
+        statement = statement.execution_options(populate_existing=True)
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
+async def reset_defaulted_bible(session: AsyncSession, course_id: uuid.UUID) -> str | None:
+    """An admin's reset of a course's bible of defaults; returns what was removed.
+
+    Only a bible made of defaults (:data:`DEFAULTED`, :data:`DEFAULTED_KEPT`)
+    is removed — the next story of the course makes a real one. A real bible
+    is never touched here (its art is keyed on it): ``None`` is returned and
+    nothing changes. Commits.
+    """
+    row = await find_bible(session, course_id, fresh=True)
+    if row is None or row.model not in (DEFAULTED, DEFAULTED_KEPT):
+        return None
+    model = row.model
+    await session.delete(row)
+    await session.commit()
+    logger.info("Story bible of defaults reset by an admin", course_id=str(course_id))
+    return model
 
 
 async def find_bible_digest(session: AsyncSession, course_id: uuid.UUID | None) -> str | None:
@@ -683,7 +712,7 @@ async def _lock(session: AsyncSession, course_id: uuid.UUID) -> None:
 class StoryBibleService:
     """Makes a course's bible with one model call, once, and reads it after that."""
 
-    #: Readable answers needed; an unreadable one is asked again once.
+    #: Readable answers needed; an unreadable or unusable one is asked again once.
     MAX_CALLS = 2
 
     def __init__(self, claude_service: Any) -> None:
@@ -700,21 +729,28 @@ class StoryBibleService:
         """The course's bible; the first call for a course writes it and commits.
 
         Creation is serialised per course (an advisory lock held until the
-        commit), so two module stories of one course started together make
-        one bible, with one model call.
+        commit), and the row is read again from the database after the lock,
+        so two module stories of one course started together make one bible,
+        with one model call.
 
-        An answer that cannot be read or used raises
-        :class:`StoryBibleUnavailable` and stores nothing, so the next story
-        asks again. Only when the model cannot be called at all is a bible of
-        defaults stored, marked :data:`DEFAULTED`; the next story of the course
-        tries the call once more and replaces it, or keeps it for good
-        (:data:`DEFAULTED_KEPT`).
+        Two failures are told apart (#2680):
+
+        * **an outage** — the provider cannot be called (401, 429, 529,
+          timeout): :class:`StoryProviderUnavailable` is raised at once, after
+          one call, and nothing is stored; a bible of defaults waiting for its
+          retry keeps waiting. The next story of the course asks again.
+        * **unusable answers** — twice an answer that cannot be read or has no
+          cast or place: a bible of defaults is stored, marked
+          :data:`DEFAULTED`, so the course still gets a story; the next story
+          of the course tries once more and replaces it, or keeps it
+          (:data:`DEFAULTED_KEPT`) until an admin resets it
+          (:func:`reset_defaulted_bible`).
         """
         row = await find_bible(session, course.id)
         if row is not None and row.model != DEFAULTED:
             return StoryBible(content=row.content, digest=row.digest)
         await _lock(session, course.id)
-        row = await find_bible(session, course.id)
+        row = await find_bible(session, course.id, fresh=True)
         if row is not None and row.model != DEFAULTED:
             return StoryBible(content=row.content, digest=row.digest)
 
@@ -732,18 +768,20 @@ class StoryBibleService:
                 )
                 or None
             )
-        except (_CallImpossible, StoryBibleUnavailable) as exc:
+        except StoryProviderUnavailable:
+            # Never freeze anything on an outage: not the defaults, not the retry.
+            await session.rollback()
+            raise
+        except StoryBibleUnavailable:
             if row is not None:
-                # The one retry of a bible of defaults failed: keep it for good.
+                # The one retry of a bible of defaults gave unusable answers too.
                 row.model = DEFAULTED_KEPT
                 await session.commit()
                 logger.warning("Story bible of defaults kept", course_id=str(course.id))
                 return StoryBible(content=row.content, digest=row.digest)
-            if isinstance(exc, StoryBibleUnavailable):
-                raise
             raw, model = {}, DEFAULTED
             logger.warning(
-                "Story bible model call impossible: defaults stored", course_id=str(course.id)
+                "Story bible answers unusable: defaults stored", course_id=str(course.id)
             )
         content = normalise_bible(raw, is_kids=is_kids, modules=modules, country=country)
         bible = StoryBible.of(content)
@@ -767,6 +805,7 @@ class StoryBibleService:
             cast=[m["id"] for m in content["cast"]],
             places=[p["id"] for p in content["places"]],
             digest=bible.digest[:12],
+            model=model,
         )
         return bible
 
@@ -778,12 +817,19 @@ class StoryBibleService:
         is_kids: bool,
         country: str,
     ) -> dict[str, Any]:
+        """A usable answer, in at most :data:`MAX_CALLS` calls.
+
+        An unreadable or unusable answer is asked again once, then
+        :class:`StoryBibleUnavailable`. A provider error (anything but an
+        unreadable answer) is an outage: :class:`StoryProviderUnavailable` at
+        once — a timeout has already used the provider's whole read timeout,
+        so a second call would only push the task past its time limit.
+        """
         from app.ai.prompts.story_bible import build_bible_messages
         from app.ai.usage_context import ai_usage_context
         from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
 
         system, user = build_bible_messages(course, modules, is_kids=is_kids, country=country)
-        called = False
         with ai_usage_context(
             FEATURE_STORY_GENERATION, course_id=getattr(course, "id", None), only_if_unset=True
         ):
@@ -795,25 +841,24 @@ class StoryBibleService:
                 except SoftTimeLimitExceeded:
                     raise
                 except ValueError as exc:
-                    called = True
                     logger.warning(
                         "Story bible answer unusable", attempt=attempt + 1, error=str(exc)
                     )
                     continue
                 except Exception as exc:
                     logger.warning(
-                        "Story bible model call failed",
+                        "Story bible model call failed: provider unavailable",
                         attempt=attempt + 1,
                         error_type=type(exc).__name__,
                         error=str(exc)[:300],
                     )
-                    continue
-                called = True
+                    raise StoryProviderUnavailable(
+                        f"The model could not be called for course {course.id}:"
+                        f" {type(exc).__name__}"
+                    ) from exc
                 answer = None if isinstance(raw, dict) and raw.get("raw_response") else raw
                 answer = usable_answer(answer)
                 if answer is not None:
                     return answer
                 logger.warning("Story bible answer gave no cast or place", attempt=attempt + 1)
-        if not called:
-            raise _CallImpossible(f"The model could not be called for course {course.id}")
         raise StoryBibleUnavailable(f"No usable story bible for course {course.id}")

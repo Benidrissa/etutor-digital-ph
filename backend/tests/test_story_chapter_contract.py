@@ -342,8 +342,8 @@ def test_no_quiz_means_no_derived_from(raw):
 # --------------------------------------------------------------------------
 
 
-def test_builder_version_is_three():
-    assert repair.CHAPTER_BUILDER_VERSION == 3
+def test_builder_version_is_four():
+    assert repair.CHAPTER_BUILDER_VERSION == 4
 
 
 @pytest.mark.parametrize("case", sorted(CASES))

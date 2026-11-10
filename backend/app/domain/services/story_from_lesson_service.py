@@ -153,6 +153,9 @@ class StoryBinding:
     quiz_revision: int | None = None
     lesson_digest: str | None = None
     quiz_digest: str | None = None
+    #: v4 (#2680): the chapter's own cache — its practice pack, recap, props
+    #: now and the digests it was told with (never sent by the API).
+    source_rows: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -222,7 +225,7 @@ async def upsert_story_course(
         record.source_quiz_revision = binding.quiz_revision
         record.source_lesson_digest = binding.lesson_digest
         record.source_quiz_digest = binding.quiz_digest
-        record.source_rows = None
+        record.source_rows = binding.source_rows
         record.source_units_digest = None
     elif isinstance(binding, ModuleStoryBinding):
         record.module_id = binding.module_id
@@ -368,12 +371,30 @@ def _chapter_can_be_fresh(record: StoryCourseRecord, builder: Any) -> bool:
     )
 
 
+def _chapter_marker(record: StoryCourseRecord) -> Any:
+    content = record.content
+    return content.get("sira_chapter") if isinstance(content, dict) else None
+
+
+def _lesson_unchanged(record: StoryCourseRecord, lesson: Any, marker: Any) -> bool:
+    """A v4 chapter (#2680): its lesson's FACT SHEET is unchanged — a prose rewrite
+    that keeps the ideas, key points and figures costs nothing. Before v4: the
+    lesson row's revision and content digest."""
+    if isinstance(marker, dict) and marker.get("fact_sheet"):
+        from app.ai.prompts.story_from_lesson import fact_sheet_digest
+
+        return lesson is not None and fact_sheet_digest(lesson.content) == marker["fact_sheet"]
+    return _source_unchanged(lesson, record.source_lesson_revision, record.source_lesson_digest)
+
+
 async def chapters_are_fresh(
     session: AsyncSession,
     records: Sequence[StoryCourseRecord],
     *,
     builders: Sequence[Any] | None = None,
     covering: Mapping[uuid.UUID | None, uuid.UUID | None] | None = None,
+    markers: Sequence[Any] | None = None,
+    expected: Mapping[uuid.UUID | None, Mapping[str, Any]] | None = None,
 ) -> list[bool]:
     """:func:`story_sources_are_fresh` for many chapter rows: one query of their sources.
 
@@ -403,6 +424,8 @@ async def chapters_are_fresh(
     """
     if builders is None:
         builders = [_chapter_builder(record) for record in records]
+    if markers is None:
+        markers = [_chapter_marker(record) for record in records]
     results = [False] * len(records)
     candidates = [
         index
@@ -470,10 +493,14 @@ async def chapters_are_fresh(
     for i in candidates:
         record = records[i]
         lesson = by_id.get(record.source_lesson_content_id)
-        if not _source_unchanged(
-            lesson, record.source_lesson_revision, record.source_lesson_digest
-        ):
+        if not _lesson_unchanged(record, lesson, markers[i]):
             continue
+        if expected is not None:
+            # v4: told with this bible, within this plan, from this plan entry.
+            want = expected.get(record.module_unit_id)
+            marker = markers[i] if isinstance(markers[i], dict) else {}
+            if want is None or any(marker.get(key) != value for key, value in want.items()):
+                continue
         if record.source_quiz_revision is not None:
             quiz = by_id.get(record.source_quiz_content_id)
             # The lesson unit's own quiz is never a source now: rebuild from
@@ -662,6 +689,119 @@ class StoryGeneration:
     #: What the salvage pass dropped: ``questions``, ``exercises`` and
     #: ``minigames`` ids (a dropped mini-game is replaced by the built-in one).
     dropped: dict[str, list[str]] = field(default_factory=dict)
+    #: The spine the stored document was built from (v4: its recap, props now).
+    spine: dict[str, Any] = field(default_factory=dict)
+
+
+#: The keys a practice pack writes (#2680), and those a chapter's story writes.
+PACK_KEYS = ("objectives", "misconceptions", "derived", "questions", "exercises", "minigame")
+STORY_KEYS = ("props", "scenes", "facts", "recap", "props_now")
+
+
+@dataclass
+class PackGeneration:
+    """A chapter's practice pack (v4): what was read, and what still fails."""
+
+    pack: dict[str, Any]
+    issues: list[ValidationIssue]
+    model_calls: int
+
+
+def stub_scenes(ctx: repair.LessonStoryContext, pack: dict[str, Any]) -> list[dict[str, Any]]:
+    """A scene made in code that asks every question of a pack, gives its task and game."""
+    bible = ctx.bible_content
+    place = next(iter(p["id"] for p in bible.get("places") or []), "classroom")
+    line = {"type": "narrate", "en": "The story goes on.", "fr": "L'histoire continue."}
+    steps: list[dict[str, Any]] = [dict(line)]
+    refs = [r for r in ctx.assigned_refs]
+    for number, question in enumerate(pack.get("questions") or [], start=1):
+        raw_id = question.get("id") if isinstance(question, dict) else None
+        refs.append(str(raw_id) if raw_id else f"x{number}")
+    for ref in refs:
+        steps += [
+            {"type": "say", "who": "friend", "mood": "talk", "en": "Your turn.", "fr": "À toi."},
+            {"type": "ask", "ref": ref},
+        ]
+    for number, _exercise in enumerate(pack.get("exercises") or [], start=1):
+        steps += [dict(line), {"type": "photo", "ref": f"E{number}"}]
+    if ctx.has_game:
+        steps += [dict(line), {"type": "game"}]
+    steps.append(dict(line))
+    return [{"place": place, "cast": ["hero", "friend"], "steps": steps}]
+
+
+def pack_issues(ctx: repair.LessonStoryContext, pack: dict[str, Any]) -> list[ValidationIssue]:
+    """What is wrong with a practice pack, on its own paths only.
+
+    The pack is built around :func:`stub_scenes` through the chapter builder
+    and validated; issues on the story's paths are left out (the stub has no
+    story). Plus the pack's own codes: an assigned course question without
+    a derived entry, a question on an IDEA the lesson does not have, an IDEA
+    no question tests.
+    """
+    from app.ai.prompts.story_from_lesson import PACK_PATH_RE
+
+    spine = {**pack, "scenes": stub_scenes(ctx, pack)}
+    try:
+        build = repair.build_story_document(ctx, spine, story_checks=False)
+        report = repair.with_generator_issues(validate_document(build.doc), build)
+    except SoftTimeLimitExceeded:
+        raise
+    except Exception as exc:  # a pack the builder cannot read at all
+        return [
+            ValidationIssue(
+                severity="error",
+                code="malformed_spine",
+                path="",
+                message=f"the practice items could not be read: {type(exc).__name__}",
+            )
+        ]
+    issues = [
+        i for i in report.errors if PACK_PATH_RE.match(i.path) and i.code not in repair.STORY_CODES
+    ]
+    derived = {str(d.get("ref")): d for d in pack.get("derived") or [] if isinstance(d, dict)}
+    for ref in ctx.assigned_refs:
+        if ref not in derived:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    code="assigned_ref_missing",
+                    path="derived",
+                    message=f'write a "derived" entry for {ref}: it is assigned to this chapter',
+                )
+            )
+    if not ctx.is_rally:
+        ideas = len(ctx.lesson_list("concepts"))
+        tested: set[int] = set()
+        items = [(f"derived[{ref}]", d) for ref, d in derived.items()] + [
+            (f"questions[{q.get('id') or n}]", q)
+            for n, q in enumerate(pack.get("questions") or [], start=1)
+            if isinstance(q, dict)
+        ]
+        for path, item in items:
+            idea = item.get("idea")
+            if not isinstance(idea, int) or isinstance(idea, bool) or not 1 <= idea <= ideas:
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        code="question_off_idea",
+                        path=f"{path}.idea",
+                        message=f'"idea" is the IDEA number it tests, 1 to {ideas}',
+                    )
+                )
+            else:
+                tested.add(idea)
+        missing = [n for n in range(1, ideas + 1) if n not in tested]
+        if missing:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    code="idea_without_question",
+                    path="questions",
+                    message=f"IDEA {', '.join(map(str, missing))} has no question: write one",
+                )
+            )
+    return issues
 
 
 def outcome_rank(generation: StoryGeneration) -> tuple[int, int, int]:
@@ -779,8 +919,119 @@ class StoryFromLessonService:
             logger.warning("Story spine lacks the __complete sentinel (possibly truncated)")
         return spine
 
+    async def generate_story(
+        self,
+        ctx: repair.LessonStoryContext,
+        pack: dict[str, Any],
+        *,
+        system_prompt: str,
+        max_repair_calls: int = repair.STORY_REPAIR_CALLS,
+    ) -> StoryGeneration:
+        """v4 (#2680): one chapter's story, told from the plan around its practice pack.
+
+        The model writes only the story (props, scenes, recap, props now,
+        facts); the spine the builder reads is the pack with those keys and
+        the plan's story title. A repair re-asks for the story JSON only.
+        """
+        from app.ai.prompts.story_from_lesson import (
+            build_chapter_story_message,
+            build_rally_story_message,
+            build_story_repair_message,
+        )
+
+        message = (
+            build_rally_story_message(ctx, pack)
+            if ctx.is_rally
+            else build_chapter_story_message(ctx, pack)
+        )
+        title = (ctx.plan_entry or {}).get("title")
+
+        def merge(answer: dict[str, Any]) -> dict[str, Any]:
+            spine = {key: value for key, value in pack.items() if key in PACK_KEYS}
+            for key in STORY_KEYS:
+                if key in answer:
+                    spine[key] = answer[key]
+            if title:
+                spine["chapter_title"] = title
+            return spine
+
+        return await self.generate_document(
+            ctx,
+            system_prompt=system_prompt,
+            user_message=message,
+            repair_message=build_story_repair_message,
+            merge=merge,
+            max_repair_calls=max_repair_calls,
+        )
+
+    async def generate_pack(
+        self,
+        ctx: repair.LessonStoryContext,
+        *,
+        system_prompt: str,
+        max_repair_calls: int = repair.PACK_REPAIR_CALLS,
+    ) -> PackGeneration:
+        """v4 (#2680): the practice items of a chapter, written apart from its story.
+
+        Checked by building them around a stub scene made in code and keeping
+        only the issues on the pack's own paths (:func:`pack_issues`); at most
+        ``max_repair_calls`` repairs. The best pack read is returned, issues
+        and all: what still fails is settled or salvaged with the story.
+        """
+        from app.ai.prompts.story_from_lesson import build_pack_message, build_pack_repair_message
+
+        message = build_pack_message(ctx)
+        budget = 1 + max_repair_calls
+        best: tuple[int, dict[str, Any], list[ValidationIssue]] | None = None
+        issues: list[ValidationIssue] = []
+        previous: dict[str, Any] | None = None
+        calls = 0
+        with ai_usage_context(FEATURE_STORY_GENERATION, only_if_unset=True):
+            for number in range(budget):
+                prompt = (
+                    message
+                    if number == 0
+                    else build_pack_repair_message(message, issues, previous, number, budget)
+                )
+                calls += 1
+                try:
+                    answer = await self._call_model(system_prompt, prompt)
+                except SoftTimeLimitExceeded:
+                    raise
+                except Exception as exc:
+                    if best is None:
+                        raise
+                    # A repair the provider could not answer: the paid pack read stays.
+                    logger.warning("Story pack repair failed; best pack kept", error=str(exc))
+                    break
+                if answer is None:
+                    issues, previous = [], None
+                    continue
+                pack = {key: value for key, value in answer.items() if key in PACK_KEYS}
+                issues = pack_issues(ctx, pack)
+                if best is None or len(issues) < best[0]:
+                    best = (len(issues), pack, issues)
+                if not issues:
+                    break
+                previous = answer
+        pack, left = (best[1], best[2]) if best is not None else ({}, [])
+        logger.info(
+            "Story practice pack made",
+            slug=ctx.slug,
+            calls=calls,
+            issues=sorted({i.code for i in left}),
+        )
+        return PackGeneration(pack=pack, issues=left, model_calls=calls)
+
     async def generate_document(
-        self, ctx: repair.LessonStoryContext, *, system_prompt: str
+        self,
+        ctx: repair.LessonStoryContext,
+        *,
+        system_prompt: str,
+        user_message: str | None = None,
+        repair_message: Any = None,
+        merge: Any = None,
+        max_repair_calls: int | None = None,
     ) -> StoryGeneration:
         """Spine call → deterministic build → validate → bounded repair → salvage.
 
@@ -797,8 +1048,10 @@ class StoryFromLessonService:
             build_story_user_message,
         )
 
-        user_message = build_story_user_message(ctx)
-        budget = 1 + self.max_repair_calls
+        user_message = user_message or build_story_user_message(ctx)
+        repair_message = repair_message or build_repair_message
+        repairs = self.max_repair_calls if max_repair_calls is None else max_repair_calls
+        budget = 1 + repairs
         attempts: list[_Attempt] = []
         empty_doc: dict[str, Any] | None = None
         feedback_spine: dict[str, Any] | None = None
@@ -810,10 +1063,13 @@ class StoryFromLessonService:
                 message = (
                     user_message
                     if number == 0
-                    else build_repair_message(user_message, issues, feedback_spine, number, budget)
+                    else repair_message(user_message, issues, feedback_spine, number, budget)
                 )
                 calls += 1
-                spine = await self._call_model(system_prompt, message)
+                answer = await self._call_model(system_prompt, message)
+                # The model's own JSON goes back in a repair; the builder reads
+                # it merged into the spine (v4: around the practice pack).
+                spine = merge(answer) if merge is not None and answer is not None else answer
                 attempted = self._build_and_validate(ctx, spine or {})
                 if attempted is None:
                     if spine is None:
@@ -822,7 +1078,7 @@ class StoryFromLessonService:
                         issues = []
                     else:
                         # The spine was JSON but not a shape the builder can use.
-                        feedback_spine, issues = spine, [_unbuildable_issue()]
+                        feedback_spine, issues = answer, [_unbuildable_issue()]
                     continue
                 build, report = attempted
                 authored = False
@@ -847,9 +1103,9 @@ class StoryFromLessonService:
                 if spine is None:
                     issues = []
                 elif not authored:
-                    feedback_spine, issues = spine, [_empty_spine_issue()]
+                    feedback_spine, issues = answer, [_empty_spine_issue()]
                 else:
-                    feedback_spine, issues = spine, list(report.errors)
+                    feedback_spine, issues = answer, repair.repair_issues(report)
 
         generation = self._choose(ctx, attempts, empty_doc)
         generation.model_calls = calls
@@ -944,7 +1200,7 @@ class StoryFromLessonService:
         report = repair.settle_translations(best.report)
         if not best.authored:
             report = repair.with_issues(report, [_no_model_content_issue()])
-        return StoryGeneration(doc=best.build.doc, report=report, model_calls=0)
+        return StoryGeneration(doc=best.build.doc, report=report, model_calls=0, spine=best.spine)
 
     def _as_published(
         self,
@@ -966,6 +1222,7 @@ class StoryFromLessonService:
             result = self._salvage(ctx, attempt.spine, attempt.build, report)
             if result is None or result.doc == empty_doc:
                 return None
+        result.spine = attempt.spine
         return self._with_fallback_cards(ctx, attempt.spine, result)
 
     def _with_fallback_cards(
@@ -1000,6 +1257,7 @@ class StoryFromLessonService:
             model_calls=0,
             salvaged=result.salvaged,
             dropped=dict(dropped),
+            spine=spine,
         )
 
     def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:

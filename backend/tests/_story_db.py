@@ -27,6 +27,9 @@ from app.infrastructure.config.settings import settings
 STORY_TABLE_ROOTS = (
     "story_courses",
     "story_course_bibles",
+    "story_module_plans",
+    # #2681: the lesson figures a chapter may show are checked against these.
+    "source_images",
     "generated_content",
     "module_units",
     "modules",
