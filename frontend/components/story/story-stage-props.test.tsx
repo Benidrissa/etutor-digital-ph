@@ -360,7 +360,9 @@ describe("Props on stage (#2681)", () => {
     expect(within(look).getByRole("heading", { name: /un escargot/ })).toBeInTheDocument();
     const photo = within(look).getByRole("img", { name: "un escargot sur une feuille" });
     expect(photo).toHaveAttribute("src", SNAIL_PHOTO);
-    expect(photo.getAttribute("srcset")).toContain(`${SNAIL_PHOTO_LARGE} 960w`);
+    // On a phone, the small picture only (the one fetched ahead): no srcset
+    // that would pull the large one on a dense screen (#2688).
+    expect(photo.getAttribute("srcset")).toBeNull();
     expect(within(look).getByText(/Cornu aspersum 01/)).toBeInTheDocument();
     expect(within(look).getByRole("link", { name: "CC BY-SA 4.0" })).toHaveAttribute(
       "href",

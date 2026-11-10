@@ -317,7 +317,20 @@ describe("ModuleStory — being written", () => {
     expect(screen.getByText(GENERATING)).toBeInTheDocument();
   });
 
-  it("stops polling after 15 min and says to come back later", async () => {
+  it("keeps polling past 15 min: story generator v4 can take longer (#2688)", async () => {
+    installFakeTimers();
+    loadMock.mockResolvedValue({ status: "generating", task_id: "task-1" });
+    apiFetchMock.mockResolvedValue({ status: "pending" });
+    renderPanel();
+
+    await advance(0);
+    await advance(16 * 60 * 1000);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText(GENERATING)).toBeInTheDocument();
+  });
+
+  it("stops polling after 30 min and says to come back later", async () => {
+    expect(POLL_TIMEOUT_MS).toBe(30 * 60 * 1000);
     installFakeTimers();
     loadMock.mockResolvedValue({ status: "generating", task_id: "task-1" });
     apiFetchMock.mockResolvedValue({ status: "pending" });
@@ -662,6 +675,39 @@ describe("ModuleStory — completion", () => {
     await user.click(within(index).getByRole("button", { name: /Des mains propres/ }));
     await user.click(screen.getByRole("button", { name: "Suite" }));
     await clickInCard(user, "Avant de toucher un patient");
+    expect(completeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes back from a chapter's first line into the chapter before, as it was left (#2688)", async () => {
+    const user = userEvent.setup();
+    detailMock.mockResolvedValue(moduleDetail(["1.2", "1.4"]));
+    loadMock.mockResolvedValue(moduleStory());
+    renderPanel();
+    await screen.findByText(CH1_LINE);
+
+    // Chapter 1: right first time, then on to chapter 2.
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    await clickInCard(user, "Avant de toucher un patient");
+    await screen.findByText("Chapitre terminé !");
+    await user.click(screen.getByRole("button", { name: "Chapitre suivant" }));
+    expect(screen.getByText(CH2_LINE)).toBeInTheDocument();
+
+    // Previous on chapter 2's first line: chapter 1's last line, answered.
+    const back = screen.getByRole("button", { name: "Précédent" });
+    expect(back).toBeEnabled();
+    await user.click(back);
+    expect(screen.getByText("Chapitre 1 sur 4")).toBeInTheDocument();
+    const card = document.querySelector('[data-step-panel="ask"]') as HTMLElement;
+    expect(within(card).getByRole("button", { name: /Avant de toucher un patient/ })).toBeDisabled();
+    expect(within(card).getByText(/Ta réponse/)).toBeInTheDocument();
+    // Its end card, with what it was worth; nothing completed or scored again.
+    const status = screen.getByText("Chapitre terminé !");
+    expect(status.closest("[role=status]")).toHaveTextContent("2 sur 2 points");
+    expect(completeMock).toHaveBeenCalledTimes(1);
+
+    // And on again.
+    await user.click(screen.getByRole("button", { name: "Chapitre suivant" }));
+    expect(screen.getByText(CH2_LINE)).toBeInTheDocument();
     expect(completeMock).toHaveBeenCalledTimes(1);
   });
 

@@ -29,7 +29,7 @@ import type { QueuedQuizAnswerPayload } from './offline-quiz-scorer';
 const PREWARM_V6_DONE_KEY = 'offline_prewarm_v6_done';
 const PREWARM_V7_DONE_KEY = 'offline_prewarm_v7_done';
 const PREWARM_V8_DONE_KEY = 'offline_prewarm_v8_done';
-const PREWARM_V10_DONE_KEY = 'offline_prewarm_v10_done';
+const PREWARM_V11_DONE_KEY = 'offline_prewarm_v11_done';
 
 export type SyncStatus =
   | { state: 'idle' }
@@ -113,7 +113,7 @@ class SyncManager {
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
-      this.runV10PrewarmMigration();
+      this.runV11PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -134,7 +134,7 @@ class SyncManager {
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
-      this.runV10PrewarmMigration();
+      this.runV11PrewarmMigration();
     }
   }
 
@@ -368,19 +368,26 @@ class SyncManager {
   }
 
   /**
-   * One-shot migration for users who downloaded a module before SW v10.
-   * The v10 bump (the story media cache and the story player with props and
-   * Previous, #2681/#2682) renamed the pages cache to `pages-v10-story-media`.
-   * Without this, previously-prewarmed pages, the module story page among
-   * them, are invisible to the v10 SW and an offline navigation falls
-   * through to /offline.html.
+   * One-shot migration for users who downloaded a module before SW v11.
+   * The v10 bump (the story media cache, #2681/#2682) and the v11 bump (the
+   * story player fixes, #2688) renamed the pages cache, now
+   * `pages-v11-story-fixes`. Without this, previously-prewarmed pages, the
+   * module story page among them, are invisible to the SW and an offline
+   * navigation falls through to /offline.html.
+   *
+   * It only marks itself done when every page was stored: on a weak link the
+   * next `online` event or app start tries again (#2688).
    */
-  async runV10PrewarmMigration(): Promise<void> {
+  async runV11PrewarmMigration(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
-      if (localStorage.getItem(PREWARM_V10_DONE_KEY)) return;
+      if (localStorage.getItem(PREWARM_V11_DONE_KEY)) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
+      let allStored = true;
+      const warm = async (url: string) => {
+        if (!(await prewarmPage(url))) allStored = false;
+      };
       const modules = await getOfflineModulesByStatus('downloaded');
       for (const mod of modules) {
         const entries = await getOfflineContentByModule(mod.moduleId);
@@ -391,23 +398,21 @@ class SyncManager {
           const key = `${entry.locale}|${entry.unitId}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          await prewarmPage(
-            `/${entry.locale}/modules/${mod.moduleId}/units/${entry.unitId}`,
-          );
+          await warm(`/${entry.locale}/modules/${mod.moduleId}/units/${entry.unitId}`);
         }
         const locales = new Set(entries.map((e) => e.locale));
         for (const loc of locales) {
-          await prewarmPage(`/${loc}/modules/${mod.moduleId}`);
+          await warm(`/${loc}/modules/${mod.moduleId}`);
         }
         // The module story page, where a story was saved with the module.
         const storyLocales = new Set(
           entries.filter((e) => e.contentType === 'story').map((e) => e.locale),
         );
         for (const loc of storyLocales) {
-          await prewarmPage(`/${loc}/modules/${mod.moduleId}/story`);
+          await warm(`/${loc}/modules/${mod.moduleId}/story`);
         }
       }
-      localStorage.setItem(PREWARM_V10_DONE_KEY, '1');
+      if (allStored) localStorage.setItem(PREWARM_V11_DONE_KEY, '1');
     } catch {
       // best-effort; failure must not break sync
     }

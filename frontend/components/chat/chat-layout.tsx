@@ -19,13 +19,18 @@ function ChatUIComponents() {
   const isOnTutorPage = pathname.endsWith('/tutor');
   const isOnQbankTest = /\/qbank\/tests\/[^/]+$/.test(pathname);
   const hideFab = isOnTutorPage || isOnQbankTest;
+  // On a story (a module story, a story week) the button would sit on the
+  // player's « Suite » at every width up to a wide desktop, where the story
+  // column leaves the corner free (#2688). The tutor stays one tap away in
+  // the bottom navigation and the sidebar.
+  const isOnStory = /\/(story\/[^/]+|modules\/[^/]+\/story)\/?$/.test(pathname);
 
   return (
     <>
       {!hideFab && (
         <FloatingChatButton
           onClick={toggleChat}
-          className={cn(isOpen && 'md:hidden')}
+          className={cn(isOpen && 'md:hidden', isOnStory && 'max-xl:hidden')}
         />
       )}
       <ChatPanel 

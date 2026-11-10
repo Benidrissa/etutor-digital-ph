@@ -32,28 +32,52 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // v10 adds the story media route (#2681): story art, prop pictures and
 // course figures go to their own stable cache, and the story player with
 // props and the Previous button (#2682) replaces the cached one.
-const CACHE_VERSION = "v10-story-media";
+// v11 replaces the v10 story player, whose Previous handed out fresh first
+// tries (#2688), and course figures get a cache of their own.
+const CACHE_VERSION = "v11-story-fixes";
 
 // Story pictures (#2681): character poses, backdrops, prop stickers and
-// photos, and course figures. Not versioned with CACHE_VERSION on purpose,
-// so a downloaded story keeps its pictures across service worker updates.
+// photos. Not versioned with CACHE_VERSION on purpose, so a downloaded story
+// keeps its pictures across service worker updates. Course figures have a
+// cache of their own, so browsing lesson figures never pushes story art out.
 const STORY_MEDIA_CACHE = "story-media-v1";
+const COURSE_FIGURES_CACHE = "course-figures-v1";
 const STORY_MEDIA_PATH = /^\/api\/v1\/(story-art|story-props)\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
 const SOURCE_IMAGE_PATH = /^\/api\/v1\/source-images\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
 
-// One set of plugins for both story media rules: one expiration for the
-// one cache, and only whole, successful answers kept (never an error page).
+/** Only whole, successful answers are kept: never an error page. */
+const okOnly = {
+  cacheWillUpdate: async ({ response }: { response: Response }) =>
+    response && response.status === 200 ? response : null,
+};
+
+// Least recently used goes first, and the 90 days count from the last use:
+// story art is fetched once and then read from the cache for good, so
+// counting from the first fetch would evict a story played every day (#2688).
 const storyMediaPlugins = [
   new ExpirationPlugin({
     maxEntries: 600,
     maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    maxAgeFrom: "last-used",
     purgeOnQuotaError: true,
   }),
-  {
-    cacheWillUpdate: async ({ response }: { response: Response }) =>
-      response && response.status === 200 ? response : null,
-  },
+  okOnly,
 ];
+const courseFigurePlugins = [
+  new ExpirationPlugin({
+    maxEntries: 200,
+    maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    maxAgeFrom: "last-used",
+    purgeOnQuotaError: true,
+  }),
+  okOnly,
+];
+
+/** Runtime caches of an older CACHE_VERSION: nothing reads them any more. */
+export function isStaleRuntimeCache(name: string): boolean {
+  if (name.startsWith("serwist-") || name === STORY_MEDIA_CACHE || name === COURSE_FIGURES_CACHE) return false;
+  return /-v\d+-[\w-]+$/.test(name) && !name.endsWith(`-${CACHE_VERSION}`);
+}
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -129,13 +153,13 @@ const serwist = new Serwist({
       }),
     },
     // Course figures have been fixed in place before: shown from the cache,
-    // refreshed behind it.
+    // refreshed behind it, in a cache of their own.
     {
       matcher: ({ url, request }: { url: URL; request: Request }) =>
         request.method === "GET" && SOURCE_IMAGE_PATH.test(url.pathname),
       handler: new StaleWhileRevalidate({
-        cacheName: STORY_MEDIA_CACHE,
-        plugins: storyMediaPlugins,
+        cacheName: COURSE_FIGURES_CACHE,
+        plugins: courseFigurePlugins,
       }),
     },
     {
@@ -192,5 +216,20 @@ const serwist = new Serwist({
     },
   ],
 });
+
+// Each CACHE_VERSION bump used to leave the older runtime caches on the
+// device for good (their expiration is no longer registered), until a quota
+// error purged the live ones instead (#2688). The precache, the story media
+// and the course figures are kept.
+if (typeof self.addEventListener === "function") {
+  self.addEventListener("activate", (event: ExtendableEvent) => {
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.filter(isStaleRuntimeCache).map((key) => caches.delete(key))))
+        .catch(() => undefined),
+    );
+  });
+}
 
 serwist.addEventListeners();

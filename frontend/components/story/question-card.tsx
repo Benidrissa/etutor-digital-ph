@@ -29,6 +29,18 @@ export interface QuestionAnswer {
   attempts: number;
 }
 
+/**
+ * A question left half-answered: the tries used so far, the hint they
+ * earned and the last answer. A card that comes back (Previous, then Next)
+ * resumes from it instead of offering a fresh first try (#2688).
+ */
+export interface QuestionProgress {
+  answer: string;
+  parts?: Record<string, string>;
+  attempts: number;
+  hint: TextObject | null;
+}
+
 interface QuestionCardProps {
   question: Question;
   /** Language of instruction, then the home language shown beneath it. */
@@ -42,6 +54,10 @@ interface QuestionCardProps {
    * explanation, settled and read-only. Nothing is scored again.
    */
   review?: QuestionAnswer;
+  /** A try already made on this question, to carry on from. */
+  resume?: QuestionProgress;
+  /** Each try that leaves the question open (a wrong first answer). */
+  onProgress?: (progress: QuestionProgress) => void;
   /**
    * Every attempt, right or wrong, as it is checked: the cartoon stage cheers
    * a right one and lets the hero think over a wrong one. `settled` is true
@@ -93,13 +109,15 @@ export function QuestionCard({
   onAnswered,
   onAttempt,
   review,
+  resume,
+  onProgress,
   className,
 }: QuestionCardProps) {
   const t = useTranslations("Story");
-  const [typed, setTyped] = useState(review?.answer ?? "");
-  const [partAnswers, setPartAnswers] = useState<Record<string, string>>(review?.parts ?? {});
-  const [attempts, setAttempts] = useState(review?.attempts ?? 0);
-  const [hint, setHint] = useState<TextObject | null>(null);
+  const [typed, setTyped] = useState(review?.answer ?? resume?.answer ?? "");
+  const [partAnswers, setPartAnswers] = useState<Record<string, string>>(review?.parts ?? resume?.parts ?? {});
+  const [attempts, setAttempts] = useState(review?.attempts ?? resume?.attempts ?? 0);
+  const [hint, setHint] = useState<TextObject | null>(review ? null : (resume?.hint ?? null));
   const [notice, setNotice] = useState<string | null>(null);
   const [settled, setSettled] = useState(!!review);
   const [correct, setCorrect] = useState(review?.correct ?? false);
@@ -183,6 +201,7 @@ export function QuestionCard({
     }
 
     setHint(nextHint);
+    onProgress?.({ ...given, attempts: nextAttempts, hint: nextHint });
     onAttempt?.({ correct: false, settled: false });
   };
 

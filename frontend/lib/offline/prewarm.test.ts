@@ -43,6 +43,13 @@ describe("prewarmPage", () => {
     expect(cache.put.mock.calls[0][0]).toBe("/fr/modules/mod-1/story");
   });
 
+  it("says whether the page was stored (#2688)", async () => {
+    fetchMock.mockResolvedValue(new Response("<html></html>", { status: 200 }));
+    await expect(prewarmPage("/fr/modules/mod-1")).resolves.toBe(true);
+    fetchMock.mockResolvedValue(new Response("nope", { status: 503 }));
+    await expect(prewarmPage("/fr/modules/mod-1")).resolves.toBe(false);
+  });
+
   it("does not store an error page", async () => {
     fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
     await prewarmPage("/fr/modules/mod-1");
@@ -51,7 +58,7 @@ describe("prewarmPage", () => {
 
   it("swallows a failed request", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
-    await expect(prewarmPage("/fr/modules/mod-1")).resolves.toBeUndefined();
+    await expect(prewarmPage("/fr/modules/mod-1")).resolves.toBe(false);
     expect(cache.put).not.toHaveBeenCalled();
   });
 });
