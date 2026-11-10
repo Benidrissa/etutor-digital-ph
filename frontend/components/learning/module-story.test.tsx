@@ -678,6 +678,59 @@ describe("ModuleStory — completion", () => {
     expect(completeMock).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a chapter finished on an earlier visit read-only, never scoring it again (#2692)", async () => {
+    const user = userEvent.setup();
+    // Chapter 1 finished on an earlier visit: the panel resumes at chapter 2.
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({ v: 1, completedUnits: ["unit-1.1"], points: { "unit-1.1": 2 } }),
+    );
+    detailMock.mockResolvedValue(moduleDetail(["1.1", "1.2", "1.4"]));
+    loadMock.mockResolvedValue(moduleStory());
+    renderPanel();
+    expect(await screen.findByText(CH2_LINE)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Précédent" }));
+    expect(screen.getByText("Chapitre 1 sur 4")).toBeInTheDocument();
+    expect(screen.getByText("Chapitre terminé !").closest("[role=status]")).toHaveTextContent("2 sur 2 points");
+    const card = document.querySelector('[data-step-panel="ask"]') as HTMLElement;
+    // Settled, read-only: the right answer and the explanation, nothing to tap.
+    expect(within(card).getByRole("button", { name: /Avant de toucher un patient/ })).toBeDisabled();
+    expect(within(card).getByRole("button", { name: /Seulement si elles semblent sales/ })).toBeDisabled();
+    expect(within(card).queryByText(/\+2 points/)).not.toBeInTheDocument();
+    // The counter is the chapter's best, never more than it is worth.
+    expect(screen.getByText("/2")).toBeInTheDocument();
+    expect(screen.queryByText(/[3-9]\/2|4 sur 2/)).not.toBeInTheDocument();
+    expect(completeMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the finished run, not a replay left half way, for Previous (#2692)", async () => {
+    const user = userEvent.setup();
+    detailMock.mockResolvedValue(moduleDetail(["1.2", "1.4"]));
+    loadMock.mockResolvedValue(moduleStory());
+    renderPanel();
+    await screen.findByText(CH1_LINE);
+
+    // Chapter 1 finished, right first time.
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    await clickInCard(user, "Avant de toucher un patient");
+    await screen.findByText("Chapitre terminé !");
+    // Replayed from the chapter list, then left before its end.
+    const index = screen.getByRole("navigation", { name: "Chapitres" });
+    await user.click(within(index).getByRole("button", { name: /Des mains propres/ }));
+    expect(screen.getByText(CH1_LINE)).toBeInTheDocument();
+    await user.click(within(index).getByRole("button", { name: /De l'eau propre/ }));
+    expect(screen.getByText(CH2_LINE)).toBeInTheDocument();
+
+    // Previous shows the finished run: the answer given, read-only.
+    await user.click(screen.getByRole("button", { name: "Précédent" }));
+    const card = document.querySelector('[data-step-panel="ask"]') as HTMLElement;
+    expect(within(card).getByText(/Ta réponse/)).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /Avant de toucher un patient/ })).toBeDisabled();
+    expect(screen.getByText("Chapitre terminé !").closest("[role=status]")).toHaveTextContent("2 sur 2 points");
+    expect(completeMock).toHaveBeenCalledTimes(1);
+  });
+
   it("goes back from a chapter's first line into the chapter before, as it was left (#2688)", async () => {
     const user = userEvent.setup();
     detailMock.mockResolvedValue(moduleDetail(["1.2", "1.4"]));

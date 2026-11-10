@@ -155,18 +155,35 @@ describe("service worker clean-up of older caches (#2688)", () => {
       "static-assets-v9-api-keys-tab",
       "api-responses-v8-summative-safe",
       "google-fonts-v6-offline-routes",
+      // The first worker's unversioned caches (#2692).
+      "pages",
+      "static-assets",
+      "static-images",
+      "api-responses",
+      "google-fonts",
     ]) {
       expect(isStaleRuntimeCache(stale)).toBe(true);
     }
     for (const kept of [
       "pages-v11-story-fixes",
       "static-images-v11-story-fixes",
+      "static-assets-v11-story-fixes",
+      "api-responses-v11-story-fixes",
+      "google-fonts-v11-story-fixes",
       "story-media-v1",
       "course-figures-v1",
       "serwist-precache-v2-https://sira.example/",
       "some-other-cache",
+      "pages-of-someone-else",
     ]) {
       expect(isStaleRuntimeCache(kept)).toBe(false);
+    }
+  });
+
+  it("names every cache the worker reads with the current version, or keeps it stable", () => {
+    for (const entry of recorded.options?.runtimeCaching ?? []) {
+      const name = entry.handler.options.cacheName ?? "";
+      expect(isStaleRuntimeCache(name)).toBe(false);
     }
   });
 });
