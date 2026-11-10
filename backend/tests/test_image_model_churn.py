@@ -192,7 +192,31 @@ class TestErrorRecognition:
     def test_other_parameters_or_codes_are_not_dropped(self):
         assert refused_param(param_refused("prompt")) is None
         assert refused_param(param_refused("background", code="moderation_blocked")) is None
-        assert refused_param(model_missing()) is None
+        assert refused_param(model_missing()) is None  # param=model: a model error
+
+    def test_a_droppable_param_is_a_refusal_whatever_the_code(self):
+        # #2696: staging's code was invalid_input_fidelity_model, unknown to the list.
+        for code in ("invalid_input_fidelity_model", "invalid_value", None):
+            assert refused_param(param_refused("input_fidelity", code=code)) == "input_fidelity"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "moderation_blocked",
+            "content_policy_violation",
+            "safety",
+            "image_moderation_failed",
+            "usage_policy_block",
+        ],
+    )
+    def test_a_safety_block_is_never_a_refusal(self, code):
+        # Even when it names a droppable parameter: it stays final.
+        exc = param_refused("background", code=code)
+        assert refused_param(exc) is None
+        assert not svc.failure_is_transient(exc)
+        failure = svc.classify_failure(exc, None, MARKET.digest, now=NOW)
+        assert failure.retry_after is None and failure.failed_runs == 0
+        assert image_provider.refused_param_in_error(svc._error_text(exc)) is None
 
 
 # --------------------------------------------------------------------------
@@ -521,3 +545,161 @@ class TestChainClassification:
             retry_after=NOW - timedelta(1),
         )
         assert svc.classify_failure(exc, previous, GIRL.digest, now=NOW).retry_after is None
+
+
+# --------------------------------------------------------------------------
+# #2696: the input_fidelity refusal staging hit, and its 18 final rows
+# --------------------------------------------------------------------------
+
+#: The error staging stored for each of the 18 pose edits.
+STAGING_REFUSAL = {
+    "message": "The model 'gpt-image-2.6-sunburst' does not support the 'input_fidelity' parameter.",
+    "type": "image_generation_user_error",
+    "param": "input_fidelity",
+    "code": "invalid_input_fidelity_model",
+}
+
+
+def staging_refusal(body: dict | None = None) -> openai.BadRequestError:
+    """The refusal as the SDK raises it: the message embeds the error body."""
+    inner = body or STAGING_REFUSAL
+    response = httpx.Response(400, request=httpx.Request("POST", "https://api.test/edits"))
+    return openai.BadRequestError(
+        f"Error code: 400 - {{'error': {inner!r}}}", response=response, body=inner
+    )
+
+
+def legacy_row(item, pose: str) -> SimpleNamespace:
+    """A pose stored as a final failure before #2696, exactly as on staging."""
+    stored = row(item, pose, status="failed")
+    stored.error = svc._error_text(staging_refusal())
+    stored.model = "gemini-2.5-flash-image"
+    return stored
+
+
+FRIEND = svc.ArtItem("character", "friend", "friend look")
+FAMILY = svc.ArtItem("character", "family", "family look")
+MENTOR_2696 = svc.ArtItem("character", "mentor", "mentor look")
+MARGO_2696 = svc.ArtItem("character", "margo", "margo look")
+BOY_2696 = svc.ArtItem("character", "hero:boy", "boy look")
+CAST_2696 = [GIRL, BOY_2696, FRIEND, MENTOR_2696, FAMILY, MARGO_2696]
+PLACES_2696 = [svc.ArtItem("place", f"place{i}", f"place {i}") for i in range(8)]
+
+
+def staging_rows() -> list[SimpleNamespace]:
+    """Staging after #2691: 8 backdrops and 6 idles ready, 18 poses failed for good."""
+    rows = ready_rows(PLACES_2696)
+    for item in CAST_2696:
+        rows += [row(item, "idle")] + [legacy_row(item, p) for p in svc.CHARACTER_POSES[1:]]
+    return rows
+
+
+class TestInputFidelityRefusal:
+    def test_the_staging_error_is_a_refused_parameter_not_a_model_error(self):
+        exc = staging_refusal()
+        assert refused_param(exc) == "input_fidelity"
+        assert not is_model_error(exc)
+
+    @pytest.mark.parametrize(
+        ("message", "param"),
+        [
+            ("The model 'x' does not support the 'input_fidelity' parameter.", "input_fidelity"),
+            ("Unknown parameter: 'quality'.", "quality"),
+            ("Unsupported parameter: 'background' is not supported with this model.", "background"),
+            ("Unsupported value: 'size' does not support '4096x4096' with this model.", "size"),
+        ],
+    )
+    def test_the_message_names_the_parameter_when_param_is_missing(self, message, param):
+        exc = staging_refusal({"message": message, "type": "invalid_request_error"})
+        assert refused_param(exc) == param
+
+    def test_a_message_naming_no_droppable_parameter_is_no_refusal(self):
+        missing = staging_refusal(
+            {"message": "The model 'gpt-image-1' does not exist.", "type": "invalid_request_error"}
+        )
+        assert refused_param(missing) is None
+        prompt = staging_refusal({"message": "Unknown parameter: 'prompt'."})
+        assert refused_param(prompt) is None
+
+    async def test_an_edit_refused_input_fidelity_is_retried_without_it(
+        self, openai_client, ledger
+    ):
+        openai_client.images.edit.side_effect = [staging_refusal(), _response(b"EDIT")]
+        data, used = await edit_image(
+            "p", b"REF", model="gemini-2.5-flash-image", background="transparent"
+        )
+        assert (data, used) == (b"EDIT", OPENAI_IMAGE_MODEL)  # edits route to OpenAI
+        first, second = (c.kwargs for c in openai_client.images.edit.call_args_list)
+        assert first["input_fidelity"] == "high" and "input_fidelity" not in second
+        assert unsupported_params(OPENAI_IMAGE_MODEL) == {"input_fidelity"}
+
+    def test_a_stored_failure_is_read_back(self):
+        read = image_provider.refused_param_in_error
+        assert read(legacy_row(GIRL, "talk").error) == "input_fidelity"
+        assert read(svc._error_text(model_missing())) is None
+        assert read("idle pose unavailable") is None
+        assert read("RuntimeError: boom") is None
+        assert read(None) is None
+
+
+class TestStoredRefusalsRedrawnOnce:
+    ACCEPTED = {GIRL.digest: GIRL.look}
+
+    def test_a_refusal_stored_as_final_is_outstanding_again(self):
+        stored = legacy_row(GIRL, "talk")
+        assert svc.row_state(stored, self.ACCEPTED, now=NOW, model=stored.model) == "outstanding"
+
+    def test_once_reclassified_it_follows_the_normal_rules(self):
+        # The redraw failed again on the refusal: stored the new way it waits
+        # (failed_runs >= 1), and once given up it is final for good.
+        previous = legacy_row(GIRL, "talk")
+        again = svc.classify_failure(staging_refusal(), previous, GIRL.digest, now=NOW)
+        assert again.failed_runs == 1 and again.retry_after == NOW + svc.PARAM_RETRY_AFTER
+        waiting = row(GIRL, "talk", status="failed", failed_runs=1, retry_after=again.retry_after)
+        waiting.error = again.error
+        assert svc.row_state(waiting, self.ACCEPTED, now=NOW) == "failed"
+        given_up = row(GIRL, "talk", status="failed", failed_runs=6, retry_after=None)
+        given_up.error = again.error
+        assert svc.row_state(given_up, self.ACCEPTED, now=NOW) == "failed"
+
+    def test_other_final_failures_stay_final(self):
+        refused_prompt = row(GIRL, "talk", status="failed")
+        refused_prompt.error = svc._error_text(
+            staging_refusal({"message": "Your request was rejected by the safety system."})
+        )
+        assert svc.row_state(refused_prompt, self.ACCEPTED, now=NOW) == "failed"
+
+    def test_staging_plans_exactly_the_18_pose_edits(self):
+        rows = staging_rows()
+        jobs = svc.plan_art(CAST_2696 + PLACES_2696, rows, now=NOW, model="gemini-2.5-flash-image")
+        assert sum(job.cost for job in jobs) == 18
+        assert all(job.idle_row_id is not None for job in jobs)  # edits of the stored idles
+        assert {job.poses for job in jobs} == {svc.CHARACTER_POSES[1:]}
+        assert {job.item.key for job in jobs} == {item.key for item in CAST_2696}
+
+    def test_the_ready_rows_are_never_redrawn(self):
+        rows = staging_rows()
+        jobs = svc.plan_art(CAST_2696 + PLACES_2696, rows, now=NOW, model="gemini-2.5-flash-image")
+        planned = {(job.item.key, pose) for job in jobs for pose in job.poses}
+        ready = {(r.key, r.pose) for r in rows if r.status == "ready"}
+        assert len(ready) == 14 and not planned & ready
+
+    async def test_a_run_draws_the_18_edits_then_nothing(self):
+        from tests.test_story_art import figure_png
+
+        idle_webp, _, _ = svc.process_character(figure_png())
+        rows = staging_rows()
+        for stored in rows:
+            # As on staging, the rows failed under the model the run uses: no
+            # model change reopens them, only the stored-refusal rule does.
+            stored.model = OPENAI_IMAGE_MODEL
+        report, images, sessions = await run_generator(
+            CAST_2696 + PLACES_2696, rows, sessions=FakeSessions(idle_webp=idle_webp)
+        )
+        assert [call.kind for call in images.calls] == ["edit"] * 18
+        assert report["ready"] == 18 and report["failed"] == 0
+        redrawn = {(art.key, art.pose): art for art in sessions.written}
+        assert len(redrawn) == 18 and all(art.status == "ready" for art in redrawn.values())
+        # What was written, over what was there: the next plan is empty.
+        after = [r for r in rows if (r.key, r.pose) not in redrawn] + list(redrawn.values())
+        assert svc.plan_art(CAST_2696 + PLACES_2696, after, now=NOW) == []

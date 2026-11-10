@@ -50,6 +50,7 @@ import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.ai.providers.image_provider import refused_param_in_error
 from app.domain.models.story_art import (
     CHARACTER_POSES,
     KIND_CHARACTER,
@@ -491,6 +492,16 @@ def row_state(
     if model and failed_under and failed_under != model:
         return "outstanding"
     if row.retry_after is not None and row.retry_after <= now:
+        return "outstanding"
+    if (
+        row.retry_after is None
+        and not row.failed_runs
+        and refused_param_in_error(getattr(row, "error", None)) is not None
+    ):
+        # A refused parameter stored as final before #2696 (OpenAI's code was
+        # not recognised, e.g. invalid_input_fidelity_model): drawn once more,
+        # now that the parameter is dropped. A refusal stored since carries
+        # failed_runs >= 1, so this never fires twice for a row.
         return "outstanding"
     return "failed"
 

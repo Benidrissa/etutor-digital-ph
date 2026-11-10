@@ -61,13 +61,10 @@ _FALLBACK_IMAGE_MODEL = OPENAI_IMAGE_MODEL
 #: ``ai-model-image``). Models found missing at run time are added per process.
 _RETIRED_IMAGE_MODELS: dict[str, str] = {"gpt-image-1": OPENAI_IMAGE_MODEL}
 
-#: Parameters a model may refuse (400 ``invalid_value`` / ``unknown_parameter``
-#: / ``unsupported_parameter`` / ``unsupported_value``) that can be dropped
-#: without failing the image.
+#: Parameters a model may refuse (a 400 naming one of them, whatever its code:
+#: ``invalid_value``, ``unsupported_parameter``, ``invalid_input_fidelity_model``
+#: …) that can be dropped without failing the image.
 DROPPABLE_PARAMS = frozenset({"background", "input_fidelity", "quality", "output_format", "size"})
-_PARAM_ERROR_CODES = frozenset(
-    {"invalid_value", "unknown_parameter", "unsupported_parameter", "unsupported_value"}
-)
 #: Per process: the parameters each model refused, never sent to it again.
 _UNSUPPORTED_PARAMS: dict[str, set[str]] = {}
 
@@ -127,16 +124,72 @@ def is_model_error(exc: BaseException | None) -> bool:
     return exc.status_code in (400, 404) and _error_param(exc) == "model"
 
 
+#: How OpenAI words a refused parameter when the error has no ``param``:
+#: "does not support the 'X' parameter", "Unknown parameter: 'X'",
+#: "Unsupported parameter: 'X'", "Unsupported value: 'X' does not support …".
+_REFUSED_PARAM_MESSAGES = (
+    re.compile(r"does not support the '([a-z_]+)' parameter", re.IGNORECASE),
+    re.compile(r"(?:unknown|unsupported) (?:parameter|value): '([a-z_]+)'", re.IGNORECASE),
+)
+#: The ``param`` and ``code`` fields of an error as ``str()`` renders its body.
+_PARAM_FIELD = re.compile(r"""['"]param['"]: ['"]([a-z_]+)['"]""")
+_CODE_FIELD = re.compile(r"""['"]code['"]: ['"]([A-Za-z_.-]+)['"]""")
+#: Codes of a safety block: never a refused parameter, even when the error
+#: names one; the image stays refused (deterministic, final).
+_SAFETY_CODES = frozenset({"moderation_blocked", "content_policy_violation", "safety"})
+
+
+def is_safety_code(code: object) -> bool:
+    """A safety block: one of :data:`_SAFETY_CODES`, or a code about moderation or policy."""
+    if not isinstance(code, str):
+        return False
+    lowered = code.lower()
+    return lowered in _SAFETY_CODES or "moderation" in lowered or "policy" in lowered
+
+
+def _droppable_in_message(message: str) -> str | None:
+    for pattern in _REFUSED_PARAM_MESSAGES:
+        for name in pattern.findall(message):
+            if name in DROPPABLE_PARAMS:
+                return name
+    return None
+
+
 def refused_param(exc: BaseException | None) -> str | None:
-    """The droppable parameter a 400 says the model does not accept, if any."""
+    """The droppable parameter a 400 says the model does not accept, if any.
+
+    Any 400 whose ``param`` is a droppable parameter, whatever its ``code``
+    (OpenAI uses ``invalid_value``, ``unsupported_parameter``,
+    ``invalid_input_fidelity_model``…); without a ``param``, the message
+    ("does not support the 'input_fidelity' parameter"). A model error
+    (``param=model``) is never one, nor is a safety block (:func:`is_safety_code`),
+    whatever parameter it names.
+    """
     import openai
 
     if not isinstance(exc, openai.BadRequestError):
         return None
+    if is_safety_code(getattr(exc, "code", None)):
+        return None
     param = _error_param(exc)
-    if getattr(exc, "code", None) in _PARAM_ERROR_CODES and param in DROPPABLE_PARAMS:
-        return param
-    return None
+    if param is not None:
+        return param if param in DROPPABLE_PARAMS else None
+    body = getattr(exc, "body", None)
+    message = body.get("message") if isinstance(body, dict) else None
+    return _droppable_in_message(f"{message or ''} {exc}")
+
+
+def refused_param_in_error(error: str | None) -> str | None:
+    """:func:`refused_param` of a failure stored as text (``story_art.error``)."""
+    if not error or not error.startswith("BadRequestError"):
+        return None
+    code = _CODE_FIELD.search(error)
+    if code is not None and is_safety_code(code.group(1)):
+        return None
+    field = _PARAM_FIELD.search(error)
+    if field is not None:
+        return field.group(1) if field.group(1) in DROPPABLE_PARAMS else None
+    return _droppable_in_message(error)
 
 
 def unsupported_params(model: str) -> frozenset[str]:
