@@ -679,18 +679,86 @@ def test_the_blocklist_keeps_the_country_the_bible_the_calendar_and_the_fact_she
         assert word not in blocked, word
 
 
-def test_a_name_from_the_lesson_is_matched_as_written_in_story_lines_only():
+def _name_codes(en: str, fr: str, *, card: str | None = None) -> set[str]:
     ctx = chapter_ctx()
-    ctx.blocklist = ["Aminata", "Soleil"]
+    ctx.blocklist = ["Aminata", "Issa", "Bouaké", "Soleil"]
     the_spine = spine()
     steps = steps_of(the_spine, 0)
-    steps[1]["fr"] = "Le soleil tape sur mes trésors pour votre table de la foire."
-    steps[1]["en"] = "The sun beats down on my treasures for your fair table."
-    card = steps[index_of(steps, type="concept")]
-    card["en"] = ["Aminata's rule: what lives reacts.", *card["en"][1:]]
-    assert repair.NAME_FROM_LESSON not in codes(build(ctx, the_spine))
-    steps[1]["en"] = "Aminata sent these treasures for your fair table, children."
-    assert repair.NAME_FROM_LESSON in codes(build(ctx, the_spine))
+    steps[1]["en"], steps[1]["fr"] = en, fr
+    if card is not None:
+        concept = steps[index_of(steps, type="concept")]
+        concept["en"] = [card, *concept["en"][1:]]
+    return codes(build(ctx, the_spine))
+
+
+@pytest.mark.parametrize(
+    ("en", "fr"),
+    [
+        ("Aminata sent these treasures for your fair table.", "Voici mes trésors."),
+        ("These are Aminata's treasures for your fair table.", "Voici mes trésors."),
+        ("Here are my treasures.", "Les trésors d'Aminata sont pour votre table."),
+        ("Here are my treasures.", "Le cahier d’Issa est tombé de la table."),
+        ("We found them in Bouake, children.", "Voici mes trésors."),
+    ],
+)
+def test_a_name_from_the_lesson_is_caught_after_elision_before_a_possessive_and_unaccented(en, fr):
+    assert repair.NAME_FROM_LESSON in _name_codes(en, fr)
+
+
+def test_a_name_from_the_lesson_is_matched_as_written_in_story_lines_only():
+    # Cards are not checked: the same words in a line would be caught.
+    assert repair.NAME_FROM_LESSON not in _name_codes(
+        "Here are my treasures for your fair table.",
+        "Le soleil tape sur mes trésors pour votre table de la foire.",
+        card="Aminata sent these treasures for your fair table.",
+    )
+    # "le soleil" is not the name "Soleil" the lesson capitalised.
+    assert repair.NAME_FROM_LESSON in _name_codes(
+        "Here are my treasures.", "Le Soleil tape sur mes trésors."
+    )
+
+
+def test_markdown_bullets_and_labels_never_make_a_word_a_name():
+    """A multi-line field is cleaned line by line: a bullet starts a sentence (#2693)."""
+    lesson = {
+        "aof_example": {
+            "en": "In the Kaya district, nurse Aminata Sawadogo counts the cases.\n\n"
+            "**Steps taken:**\n* Count the cases each week\n• Compare with last year\n"
+            "+ Share the list\n1) Report it\n\n**Result:** The team caught it early.",
+            "fr": "Dans le district de Kaya, l'infirmière Aminata Sawadogo compte les cas.\n\n"
+            "**Étapes :**\n* Compter les cas chaque semaine\n• Comparer avec l'an passé\n\n"
+            "**Résultat :** L'équipe l'a vu tôt.\n«\u00a0Bravo\u00a0», dit-elle.",
+        },
+    }
+    blocked = build_name_blocklist([lesson], [], data()["bible"], country="BF")
+    assert {"Aminata", "Sawadogo", "Kaya"} <= set(blocked)
+    for word in (
+        "Steps",
+        "Count",
+        "Compare",
+        "Share",
+        "Report",
+        "Result",
+        "Étapes",
+        "Compter",
+        "Comparer",
+        "Résultat",
+        "Bravo",
+    ):
+        assert word not in blocked, word
+
+
+@pytest.mark.parametrize(
+    ("line", "label"),
+    [
+        ("Les cellules de l'oignon sont rangées.", "des cellules d'oignon"),
+        ("Le panier de la grand-mère est lourd.", "le panier de Grand-mère"),
+        ("La feuille de la mimosa se ferme.", "la feuille de mimosa"),
+        ("Les graines des nérés sèchent.", "la graine de néré"),
+    ],
+)
+def test_the_french_matcher_allows_an_article_in_the_complement(line, label):
+    assert names_prop(line, {"label": {"fr": label}}, "fr")
 
 
 def test_a_paper_task_the_model_left_out_never_ends_a_chapter_of_dialogue():

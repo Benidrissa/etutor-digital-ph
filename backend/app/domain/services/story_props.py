@@ -152,9 +152,12 @@ def _phrase_re(phrase: str, *, own_complement: bool = False) -> re.Pattern[str] 
     if not words or len("".join(words)) < 3:
         return None
     # Each word may take a plural s or x ("cailloux", "leaves" is not handled);
-    # a French "de" is any of its forms ("les graines du néré").
+    # a French "de" is any of its forms, with or without an article ("les
+    # graines du néré", "les cellules de l'oignon", "le panier de la grand-mère").
     body = r"\s+".join(
-        r"(?:de|du|des|d)" if w in ("de", "du", "des", "d") else re.escape(w) + r"(?:s|x|es)?"
+        r"(?:de|du|des|d)(?:\s+(?:la|le|les|l))?"
+        if w in ("de", "du", "des", "d")
+        else re.escape(w) + r"(?:s|x|es)?"
         for w in words
     )
     tail = _FR_OWN_COMPLEMENT if own_complement else ""

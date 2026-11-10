@@ -738,6 +738,9 @@ _STOPWORDS = frozenset(
 )
 _CAPITALISED_RE = re.compile(r"(?<![\w'’-])([A-ZÀ-ÖØ-Þ][\wÀ-ÖØ-öø-ÿ'’-]{2,})")
 _WORDS_RE = re.compile(r"[\wÀ-ÿ'-]+")
+#: What may come before a sentence's first word: spaces (no-break ones too),
+#: quotes, brackets, dashes and the bullets markdown leaves.
+_OPENERS = ' «"“(-—–*•+#\u00a0\u202f\t'
 
 #: Weekdays and months, in English and French: a story's clock, never a name.
 _CALENDAR = frozenset(
@@ -846,16 +849,16 @@ def build_name_blocklist(
         for t in _texts_of(value)
     ] + list(stems)
     for text in texts:
-        for sentence in re.split(
-            r"(?<=[.!?…:;])\s+|\n+", clean_text(text) if "\n" not in text else text
-        ):
+        # Line by line: a bullet, a heading or a bold label starts a sentence.
+        plain = "\n".join(clean_text(line) for line in text.splitlines())
+        for sentence in re.split(r"(?<=[.!?…:;])\s+|\n+", plain):
             words = list(_CAPITALISED_RE.finditer(sentence))
             previous_end = -2
             previous_word = ""
             for match in words:
                 word = match.group(1).strip("'’-")
                 start = match.start(1)
-                mid_sentence = sentence[:start].strip(' «"“(-—–') != ""
+                mid_sentence = sentence[:start].strip(_OPENERS) != ""
                 folded = word.casefold()
                 usable = (
                     mid_sentence

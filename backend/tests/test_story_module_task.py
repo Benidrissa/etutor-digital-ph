@@ -14,7 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import Ignore, SoftTimeLimitExceeded
 
 from app.ai.usage_context import current_ai_context
 from app.domain.services.story_module_service import (
@@ -141,6 +141,8 @@ def wiring():
         patch.object(content_generation, "_release_story_dispatch") as release,
         patch.object(content_generation, "_hold_story_dispatch") as hold,
         patch.object(content_generation, "_module_story_lock", lock),
+        patch.object(content_generation, "_run_holder", return_value=None) as holder,
+        patch.object(content_generation, "_hand_key_to") as hand,
     ):
         yield SimpleNamespace(
             create=create,
@@ -153,6 +155,8 @@ def wiring():
             release=release,
             hold=hold,
             lock=lock,
+            holder=holder,
+            hand=hand,
         )
 
 
@@ -203,15 +207,68 @@ def test_a_complete_run_builds_the_services_and_reports_the_story(wiring):
 
 
 def test_a_copy_the_run_lock_turns_away_pays_nothing_and_keeps_the_key(wiring):
-    """A broker redelivery of the same id while the first copy runs: skipped."""
+    """A broker redelivery of the same id while the first copy runs: nothing stored."""
     wiring.lock.taken = False
-    result = run_task(str(MODULE_ID), "fr", dedup_key="k")
-    assert result == content_generation.MODULE_STORY_SKIPPED
-    assert result["status"] == "skipped" and result["content_id"] is None
+    wiring.holder.return_value = TASK_ID  # the running copy has this very id
+    with pytest.raises(Ignore):
+        run_task(str(MODULE_ID), "fr", dedup_key="k")
     assert FakeModuleStoryService.instances == []  # nothing built, nothing paid
     wiring.claude.assert_not_called()
-    wiring.release.assert_not_called()  # the running copy may have this very id
+    wiring.release.assert_not_called()  # the running copy's key
+    wiring.hand.assert_not_called()
     wiring.engine.dispose.assert_awaited_once()
+    # Without a record of the holder it is taken for the same id, too.
+    wiring.holder.return_value = None
+    with pytest.raises(Ignore):
+        run_task(str(MODULE_ID), "fr", dedup_key="k")
+
+
+def test_a_copy_with_another_id_hands_the_key_to_the_running_one(wiring):
+    wiring.lock.taken = False
+    wiring.holder.return_value = "running-task"
+    result = run_task(str(MODULE_ID), "fr", dedup_key="k")
+    assert result == {**content_generation.MODULE_STORY_SKIPPED, "running": "running-task"}
+    wiring.hand.assert_called_once_with("k", TASK_ID, "running-task")
+    wiring.release.assert_not_called()
+
+
+def test_the_run_records_and_clears_its_holder(wiring):
+    run_task(str(MODULE_ID), "fr", dedup_key="k")
+    key = content_generation.module_story_run_key(str(MODULE_ID), "fr")
+    assert wiring.holder.call_args_list[0].args == (key, TASK_ID)
+    assert wiring.holder.call_args_list[-1].args == (key, TASK_ID)
+    assert wiring.holder.call_args_list[-1].kwargs == {"release": True}
+
+
+def test_an_ignored_copy_keeps_the_running_state_in_celery(wiring):
+    """Run as Celery runs it: the turned-away copy ends IGNORED, never SUCCESS."""
+    from celery.states import IGNORED
+
+    wiring.lock.taken = False
+    wiring.holder.return_value = TASK_ID
+    result = generate_module_story_task.apply(
+        kwargs={"module_id": str(MODULE_ID), "language": "fr", "dedup_key": "k"},
+        task_id=TASK_ID,
+    )
+    assert result.state == IGNORED
+    wiring.release.assert_not_called()
+
+
+def test_the_run_holder_is_recorded_and_released_in_redis():
+    """Against a real Redis: set for the run, cleared only by its own id."""
+    client = _redis_or_skip()
+    key = content_generation.module_story_run_key(str(MODULE_ID), "fr")
+    try:
+        content_generation._run_holder(key, TASK_ID)
+        assert content_generation._run_holder(key, None) == TASK_ID
+        assert 0 < client.ttl(key) <= MODULE_STORY_HARD_LIMIT + 60
+        content_generation._run_holder(key, "another-task", release=True)
+        assert client.get(key) == TASK_ID
+        content_generation._run_holder(key, TASK_ID, release=True)
+        assert client.get(key) is None
+    finally:
+        client.delete(key)
+        client.close()
 
 
 def test_the_run_lock_has_its_own_key_space():
