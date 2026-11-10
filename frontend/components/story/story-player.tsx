@@ -120,6 +120,12 @@ export interface StepRecord {
   question?: QuestionAnswer;
 }
 
+/**
+ * A question answered on an earlier visit, looked back at: settled, its
+ * explanation shown, but which answer was given is not known here (#2692).
+ */
+const ANSWERED_BEFORE: QuestionAnswer = { answer: "", correct: false, points: 0, attempts: 0, unknown: true };
+
 /** A swipe to the right on the stage (a phone's "back"): far enough, and flat. */
 const SWIPE_MIN_PX = 60;
 const SWIPE_MAX_DRIFT_PX = 40;
@@ -383,13 +389,23 @@ export function StoryPlayer({
   const unitLabel = text(story.rewards?.unit, target, home) || t("pointsUnit");
 
   // A chapter reviewed (Previous from the next one) opens at its last line,
-  // as it was left.
+  // as it was left, and read-only (#2692): every step that asked something
+  // is settled, with its answer when it is known, and nothing scores. The
+  // counter shows the chapter's best, never more than it is worth.
   const [reviewing] = useState(() => !!review && flat.length > 0);
   const [initial] = useState(() => {
     const records = new Map<number, StepRecord>(
       reviewing ? (review?.records ?? []).filter(([at]) => at >= 0 && at < flat.length) : [],
     );
-    return { index: reviewing ? flat.length - 1 : 0, records, points: reviewing ? (review?.points ?? 0) : 0 };
+    const settled = new Set(records.keys());
+    if (reviewing) flat.forEach((item, at) => BLOCKING.has(item.step.type) && settled.add(at));
+    const reviewPoints = Math.max(0, review?.points ?? 0);
+    return {
+      index: reviewing ? flat.length - 1 : 0,
+      records,
+      settled,
+      points: reviewing ? (maxPoints > 0 ? Math.min(reviewPoints, maxPoints) : reviewPoints) : 0,
+    };
   });
   const [index, setIndex] = useState(initial.index);
   // The furthest step reached. Previous walks back through what was played
@@ -400,10 +416,10 @@ export function StoryPlayer({
   const [fresh, setFresh] = useState(reviewing ? -1 : 0);
   const revisit = index !== fresh;
   const [points, setPoints] = useState(initial.points);
-  const [settledSteps, setSettledSteps] = useState<Set<number>>(() => new Set(initial.records.keys()));
+  const [settledSteps, setSettledSteps] = useState<Set<number>>(() => new Set(initial.settled));
   // Mirrors settledSteps synchronously so a step can only ever score once,
   // even if a child reports twice before React re-renders.
-  const settledRef = useRef<Set<number>>(new Set(initial.records.keys()));
+  const settledRef = useRef<Set<number>>(new Set(initial.settled));
   // How each settled step was answered, to show it again read-only.
   const [records, setRecords] = useState<ReadonlyMap<number, StepRecord>>(initial.records);
   // A question left half-answered (a wrong first try, its hint), so Previous
@@ -442,14 +458,31 @@ export function StoryPlayer({
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Bring the step's text into view, between the app's real bars (measured,
-  // see ./stage/scroll). Embedded, down to the Next button under it. The
-  // dialogue box is measured, not the panel in it: a new panel pops in from
-  // scale(0.6), and measured mid-pop it looks shorter and lower than it is,
-  // so a tall card would end up under the header (#2688). On a wide stage
-  // the box is the stage itself.
+  // see ./stage/scroll). Embedded, down to the Next button under it.
+  //
+  // What is measured is what holds the step's text or card. Under the stage
+  // (phones, and a timed game at every width) that is the dialogue box: it
+  // has the panel's laid-out size, while the panel itself is caught mid
+  // pop-in (#2688). On a wide stage the dialogue box is the whole stage, and
+  // measuring it would leave the narrator's caption at the stage's foot under
+  // the Next bar, or Suite below the fold, on a laptop (#2692): there it is
+  // the panel, which reveal() measures at its laid-out size too.
   const revealStep = useCallback(() => {
     requestAnimationFrame(() => {
-      reveal(dialogueRef.current, { to: embedded ? controlsRef.current : undefined, smooth: !reducedMotion });
+      const dialogue = dialogueRef.current;
+      if (!dialogue) return;
+      const inFlow = window.getComputedStyle(dialogue).position !== "absolute";
+      const target = inFlow ? dialogue : ((dialogue.firstElementChild as HTMLElement | null) ?? dialogue);
+      // Embedded, down to the controls' own place at the player's foot (the
+      // player's bottom: from a tablet up they stick to the foot of the
+      // screen while that place is out of view, so they are not a bar here).
+      // When it all fits, the step and Suite show with nothing over them;
+      // when not, the step comes first and Suite stays stuck in view.
+      reveal(target, {
+        to: embedded ? rootRef.current : undefined,
+        ignore: embedded ? rootRef.current : undefined,
+        smooth: !reducedMotion,
+      });
     });
   }, [embedded, reducedMotion]);
 
@@ -489,6 +522,9 @@ export function StoryPlayer({
       onBackFromStart?.();
       return;
     }
+    // Whether the keyboard was in the story (a swipe or a tap leaves it on
+    // the page, and then it stays there).
+    const hadFocus = !!rootRef.current?.contains(document.activeElement);
     setIndex(index - 1);
     setFresh(-1);
     setTitleBeat(null);
@@ -497,8 +533,10 @@ export function StoryPlayer({
     revealStep();
     // The control that had the focus may now be disabled (Previous on the
     // first line) or gone (a card of the step left): keep the keyboard in
-    // the story instead of dropping it to the top of the page.
+    // the story instead of dropping it to the top of the page. Without
+    // scrolling: the reveal above places the step (#2692).
     requestAnimationFrame(() => {
+      if (!hadFocus) return;
       const focused = document.activeElement as HTMLElement | null;
       const lost =
         !focused ||
@@ -507,11 +545,13 @@ export function StoryPlayer({
         !rootRef.current?.contains(focused);
       if (!lost) return;
       const next = nextButtonRef.current;
-      (next && !next.disabled ? next : dialogueRef.current)?.focus();
+      (next && !next.disabled ? next : dialogueRef.current)?.focus({ preventScroll: true });
     });
   }, [index, revealStep, onBackFromStart]);
 
   const settle = useCallback((stepIndex: number, earned: number, record?: Omit<StepRecord, "points">) => {
+    // A chapter looked back at is read-only: nothing scores again.
+    if (reviewing) return;
     if (settledRef.current.has(stepIndex)) return;
     settledRef.current.add(stepIndex);
     setPoints((total) => total + earned);
@@ -523,16 +563,18 @@ export function StoryPlayer({
       next.delete(stepIndex);
       return next;
     });
-  }, []);
+  }, [reviewing]);
 
-  // Hand what was answered to the host, to come back to it later.
+  // Hand what was answered to the host, to come back to it later; a chapter
+  // looked back at has nothing new to hand (#2692).
   const onSnapshotRef = useRef(onSnapshot);
   useEffect(() => {
     onSnapshotRef.current = onSnapshot;
   }, [onSnapshot]);
   useEffect(() => {
+    if (reviewing) return;
     onSnapshotRef.current?.({ records: [...records], points });
-  }, [records, points]);
+  }, [records, points, reviewing]);
 
   const current = flat[index];
   const currentIsBlocking = current ? BLOCKING.has(current.step.type) : false;
@@ -1135,7 +1177,7 @@ export function StoryPlayer({
         const question = step.ref ? questions.get(step.ref) : undefined;
         if (!question) return <MissingRef key={index} kind="question" refId={step.ref} />;
         return (
-          <StageCard key={index} ref={cardRef} kind="ask" banner={t("questionBanner")} paper review={!!record}>
+          <StageCard key={index} ref={cardRef} kind="ask" banner={t("questionBanner")} paper review={!!record || reviewing}>
             <QuestionCard
               question={question}
               target={target}
@@ -1143,7 +1185,7 @@ export function StoryPlayer({
               bilingual={bilingual}
               rewards={story.rewards}
               className="pt-2"
-              review={record?.question}
+              review={record?.question ?? (reviewing ? ANSWERED_BEFORE : undefined)}
               resume={pending.get(index)}
               onProgress={(progress) => setPending((previous) => new Map(previous).set(index, progress))}
               onAnswered={(outcome) =>
@@ -1172,7 +1214,7 @@ export function StoryPlayer({
             kind="game"
             banner={t("gameBanner")}
             bannerColor="#c2410c"
-            review={!!record}
+            review={!!record || reviewing}
           >
             <MinigameView
               game={game}
@@ -1181,7 +1223,7 @@ export function StoryPlayer({
               bilingual={bilingual}
               active={active && !introOpen}
               className="pt-2"
-              result={record?.points}
+              result={record ? record.points : reviewing ? null : undefined}
               // The round's counter, clock, prompt and targets in view: on a
               // short phone they come before the card's banner (#2688).
               onRound={(round, targets) => reveal(round, { to: targets, smooth: !reducedMotion })}
@@ -1202,7 +1244,7 @@ export function StoryPlayer({
         const exercise = step.ref ? exercises.get(step.ref) : undefined;
         if (!exercise) return <MissingRef key={index} kind="exercise" refId={step.ref} />;
         return (
-          <StageCard key={index} kind="photo" review={!!record}>
+          <StageCard key={index} kind="photo" review={!!record || reviewing}>
             <PaperExercise
               exercise={exercise}
               label={story.module_story ? chapterLocalId(exercise.id) : exercise.id}
@@ -1507,7 +1549,18 @@ export function StoryPlayer({
       {finishSummary}
 
       {embedded ? (
-        <div ref={controlsRef} className={controls ? "mt-4" : ""}>
+        <div
+          ref={controlsRef}
+          // From a tablet up, the controls stay at the foot of the screen
+          // while the stage runs past it: on a short laptop (1366×768 at
+          // 125%) the stage and Suite cannot both fit, and a card at the
+          // top of the stage must not push Suite below the fold (#2692).
+          className={
+            controls
+              ? "mt-4 md:sticky md:bottom-0 md:z-30 md:-mx-2 md:bg-white/95 md:px-2 md:py-2 md:backdrop-blur"
+              : ""
+          }
+        >
           {controls}
         </div>
       ) : controls ? (

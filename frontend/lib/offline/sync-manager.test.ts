@@ -43,7 +43,11 @@ vi.mock("@/lib/offline/db", async (importOriginal) => {
   };
 });
 
-vi.mock("./prewarm", () => ({ prewarmPage: vi.fn() }));
+vi.mock("./prewarm", () => ({
+  prewarmPage: vi.fn(async () => "cached"),
+  isPagePrewarmed: vi.fn(async () => false),
+  prewarmRetryable: () => false,
+}));
 
 const apiFetchMock = vi.mocked(apiFetch);
 const manager = SyncManager.getInstance();

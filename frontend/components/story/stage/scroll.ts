@@ -23,19 +23,23 @@ function scrollParent(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
-/** The sticky or fixed bar a point on screen belongs to, if any. */
-function barAt(x: number, y: number, target: HTMLElement): HTMLElement | null {
+/**
+ * The sticky or fixed bar a point on screen belongs to, if any. A bar inside
+ * `ignore` does not count: the story's own controls, which stick to the foot
+ * of the screen only until their place in the page comes into view.
+ */
+function barAt(x: number, y: number, target: HTMLElement, ignore?: HTMLElement | null): HTMLElement | null {
   if (typeof document.elementFromPoint !== "function") return null;
   for (let node = document.elementFromPoint(x, y); node && node !== document.body; node = node.parentElement) {
     if (node.contains(target)) return null;
     const { position } = window.getComputedStyle(node);
-    if (position === "fixed" || position === "sticky") return node as HTMLElement;
+    if (position === "fixed" || position === "sticky") return ignore?.contains(node) ? null : (node as HTMLElement);
   }
   return null;
 }
 
 /** The part of the screen where `target` can be seen, between the bars. */
-export function visibleBand(target: HTMLElement): Band {
+export function visibleBand(target: HTMLElement, ignore?: HTMLElement | null): Band {
   const scroller = scrollParent(target);
   const port = scroller?.getBoundingClientRect();
   let top = Math.max(0, port?.top ?? 0);
@@ -44,14 +48,14 @@ export function visibleBand(target: HTMLElement): Band {
   const x = Math.min(window.innerWidth - 2, Math.max(2, box.left + box.width / 2));
   // Bars stacked over the bottom edge: the bottom navigation, the Next bar.
   for (let i = 0; i < 4; i += 1) {
-    const bar = barAt(x, bottom - 2, target);
+    const bar = barAt(x, bottom - 2, target, ignore);
     const edge = bar?.getBoundingClientRect().top;
     if (edge === undefined || edge <= top || edge >= bottom) break;
     bottom = edge;
   }
   // Bars stacked over the top edge: the story's sticky header.
   for (let i = 0; i < 4; i += 1) {
-    const bar = barAt(x, top + 2, target);
+    const bar = barAt(x, top + 2, target, ignore);
     const edge = bar?.getBoundingClientRect().bottom;
     if (edge === undefined || edge >= bottom || edge <= top) break;
     top = edge;
@@ -65,7 +69,7 @@ export function visibleBand(target: HTMLElement): Band {
  */
 export function reveal(
   from: HTMLElement | null | undefined,
-  options: { to?: HTMLElement | null; smooth?: boolean; gap?: number } = {},
+  options: { to?: HTMLElement | null; ignore?: HTMLElement | null; smooth?: boolean; gap?: number } = {},
 ): void {
   if (!from || typeof window === "undefined") return;
   const first = from.getBoundingClientRect();
@@ -79,7 +83,7 @@ export function reveal(
   const last = options.to?.getBoundingClientRect();
   const bottom = last && (last.width || last.height) ? Math.max(ownBottom, last.bottom) : ownBottom;
   const gap = options.gap ?? 12;
-  const band = visibleBand(from);
+  const band = visibleBand(from, options.ignore);
   let delta = 0;
   if (bottom - top > band.bottom - band.top - 2 * gap) delta = top - (band.top + gap);
   else if (bottom > band.bottom - gap) delta = bottom - (band.bottom - gap);

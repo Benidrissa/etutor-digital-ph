@@ -59,9 +59,10 @@ interface MinigameViewProps {
   className?: string;
   /**
    * Played already (the story's Previous): shows how it ended, with nothing
-   * to play or score again.
+   * to play or score again. `null`: played on an earlier visit, its score
+   * not known here.
    */
-  result?: number;
+  result?: number | null;
   /**
    * Brings the round into view when it starts: `round` holds its counter,
    * clock and prompt, `targets` the things to tap. A game under the stage can
@@ -489,7 +490,9 @@ export function MinigameView({
       ) : null}
 
       {phase === "done" ? (
-        <p className="mt-3 font-semibold text-green-700">{t("gameOver", { points: score })}</p>
+        <p className="mt-3 font-semibold text-green-700">
+          {result === null ? t("gamePlayed") : t("gameOver", { points: score })}
+        </p>
       ) : null}
     </section>
   );
