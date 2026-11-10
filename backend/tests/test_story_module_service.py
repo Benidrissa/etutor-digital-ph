@@ -678,6 +678,114 @@ async def test_a_provider_outage_never_withholds_the_story_of_a_plan_made_in_cod
 
 
 # --------------------------------------------------------------------------
+# #2698: course questions asked in the story's voice, the answer key locked
+# --------------------------------------------------------------------------
+
+
+class StemModel(FakeModel):
+    """The fake model, whose packs also write story stems for chapter 1.1's questions."""
+
+    async def generate_structured_content(self, system, user, content_type, max_retries=1):
+        from tests.test_story_stems import STORY_STEMS
+
+        answer = await super().generate_structured_content(system, user, content_type, max_retries)
+        answer = copy.deepcopy(answer)
+        if FakeModel.kind_of(user)[0] == "pack":
+            for item in answer.get("derived") or []:
+                if item.get("ref") in STORY_STEMS:
+                    item["story_stem"] = copy.deepcopy(STORY_STEMS[item["ref"]])
+        return answer
+
+
+async def _quiz_row_content(sessions: Sessions, seed_: Seed) -> Any:
+    async with sessions.maker() as session:
+        return (
+            await session.execute(
+                sa.select(GeneratedContent.content).where(
+                    GeneratedContent.module_unit_id == seed_.units["1.5"],
+                    GeneratedContent.content_type == "quiz",
+                )
+            )
+        ).scalar_one()
+
+
+async def _packs(sessions: Sessions, seed_: Seed) -> dict[str, Any]:
+    return (await plan_row(sessions, seed_)).content.get("packs") or {}
+
+
+async def test_course_questions_are_asked_in_the_story_voice_with_the_key_locked(sessions):
+    from tests.test_story_stems import STORY_STEMS, FakeJudge
+
+    seed_ = await seed(sessions)
+    quiz_before = await _quiz_row_content(sessions, seed_)
+    model, judge = StemModel(), FakeJudge("yes")
+    record = await run(service_for(model, stem_judge=judge), sessions, seed_)
+    assert record.is_valid
+    # One cheap call, for the one chapter whose pack wrote story stems.
+    assert len(judge.messages) == 1 and "[q1]" in judge.messages[0]
+    quiz = {q["id"]: q for q in quiz_questions(LANGUAGE)}
+    asked = {
+        q["derived_from"]["question_id"]: q
+        for q in record.content["questions"]
+        if q.get("derived_from")
+    }
+    for ref, stem in STORY_STEMS.items():
+        question = asked[ref]
+        assert question["prompt"] == stem
+        assert question["original_stem"][LANGUAGE] == quiz[ref]["question"]
+        # The answer key, byte for byte: options, the correct one, explanation.
+        assert [c[LANGUAGE] for c in question["choices"]] == quiz[ref]["options"]
+        assert question["answer"] == "abcd"[quiz[ref]["correct_answer"]]
+        assert question["explanation"][LANGUAGE] == quiz[ref]["explanation"]
+    # Another chapter's question keeps the quiz's own stem.
+    assert asked["q4"]["prompt"][LANGUAGE] == quiz["q4"]["question"]
+    assert "original_stem" not in asked["q4"]
+    # The quiz row itself is untouched: the quiz page and grading read it.
+    assert await _quiz_row_content(sessions, seed_) == quiz_before
+    # The verdict is kept with the pack: the next merge asks nobody.
+    assert set((await _packs(sessions, seed_))[str(seed_.units["1.1"])]["stems"]["approved"]) == {
+        "q1",
+        "q2",
+        "q3",
+    }
+    await unmatch_manifest(sessions, seed_)
+    model.calls.clear()
+    await run(service_for(model, stem_judge=judge), sessions, seed_)
+    assert model.calls == [] and len(judge.messages) == 1
+
+
+async def test_a_story_stem_the_judge_rejects_falls_back_to_the_quiz_stem(sessions):
+    from tests.test_story_stems import FakeJudge
+
+    seed_ = await seed(sessions)
+    judge = FakeJudge("no")
+    record = await run(service_for(StemModel(), stem_judge=judge), sessions, seed_)
+    assert record.is_valid and len(judge.messages) == 1
+    quiz = {q["id"]: q for q in quiz_questions(LANGUAGE)}
+    for question in record.content["questions"]:
+        ref = (question.get("derived_from") or {}).get("question_id")
+        if ref:
+            assert "original_stem" not in question
+            shown = question.get("stem", question["prompt"])[LANGUAGE]
+            assert shown == quiz[ref]["question"]
+    # A verdict: kept, so the judge is not asked again for this pack.
+    stems = (await _packs(sessions, seed_))[str(seed_.units["1.1"])]["stems"]
+    assert stems["approved"] == {} and set(stems["kept"]) >= {"q1", "q2", "q3"}
+
+
+async def test_a_judge_outage_never_blocks_a_chapter_and_is_asked_again_later(sessions):
+    from tests.test_story_stems import FakeJudge
+
+    seed_ = await seed(sessions)
+    judge = FakeJudge(RuntimeError("529 overloaded"))
+    record = await run(service_for(StemModel(), stem_judge=judge), sessions, seed_)
+    assert record.is_valid and len(judge.messages) == 1
+    assert not any("original_stem" in q for q in record.content["questions"])
+    # No verdict was reached: none is kept, the next telling asks again.
+    assert "stems" not in (await _packs(sessions, seed_))[str(seed_.units["1.1"])]
+
+
+# --------------------------------------------------------------------------
 # Freshness
 # --------------------------------------------------------------------------
 

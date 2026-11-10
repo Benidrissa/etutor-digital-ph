@@ -199,6 +199,8 @@ def test_a_complete_run_builds_the_services_and_reports_the_story(wiring):
     assert MODULE_STORY_SOFT_LIMIT - 200 < left <= MODULE_STORY_SOFT_LIMIT - 150
     # A figure whose binary is gone is never offered (#2681).
     assert "figure_storage" in service.kwargs
+    # #2698: the story-stem judge is passed (a client of the cheaper model).
+    assert "stem_judge" in service.kwargs
     # The key is armed again as the task starts, then released as it ends.
     wiring.hold.assert_called_once_with(key, TASK_ID, MODULE_STORY_HARD_LIMIT + 60)
     wiring.release.assert_called_once_with(key, TASK_ID)
@@ -751,3 +753,34 @@ def test_end_to_end_a_signalled_time_limit_closes_every_session(monkeypatch):
         finally:
             monitor.dispose()
         assert still_open == 0
+
+
+@pytest.mark.parametrize(("setting", "made"), [("claude-haiku-4-5", True), ("disabled", False)])
+def test_the_stem_judge_is_the_cheaper_configured_model(setting, made):
+    """#2698: ai-model-quality, deterministic, a short answer; none when disabled."""
+    cache = MagicMock()
+    cache.get.return_value = setting
+    with (
+        patch(
+            "app.domain.services.platform_settings_service.SettingsCache.instance",
+            return_value=cache,
+        ),
+        patch("app.ai.claude_service.ClaudeService") as claude,
+    ):
+        judge = content_generation._stem_judge()
+    cache.get.assert_called_with("ai-model-quality", "claude-sonnet-4-6")
+    if made:
+        assert judge is claude.return_value
+        claude.assert_called_once_with(
+            model="claude-haiku-4-5",
+            max_tokens=content_generation.STEM_JUDGE_MAX_TOKENS,
+            temperature=0.0,
+        )
+    else:
+        assert judge is None
+        claude.assert_not_called()
+
+
+def test_no_judge_when_no_client_can_be_made():
+    with patch("app.ai.claude_service.ClaudeService", side_effect=ValueError("no key")):
+        assert content_generation._stem_judge() is None

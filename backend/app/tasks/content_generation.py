@@ -663,6 +663,30 @@ def _hand_key_to(dedup_key: str | None, task_id: str | None, holder: str) -> Non
         logger.warning("Story dispatch key not handed to the run", key=dedup_key, error=str(exc))
 
 
+#: The story-stem judge's answer is a few booleans per question (#2698).
+STEM_JUDGE_MAX_TOKENS = 2000
+
+
+def _stem_judge() -> object | None:
+    """The equivalence judge of story-voiced quiz stems (#2698), or ``None``.
+
+    The cheaper configured model: the quality agent's (``ai-model-quality``),
+    deterministic (temperature 0). ``None`` — the quiz's own stems are kept —
+    when that model is disabled or no client can be made.
+    """
+    try:
+        from app.ai.claude_service import ClaudeService
+        from app.domain.services.platform_settings_service import SettingsCache
+
+        model = SettingsCache.instance().get("ai-model-quality", "claude-sonnet-4-6")
+        if not model or model == "disabled":
+            return None
+        return ClaudeService(model=model, max_tokens=STEM_JUDGE_MAX_TOKENS, temperature=0.0)
+    except Exception as exc:
+        logger.warning("Story stem judge not available", error=str(exc)[:200])
+        return None
+
+
 def _continue_module_story(
     module_id: str,
     language: str,
@@ -859,6 +883,8 @@ def generate_module_story_task(
                     QuizService(claude, retriever),
                     # #2681: a figure whose binary is gone is never offered.
                     figure_storage=S3StorageService(),
+                    # #2698: course questions asked in the story's voice.
+                    stem_judge=_stem_judge(),
                 )
                 record = await service.get_or_generate_module_story(
                     uuid.UUID(module_id),

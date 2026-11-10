@@ -62,15 +62,26 @@ class ClaudeService:
     with existing call sites.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ):
+        """The content model by default; ``model`` etc. pick another configured one."""
         self.settings = get_settings()
         if not self.settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required")
 
         _cache = SettingsCache.instance()
-        self._max_tokens = _cache.get("ai-max-tokens-content", 64000)
-        self._temperature = _cache.get("ai-temperature-content", 0.7)
-        self._model = _cache.get("ai-model-content", "claude-sonnet-4-6")
+        self._max_tokens = (
+            max_tokens if max_tokens is not None else _cache.get("ai-max-tokens-content", 64000)
+        )
+        self._temperature = (
+            temperature if temperature is not None else _cache.get("ai-temperature-content", 0.7)
+        )
+        self._model = model or _cache.get("ai-model-content", "claude-sonnet-4-6")
 
     def _provider(self) -> LLMProvider:
         """Resolve the provider for the configured content model."""

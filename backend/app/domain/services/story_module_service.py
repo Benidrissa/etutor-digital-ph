@@ -132,6 +132,7 @@ from app.domain.services.story_plan import (
     stored_packs,
 )
 from app.domain.services.story_props import plan_props
+from app.domain.services.story_stems import STEM_JUDGE_VERSION, approve_stems, approved_stems
 
 logger = structlog.get_logger(__name__)
 
@@ -773,6 +774,7 @@ class ModuleStoryService:
         concurrency: int = DEFAULT_CONCURRENCY,
         max_repair_calls: int = MAX_REPAIR_CALLS,
         figure_storage: Any = None,
+        stem_judge: Any = None,
     ) -> None:
         if concurrency < 1:
             raise ValueError("concurrency must be at least 1")
@@ -786,6 +788,9 @@ class ModuleStoryService:
         )
         self.bibles = StoryBibleService(claude_service)
         self.plans = StoryPlanService(claude_service)
+        #: #2698: the cheaper configured model that judges each chapter's
+        #: story-voiced quiz stems; ``None``: the quiz's own stems are kept.
+        self.stem_judge = stem_judge
         #: ``object_exists(key)`` of the figure binaries; ``None``: not checked.
         self.figure_storage = figure_storage
 
@@ -1439,6 +1444,31 @@ class ModuleStoryService:
         await _keep_pack(run, "rally", made)
         return made
 
+    async def _story_stems(
+        self, run: _Run, chapter: repair.LessonStoryContext, pack: dict[str, Any], key: str
+    ) -> dict[str, dict[str, str]]:
+        """The approved story stems of a chapter's course questions (#2698).
+
+        Judged once per pack: the verdict is kept with the pack (``stems``)
+        and with the plan, so telling the chapter again, or after a stop,
+        never asks the judge again. A verdict that could not be reached (no
+        judge, a provider error) is not kept: the original stems are used and
+        the next telling asks once more.
+        """
+        kept = pack.get("stems")
+        if isinstance(kept, dict) and kept.get("version") == STEM_JUDGE_VERSION:
+            return approved_stems(kept)
+        with ai_usage_context(
+            FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
+        ):
+            verdict = await approve_stems(chapter, pack["spine"], self.stem_judge)
+        if verdict is None:
+            return {}
+        run.count("stems", int(verdict.pop("calls", 0)))
+        pack["stems"] = verdict
+        await _keep_pack(run, key, pack)
+        return approved_stems(verdict)
+
     # -- 3. the chapters, in order ---------------------------------------------------
 
     async def _tell(
@@ -1478,6 +1508,9 @@ class ModuleStoryService:
             chapter = self._chapter_ctx(run, ctx, unit)
             self._neighbours(chapter, run, lessons, position, docs, extras, rows, states)
             chapter.pack_digest = pack["inputs"]
+            chapter.story_stems = await self._story_stems(
+                run, chapter, pack, str(unit.module_unit_id)
+            )
             try:
                 with ai_usage_context(
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
@@ -1770,6 +1803,7 @@ class ModuleStoryService:
         rally_ctx.props_seen = _props_seen(docs)
         rally_ctx.pack_digest = pack["inputs"]
         run.check_deadline()
+        rally_ctx.story_stems = await self._story_stems(run, rally_ctx, pack, "rally")
         try:
             with ai_usage_context(
                 FEATURE_STORY_GENERATION, module_id=ctx.module_id, course_id=run.course_id
@@ -2000,7 +2034,8 @@ def _system_prompt(
 
 
 def _fitting_pack(*kept: Any, inputs: str | None) -> dict[str, Any] | None:
-    """The first kept pack made from exactly ``inputs``, as ``{"inputs", "spine"}``."""
+    """The first kept pack made from exactly ``inputs``: ``{"inputs", "spine"}``,
+    with its story stems' verdict (``stems``, #2698) when it has one."""
     for pack in kept:
         if (
             inputs is not None
@@ -2008,7 +2043,10 @@ def _fitting_pack(*kept: Any, inputs: str | None) -> dict[str, Any] | None:
             and pack.get("inputs") == inputs
             and isinstance(pack.get("spine"), dict)
         ):
-            return {"inputs": inputs, "spine": pack["spine"]}
+            fitting = {"inputs": inputs, "spine": pack["spine"]}
+            if isinstance(pack.get("stems"), dict):
+                fitting["stems"] = pack["stems"]
+            return fitting
     return None
 
 
