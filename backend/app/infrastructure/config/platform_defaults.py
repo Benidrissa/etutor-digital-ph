@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.infrastructure.config.image_models import IMAGE_MODEL_OPTIONS, OPENAI_IMAGE_MODEL
+
 
 @dataclass(frozen=True)
 class SettingDef:
@@ -428,16 +430,19 @@ SETTING_DEFINITIONS: list[SettingDef] = [
     SettingDef(
         "ai-model-image",
         "ai",
-        "gemini-2.5-flash-image",
+        OPENAI_IMAGE_MODEL,
         "string",
         "Model — image generation",
-        "Backend that generates the text-free lesson illustration. Resolved by "
+        "Backend that generates lesson illustrations and story art. Resolved by "
         "prefix (gemini-*/imagen-* → Google via its OpenAI-compatible endpoint; "
-        "gpt-image-1/dall-e-* → OpenAI). NOTE: Gemini runs on Google US servers "
-        "and stamps a SynthID watermark on every image; a missing GOOGLE_API_KEY "
-        "transparently falls back to gpt-image-1. Illustrations stay text-free — "
-        "the title and labels are rendered as a DOM overlay.",
-        allowed_options=["gemini-2.5-flash-image", "gpt-image-1"],
+        f"gpt-image-* → OpenAI). {OPENAI_IMAGE_MODEL} is OpenAI's current model "
+        "(gpt-image-1 was shut down on 2026-10-23); story art always draws "
+        "characters and pose edits with it, since Gemini cannot. NOTE: Gemini "
+        "runs on Google US servers and stamps a SynthID watermark on every image; "
+        f"a missing GOOGLE_API_KEY falls back to {OPENAI_IMAGE_MODEL}. "
+        "Illustrations stay text-free — the title and labels are rendered as a "
+        "DOM overlay.",
+        allowed_options=list(IMAGE_MODEL_OPTIONS),
     ),
     SettingDef(
         "ai-rag-default-top-k",

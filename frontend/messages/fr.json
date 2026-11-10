@@ -1309,8 +1309,8 @@
           "body": "{errors} appels IA ont échoué ({cost_cents} ¢ facturés malgré tout). Vérifiez les quotas et clés des fournisseurs concernés."
         },
         "image_fallback_active": {
-          "title": "Repli d'images Gemini → gpt-image-1 actif",
-          "body": "{failures} tentatives Gemini ont échoué et sont retombées sur gpt-image-1 (payant, OpenAI). Vérifiez la clé/le quota Google pour revenir au fournisseur prévu."
+          "title": "Repli d'images Gemini → OpenAI actif",
+          "body": "{failures} tentatives Gemini ont échoué et sont retombées sur le modèle d'images OpenAI (payant). Vérifiez la clé/le quota Google pour revenir au fournisseur prévu."
         },
         "low_cache_reuse": {
           "title": "Cache de prompts peu réutilisé",

@@ -16,6 +16,7 @@ from app.domain.services.image_service import (
     _parse_labels,
     _resize_to_webp,
 )
+from app.infrastructure.config.image_models import OPENAI_IMAGE_MODEL
 
 
 def _provider_patch(*, responses=None, side_effect=None):
@@ -332,7 +333,7 @@ class TestImageGenerationService:
 
             mock_openai.images.generate.assert_called_once()
             call_kwargs = mock_openai.images.generate.call_args.kwargs
-            assert call_kwargs.get("model") == "gpt-image-1"
+            assert call_kwargs.get("model") == OPENAI_IMAGE_MODEL
             assert call_kwargs.get("size") == "1536x1024"
             assert call_kwargs.get("quality") == "medium"
             # The prompt passed to gpt-image-1 is the text-free prompt Claude returned.
@@ -520,7 +521,8 @@ class TestImageGenerationService:
         from app.domain.services import image_service
 
         provider_source = inspect.getsource(image_provider)
-        assert '"gpt-image-1"' in provider_source or "gpt-image-1" in provider_source
+        # The current OpenAI model (#2689) is the default; gpt-image-1 is retired.
+        assert image_provider.DEFAULT_IMAGE_MODEL == OPENAI_IMAGE_MODEL
         assert '"medium"' in provider_source
         # image_service requests the landscape size from whichever provider runs.
         assert '"1536x1024"' in inspect.getsource(image_service)

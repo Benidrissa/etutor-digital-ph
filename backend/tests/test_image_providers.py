@@ -14,6 +14,7 @@ from app.ai.providers.image_provider import (
     generate_image,
     resolve_image_provider,
 )
+from app.infrastructure.config.image_models import IMAGE_MODEL_OPTIONS, OPENAI_IMAGE_MODEL
 
 _GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
@@ -57,16 +58,27 @@ class TestResolveImageProvider:
         ):
             provider = resolve_image_provider("gemini-2.5-flash-image")
         assert isinstance(provider, OpenAIImageProvider)
-        assert provider.model == "gpt-image-1"
+        assert provider.model == OPENAI_IMAGE_MODEL
 
     def test_gpt_image_resolves_to_openai(self):
         with patch(
             "app.ai.providers.image_provider.get_settings",
             return_value=_settings(openai="ok"),
         ):
+            provider = resolve_image_provider(OPENAI_IMAGE_MODEL)
+        assert isinstance(provider, OpenAIImageProvider)
+        assert provider.model == OPENAI_IMAGE_MODEL
+
+    def test_the_retired_gpt_image_1_resolves_to_its_successor(self):
+        # OpenAI shut gpt-image-1 down on 2026-10-23 (#2689): a stored setting
+        # that still names it keeps working.
+        with patch(
+            "app.ai.providers.image_provider.get_settings",
+            return_value=_settings(openai="ok"),
+        ):
             provider = resolve_image_provider("gpt-image-1")
         assert isinstance(provider, OpenAIImageProvider)
-        assert provider.model == "gpt-image-1"
+        assert provider.model == OPENAI_IMAGE_MODEL
 
     def test_none_defaults_to_openai_backend(self):
         with patch(
@@ -88,7 +100,7 @@ class TestOpenAIImageProvider:
             out = await provider.generate("a prompt", size="1536x1024")
 
             kwargs = client.images.generate.call_args.kwargs
-            assert kwargs["model"] == "gpt-image-1"
+            assert kwargs["model"] == OPENAI_IMAGE_MODEL
             assert kwargs["size"] == "1536x1024"
             assert kwargs["quality"] == "medium"
             assert out == b"PNG"
@@ -117,9 +129,9 @@ class TestGeminiImageProvider:
             assert out == b"GEM"
 
 
-@pytest.mark.parametrize("model", ["gemini-2.5-flash-image", "gpt-image-1"])
+@pytest.mark.parametrize("model", list(IMAGE_MODEL_OPTIONS))
 def test_default_setting_options_resolve(model):
-    """Both allowed_options for ai-model-image must resolve to a provider."""
+    """Every allowed_option for ai-model-image must resolve to a provider."""
     with patch(
         "app.ai.providers.image_provider.get_settings",
         return_value=_settings(google="gk", openai="ok"),
@@ -140,12 +152,12 @@ class TestGenerateImageFallback:
             client.images.generate = AsyncMock(return_value=_fake_image_response(b"OK"))
             mock_cls.return_value = client
 
-            data, used = await generate_image("p", model="gpt-image-1")
+            data, used = await generate_image("p", model=OPENAI_IMAGE_MODEL)
             assert data == b"OK"
-            assert used == "gpt-image-1"
+            assert used == OPENAI_IMAGE_MODEL
 
     async def test_falls_back_to_openai_when_gemini_errors(self):
-        """A runtime Gemini error (e.g. 429 quota) must fall back to gpt-image-1."""
+        """A runtime Gemini error (e.g. 429 quota) must fall back to the OpenAI model."""
         with (
             patch(
                 "app.ai.providers.image_provider.get_settings",
@@ -154,7 +166,7 @@ class TestGenerateImageFallback:
             patch("app.ai.providers.image_provider.AsyncOpenAI") as mock_cls,
         ):
             client = MagicMock()
-            # First call (Gemini) raises; second call (gpt-image-1 fallback) succeeds.
+            # First call (Gemini) raises; second call (OpenAI fallback) succeeds.
             client.images.generate = AsyncMock(
                 side_effect=[RuntimeError("429 RESOURCE_EXHAUSTED"), _fake_image_response(b"FB")]
             )
@@ -162,11 +174,11 @@ class TestGenerateImageFallback:
 
             data, used = await generate_image("p", model="gemini-2.5-flash-image")
             assert data == b"FB"
-            assert used == "gpt-image-1"
+            assert used == OPENAI_IMAGE_MODEL
             assert client.images.generate.await_count == 2
 
     async def test_no_double_fallback_when_openai_itself_errors(self):
-        """If the backend is already gpt-image-1, an error must propagate (no loop)."""
+        """If the backend is already the OpenAI model, an error must propagate (no loop)."""
         with (
             patch(
                 "app.ai.providers.image_provider.get_settings",
@@ -179,5 +191,5 @@ class TestGenerateImageFallback:
             mock_cls.return_value = client
 
             with pytest.raises(RuntimeError):
-                await generate_image("p", model="gpt-image-1")
+                await generate_image("p", model=OPENAI_IMAGE_MODEL)
             assert client.images.generate.await_count == 1

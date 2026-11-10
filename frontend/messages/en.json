@@ -1309,8 +1309,8 @@
           "body": "{errors} AI calls failed ({cost_cents} ¢ still billed). Check the affected providers' quotas and keys."
         },
         "image_fallback_active": {
-          "title": "Gemini → gpt-image-1 image fallback active",
-          "body": "{failures} Gemini attempts failed and fell back to gpt-image-1 (paid, OpenAI). Fix the Google key/quota to return to the intended provider."
+          "title": "Gemini → OpenAI image fallback active",
+          "body": "{failures} Gemini attempts failed and fell back to the OpenAI image model (paid). Fix the Google key/quota to return to the intended provider."
         },
         "low_cache_reuse": {
           "title": "Low prompt-cache reuse",

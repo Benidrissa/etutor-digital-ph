@@ -116,7 +116,7 @@ def generate_story_art(
     """Draw the course's missing or stale story art: character poses and backdrops.
 
     Uses the ``ai-model-image`` setting; transparent character renders and pose
-    edits go to gpt-image-1 when that model cannot do them. Images already
+    edits go to OpenAI's current image model when that model cannot do them. Images already
     ready for their current look are skipped; a run draws at most
     ``MAX_IMAGES_PER_RUN`` images and logs what it skipped. A failed image is
     retried once, then stored as ``failed``: a deterministic failure is not

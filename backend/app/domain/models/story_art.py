@@ -90,7 +90,9 @@ class StoryArt(Base):
     image_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    #: The image model that drew it (after any routing or fallback).
+    #: A ready row: the image model that drew it (after any routing or fallback).
+    #: A failed row: the configured model (``ai-model-image``) it failed under;
+    #: a run under another model tries it again (#2689).
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

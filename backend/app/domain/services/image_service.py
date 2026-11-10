@@ -1,4 +1,4 @@
-"""Service for AI-generated lesson illustrations using gpt-image-1 with semantic reuse."""
+"""Service for AI-generated lesson illustrations using the configured image model with semantic reuse."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _jaccard_similarity(tags_a: list[str], tags_b: list[str]) -> float:
 
 
 class ImageGenerationService:
-    """Pipeline: concept extraction → semantic reuse → gpt-image-1 → WebP → bilingual alt-text."""
+    """Pipeline: concept extraction → semantic reuse → image model → WebP → bilingual alt-text."""
 
     async def generate_for_lesson(
         self,
@@ -410,10 +410,10 @@ class ImageGenerationService:
     async def _generate_image(self, prompt: str) -> tuple[bytes, str]:
         """Generate the illustration via the configured image provider.
 
-        The backend (``gpt-image-1`` or a Gemini image model) is selected by the
+        The backend (an OpenAI GPT image model or a Gemini one) is selected by the
         ``ai-model-image`` platform setting and resolved by prefix. A missing
         GOOGLE_API_KEY *or* any provider runtime error (e.g. Gemini quota 429)
-        transparently falls back to gpt-image-1. Returns ``(image_bytes, image_url)``
+        falls back to OpenAI's current image model (#2689). Returns ``(image_bytes, image_url)``
         where the URL is a backend tag (the public URL is set by the caller from the
         stored data endpoint).
         """
