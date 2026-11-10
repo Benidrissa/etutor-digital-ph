@@ -38,6 +38,7 @@ from app.domain.services.story_repair import (
     MAX_OBJECTIVES,
     MAX_SCENES,
     MIN_SCENES,
+    PROMPT_LIMITS,
     STORY_LINE_LIMITS,
     LessonStoryContext,
     clean_text,
@@ -1191,8 +1192,10 @@ def _questions_block_v4(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
             continue
         idea = (derived.get(mcq.ref) or {}).get("idea")
         tests = f" tests IDEA {idea}" if isinstance(idea, int) and not ctx.is_rally else ""
+        # #2698: the question as the story asks it, when its rewrite was approved.
+        stem = (ctx.story_stems.get(mcq.ref) or {}).get(lang) or mcq.stem
         lines.append(
-            f"[{mcq.ref}]{tests}: «{mcq.stem}». Correct answer: «{mcq.correct_text}». Your"
+            f"[{mcq.ref}]{tests}: «{stem}». Correct answer: «{mcq.correct_text}». Your"
             " lead-in never says it."
         )
     for number, question in enumerate(own, start=1):
@@ -1598,6 +1601,14 @@ def build_pack_message(ctx: LessonStoryContext) -> str:
         " misconception id, targeted hint).",
         "- No prompt or hint contains the correct answer's words. No two options of a"
         " question are the same.",
+        '- "story_stem" of each derived entry: the SAME question as a character of the'
+        " episode asks it at its moment in the story, in both languages, at most"
+        f" {PROMPT_LIMITS['en']} characters in English and {PROMPT_LIMITS['fr']} in French."
+        " Only this sentence changes: the options stay as they are and the same one is"
+        " still the only correct answer. Keep its facts, numbers, units and conditions (a"
+        " « not », « all », « most » or « except » stays), and the words its options use."
+        " No textbook voice (« les biologistes ont identifié… »), no name or place that is"
+        " not ours, never a hint of the answer.",
         "- The learner is {child} and the friend {friend}: write them exactly so. Speak to the"
         ' learner as "you" / "tu".',
     ]
@@ -1606,7 +1617,7 @@ def build_pack_message(ctx: LessonStoryContext) -> str:
 
 _PACK_EXAMPLE = """{"objectives": [{"id": "o1", "en": "learning objective", "fr": "objectif"}],
  "misconceptions": [{"id": "m_slug", "en": "Thinks that ...", "fr": "Pense que ..."}],
- "derived": [{"ref": "q4", "idea": 1, "objective": "o1", "prompt_home": "the question in the home language", "options_home": ["option a", "option b", "..."], "explanation_home": "...", "hint": {"en": "points back to the story moment", "fr": "..."}, "distractors": [{"option": "a", "misconception": "m_slug", "hint": {"en": "aimed at this mistake", "fr": "..."}}]}],
+ "derived": [{"ref": "q4", "idea": 1, "objective": "o1", "prompt_home": "the question in the home language", "story_stem": {"en": "the same question, as a character asks it in the story", "fr": "..."}, "options_home": ["option a", "option b", "..."], "explanation_home": "...", "hint": {"en": "points back to the story moment", "fr": "..."}, "distractors": [{"option": "a", "misconception": "m_slug", "hint": {"en": "aimed at this mistake", "fr": "..."}}]}],
  "questions": [{"id": "x1", "idea": 3, "type": "choice", "objective": "o1", "prompt": {"en": "...", "fr": "..."}, "choices": [{"id": "a", "en": "...", "fr": "..."}, {"id": "b", "en": "...", "fr": "...", "misconception": "m_slug"}], "answer": "a", "hints": [{"en": "...", "fr": "..."}], "traps": [{"answer": "b", "misconception": "m_slug", "hint": {"en": "...", "fr": "..."}}], "explanation": {"en": "...", "fr": "..."}}],
  "exercises": [{"objective": "o1", "prompt": {"en": "a short task done on paper", "fr": "..."}, "working": {"en": ["model answer, line by line"], "fr": ["..."]}, "mark_scheme": {"en": "what earns the mark", "fr": "..."}}],
  "minigame": {"title": {"en": "...", "fr": "..."}, "instruction": {"en": "...", "fr": "..."}, "hint_after_wrong": {"en": "...", "fr": "..."}, "rounds": [{"prompt": {"en": "Catch the ...", "fr": "Attrape ..."}, "items": [{"label": {"en": "a true statement", "fr": "..."}, "correct": true}, {"label": {"en": "a tempting wrong idea", "fr": "..."}, "correct": false, "trap": "m_slug"}]}]},

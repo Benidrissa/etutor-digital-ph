@@ -310,7 +310,10 @@ def derived_key(question: dict[str, Any], language: str) -> DerivedKey | None:
     """
     if not isinstance(question.get("derived_from"), dict):
         return None
-    reading = question.get("stem")
+    # A question asked in the story's voice (#2698) is the quiz's original.
+    reading = question.get("original_stem")
+    if not isinstance(reading, dict):
+        reading = question.get("stem")
     if not isinstance(reading, dict):
         reading = question.get("prompt")
     text = _text(reading.get(language)) if isinstance(reading, dict) else ""

@@ -704,6 +704,10 @@ class LessonStoryContext:
     episode_ideas: list[dict[str, Any]] = field(default_factory=list)
     #: The rally: each prop id → the units whose chapter pointed at it.
     props_seen: dict[str, list[str]] = field(default_factory=dict)
+    #: #2698: the course questions' story stems that passed every check and
+    #: the judge (ref → ``{"en", "fr"}``): asked in the story's voice, the
+    #: answer key locked (:mod:`story_stems`).
+    story_stems: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @property
     def picks_from_quiz(self) -> bool:
@@ -1063,6 +1067,26 @@ def _home_options(spec: dict[str, Any], mcq: QuizMcq, home: str, path: str) -> l
     return home_options
 
 
+def usable_story_stem(
+    ctx: LessonStoryContext, ref: str, correct_texts: list[str]
+) -> dict[str, str] | None:
+    """The approved story stem of question ``ref`` (#2698), if it can be asked as it is.
+
+    Only ``ctx.story_stems`` decides — the approved stems, checked in code and
+    by the judge — never a key of the document: written in both languages,
+    within the prompt's length, without the correct answer.
+    """
+    story = ctx.story_stems.get(ref)
+    if (
+        isinstance(story, dict)
+        and all(isinstance(story.get(lang), str) and story[lang] for lang in LANGS)
+        and all(len(story[lang]) <= PROMPT_LIMITS[lang] for lang in LANGS)
+        and _leak_free(story, correct_texts)
+    ):
+        return {lang: story[lang] for lang in LANGS}
+    return None
+
+
 def _derived_question(
     mcq: QuizMcq,
     spec: dict[str, Any],
@@ -1112,7 +1136,13 @@ def _derived_question(
 
     situation = None
     prompt = {lang: stem[lang] for lang in LANGS}
-    if any(len(prompt[lang]) > PROMPT_LIMITS[lang] for lang in LANGS):
+    # #2698: the question asked in the story's voice, when its rewrite passed
+    # every check and the judge. Only this sentence changes; the original is
+    # kept next to it, and no card is needed (it fits the prompt).
+    story = usable_story_stem(ctx, mcq.ref, correct_texts)
+    if story is not None:
+        prompt = dict(story)
+    elif any(len(prompt[lang]) > PROMPT_LIMITS[lang] for lang in LANGS):
         situation, prompt = stem, dict(_SITUATION_PROMPT)
 
     # Wrong options: a misconception and, when written, a targeted hint.
@@ -1166,6 +1196,9 @@ def _derived_question(
     }
     if situation is not None:
         question["stem"] = {lang: situation[lang] for lang in LANGS}
+    if story is not None:
+        # The quiz's own question, for the record: the quiz page shows it.
+        question["original_stem"] = {lang: stem[lang] for lang in LANGS}
     if mcq.explanation:
         explanation_home = _as_str(spec.get("explanation_home"))
         if not explanation_home:
@@ -3303,6 +3336,23 @@ def enforce_quiz_fidelity(doc: dict[str, Any], ctx: LessonStoryContext) -> None:
         question["answer"] = ids[mcq.correct_index]
         choices[mcq.correct_index].pop("misconception", None)
         situation = situations.get(mcq.ref)
+        correct = [choices[mcq.correct_index].get(lang, "") for lang in LANGS]
+        story = usable_story_stem(ctx, mcq.ref, correct)
+        original = question.get("original_stem")
+        if story is not None and situation is None:
+            # #2698: asked in the story's voice — the approved stem, re-asserted;
+            # the quiz's own stem stays on record.
+            question["prompt"] = dict(story)
+            original = original if isinstance(original, dict) else {}
+            question["original_stem"] = {
+                target: mcq.stem,
+                ctx.home: original.get(ctx.home) or mcq.stem,
+            }
+            question.pop("stem", None)
+            if mcq.explanation and isinstance(question.get("explanation"), dict):
+                question["explanation"][target] = mcq.explanation
+            continue
+        question.pop("original_stem", None)
         if situation is not None:
             situation[target] = [mcq.stem]
             stem = question.get("stem") if isinstance(question.get("stem"), dict) else {}
