@@ -725,3 +725,216 @@ class TestGeneratedOnly:
 
         pattern = speaker_prefix_pattern(["Kaboré", "mentor"])
         assert bool(pattern.match(line)) is labelled
+
+
+# --------------------------------------------------------------------------
+# #2678 review: a label is stripped whole, quotes only as a pair
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("line", "words"),
+    [
+        ("Kaboré says 'look'.", "look."),
+        ('Margo says, "Look at the clock!"', "Look at the clock!"),
+        ("Awa dit, « regarde ! »", "regarde !"),
+        ("Kaboré: « Regarde l'horloge » !", "Regarde l'horloge !"),
+        ("Mr Kaboré says “Look at the clock”, {child}.", "Look at the clock, {child}."),
+        ("Kaboré dit : « Regarde ! » Puis il sourit.", "« Regarde ! » Puis il sourit."),
+        ("Mr Kaboré says 'prime' means only two factors.", None),
+        ("Kaboré dit « merci » à tout le monde.", None),
+        ("Kaboré dit que tu as raison.", None),
+    ],
+)
+def test_a_label_is_stripped_whole_and_quotes_only_as_a_pair(line, words):
+    from app.domain.services.story_course_validator import speaker_label, speaker_prefix_pattern
+
+    pattern = speaker_prefix_pattern(["Kaboré", "Margo", "Awa", "mentor"])
+    assert speaker_label(line, pattern) == words
+    if words is not None:
+        assert words.count("«") == words.count("»") and words.count('"') % 2 == 0
+
+
+# --------------------------------------------------------------------------
+# #2680: refrains, and the shape of a generated story
+# --------------------------------------------------------------------------
+
+
+def _generated_module() -> dict:
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "module_story_chapters.json").read_text("utf-8")
+    )
+    return copy.deepcopy(fixture["chapters"]["en"]["1.1"])
+
+
+def test_a_refrain_may_come_back_but_another_line_may_not(course):
+    chapters = course["chapters"]
+    line = next(
+        s
+        for sc in chapters[0]["scenes"]
+        for s in sc["steps"]
+        if s["type"] in ("say", "narrate") and len(s["en"]) > 20 and not s.get("frame")
+    )
+    again = copy.deepcopy(line)
+    chapters[-1]["scenes"][-1]["steps"].append(again)
+    assert "repeated_line" in warning_codes(course)
+    again["refrain"] = True
+    assert "repeated_line" not in warning_codes(course)
+
+
+def test_teaches_may_be_an_int_or_a_list(course):
+    card = next(
+        s
+        for c in course["chapters"]
+        for sc in c["scenes"]
+        for s in sc["steps"]
+        if s["type"] == "concept"
+    )
+    card["teaches"] = [1, 2]
+    assert validate(course).ok
+
+
+def test_a_generated_chapter_that_ends_on_a_task_or_is_thin_is_warned():
+    doc = _generated_module()
+    steps = doc["chapters"][0]["scenes"][-1]["steps"]
+    photo = next(s for s in steps if s["type"] == "photo")
+    steps.remove(photo)
+    steps.append(photo)
+    report = validate_story_course(StoryCourse.model_validate(doc), generated=True)
+    assert report.ok and "chapter_ends_on_task" in {w.code for w in report.warnings}
+    for scene in doc["chapters"][0]["scenes"]:
+        scene["steps"] = [
+            s for i, s in enumerate(scene["steps"]) if s["type"] != "say" or i % 4 == 0
+        ]
+    report = validate_story_course(StoryCourse.model_validate(doc), generated=True)
+    assert "story_ratio_low" in {w.code for w in report.warnings}
+    # Never for a hand-authored week.
+    report = validate_story_course(StoryCourse.model_validate(doc))
+    assert not {"chapter_ends_on_task", "story_ratio_low"} & {w.code for w in report.warnings}
+
+
+# --------------------------------------------------------------------------
+# #2681: props
+# --------------------------------------------------------------------------
+
+
+def _props_codes(doc: dict, *, generated: bool = True) -> tuple[set[str], set[str]]:
+    report = validate_story_course(StoryCourse.model_validate(doc), generated=generated)
+    return {e.code for e in report.errors}, {w.code for w in report.warnings}
+
+
+def test_the_generated_chapter_shows_its_props():
+    doc = _generated_module()
+    report = validate_story_course(StoryCourse.model_validate(doc), generated=True)
+    assert report.ok and report.warnings == []
+    props = report.checks.props
+    assert props["declared"] == len(doc["props"]) and props["closeups"] == 5
+    assert set(props) == {
+        "declared",
+        "educational",
+        "stickers",
+        "figures",
+        "lines",
+        "lines_with_props",
+        "coverage",
+        "closeups",
+        "scenes_without_visual",
+    }
+
+
+@pytest.mark.parametrize(
+    ("change", "code", "kind"),
+    [
+        (lambda d: d["props"][0].update(id="Bad Id"), "prop_id_invalid", "error"),
+        (lambda d: d["props"].append(copy.deepcopy(d["props"][0])), "prop_id_duplicate", "error"),
+        (lambda d: d["props"][0]["label"].pop("fr"), "prop_label_missing", "error"),
+        (lambda d: d["props"][0].update(query=""), "prop_query_invalid", "error"),
+        (lambda d: d["props"][0].update(kind="figure"), "prop_figure_missing", "error"),
+        (lambda d: d["props"][0].update(emoji="ab"), "prop_emoji_invalid", "warning"),
+        (
+            lambda d: d["chapters"][0]["scenes"][0]["props"].append("ghost"),
+            "unknown_prop",
+            "error",
+        ),
+        (
+            lambda d: d["chapters"][0]["scenes"][0]["props"].extend(["a1", "a2", "a3", "a4"]),
+            "scene_props_too_many",
+            "error",
+        ),
+        (
+            lambda d: d["chapters"][0]["scenes"][0]["steps"][0].update(
+                props=["basket", "snail", "mimosa"]
+            ),
+            "step_props_too_many",
+            "error",
+        ),
+        (
+            lambda d: next(
+                s for s in d["chapters"][0]["scenes"][0]["steps"] if s["type"] == "ask"
+            ).update(props=["snail"]),
+            "step_props_wrong_type",
+            "error",
+        ),
+        (
+            lambda d: d["chapters"][0]["scenes"][1]["steps"][0].update(props=["basket"]),
+            "prop_not_in_scene",
+            "error",
+        ),
+        (
+            lambda d: d["chapters"][0]["scenes"][0]["steps"].insert(
+                3, {"type": "show", "visual": "prop", "params": {"prop": "basket"}}
+            ),
+            "closeup_of_sticker",
+            "error",
+        ),
+        (
+            lambda d: d["chapters"][0]["scenes"][0]["steps"].insert(
+                3, {"type": "show", "visual": "prop", "params": {}}
+            ),
+            "missing_prop",
+            "error",
+        ),
+    ],
+)
+def test_props_rules(change, code, kind):
+    doc = _generated_module()
+    change(doc)
+    errors, warnings = _props_codes(doc)
+    assert code in (errors if kind == "error" else warnings), (errors, warnings)
+
+
+def test_a_held_prop_needs_its_holder_on_stage_and_three_close_ups_are_too_many():
+    doc = _generated_module()
+    basket = next(p for p in doc["props"] if p["id"] == "basket")
+    basket.update(at="held", holder="mentor")
+    errors, _warnings = _props_codes(doc)
+    assert "holder_not_in_cast" in errors
+    _errors, warnings = _props_codes(doc, generated=False)
+    assert "holder_not_in_cast" in warnings  # strict: a warning for an authored week
+
+    doc = _generated_module()
+    steps = doc["chapters"][0]["scenes"][0]["steps"]
+    steps.insert(3, {"type": "show", "visual": "prop", "params": {"prop": "basket"}})
+    basket = next(p for p in doc["props"] if p["id"] == "basket")
+    basket.update(kind="real", educational=True)
+    errors, _warnings = _props_codes(doc)
+    assert "too_many_closeups_in_scene" in errors
+
+
+def test_a_scene_with_lines_and_nothing_to_see_is_warned():
+    doc = _generated_module()
+    for scene in doc["chapters"][0]["scenes"][1:2]:
+        scene.pop("props")
+        scene["steps"] = [
+            {k: v for k, v in s.items() if k != "props"}
+            for s in scene["steps"]
+            if s["type"] != "show"
+        ]
+    _errors, warnings = _props_codes(doc)
+    assert "scene_without_visual" in warnings
+
+
+def test_a_week_without_props_is_unaffected(course):
+    assert validate(course).ok
+    report = validate_story_course(StoryCourse.model_validate(course))
+    assert report.checks.props is None

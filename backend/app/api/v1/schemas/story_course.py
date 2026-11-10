@@ -50,7 +50,25 @@ VISUALS = (
     "timeline",
     "tiles",
     "image",
+    # #2681: the close-up of a prop, ``params.prop`` names it ("Look closely").
+    "prop",
 )
+
+# --- Props (#2681): the concrete things a story shows ------------------------
+
+#: What a prop is shown as. Closed, like cast kinds: ``real`` (a photo of the
+#: real thing teaches something), ``figure`` (a course figure shows it),
+#: ``sticker`` (an everyday thing the story only handles).
+PROP_KINDS = ("sticker", "real", "figure")
+PROP_PLACEMENTS = ("ground", "table", "held", "sky", "back")
+PROP_SIZES = ("s", "m", "l")
+MAX_PROPS_PER_SCENE = 5
+MAX_PROPS_PER_LINE = 2
+MAX_CLOSEUPS_PER_SCENE = 2
+MAX_NEW_PROPS_PER_CHAPTER = 12
+MAX_PROPS_PER_MODULE = 40
+PROP_LABEL_LIMIT = 40
+PROP_QUERY_LIMIT = 60
 
 #: The catalog visuals the player draws today, with their exact params
 #: (``frontend/components/story/concept-visual.tsx``): ``{param: (required,
@@ -276,6 +294,15 @@ class Step(_Loose):
     title: TextObject | None = None
     # ask / game / photo / video
     ref: str | None = None
+    #: say / narrate / concept (#2681): the props this line points at (at most 2).
+    props: list[str] | None = None
+    # Optional keys a generated story may carry (extra keys are kept):
+    # ``teaches`` (concept): the lesson IDEA numbers the card names, an int or
+    #   a list of ints (#2680);
+    # ``refrain`` (say): a catchphrase of the episode, which may come back word
+    #   for word in several chapters (#2680);
+    # ``retold`` (say/narrate): a line of an earlier chapter the assembler kept;
+    # ``frame`` (say/narrate/concept): a line the application wrote.
 
 
 class Scene(_Loose):
@@ -284,6 +311,8 @@ class Scene(_Loose):
     objective: str | None = None
     #: The cast ids on stage (two or three), optional (#2672).
     cast: list[str] | None = None
+    #: The props on stage in this scene (#2681), at most 5.
+    props: list[str] | None = None
     steps: list[Step] = Field(default_factory=list)
 
 
@@ -291,6 +320,38 @@ class Chapter(_Loose):
     id: str
     title: TextObject
     scenes: list[Scene] = Field(default_factory=list)
+
+
+class PropFigure(_Loose):
+    """A course figure the builder resolved (the model writes ``"figure": N``)."""
+
+    source_image_id: str
+    figure_number: str | None = None
+    #: ``source_images.image_hash``: finds the figure again after a re-index.
+    image_hash: str | None = None
+    alt: TextObject | None = None
+    caption: TextObject | None = None
+    attribution: str | None = None
+
+
+class Prop(_Loose):
+    """A concrete thing the story talks about (#2681): drawn on stage, shown close up."""
+
+    id: str
+    label: TextObject
+    #: English picture-search words; the resolver's only, never shown.
+    query: str
+    kind: Literal[PROP_KINDS]  # type: ignore[valid-type]
+    #: True: one close-up right after its first mention.
+    educational: bool = False
+    emoji: str | None = None
+    at: Literal[PROP_PLACEMENTS] | None = None  # type: ignore[valid-type]
+    size: Literal[PROP_SIZES] | None = None  # type: ignore[valid-type]
+    #: The cast id holding it, when ``at`` is ``held``.
+    holder: str | None = None
+    figure: PropFigure | None = None
+    #: Module-level props (the episode plan's): the chapters they come back in.
+    chapters: list[int] = Field(default_factory=list)
 
 
 # --- Questions and exercises ------------------------------------------------
@@ -461,6 +522,14 @@ class Checks(_Loose):
     errors: int = 0
     warnings: int = 0
     predicted_typical: dict[str, Any] | None = None
+    #: #2680, a generated chapter: how much of it is story
+    #: (``{story_lines, steps, ratio, min_gap, lead_ins_missing,
+    #: reactions_missing, lecture_lines, card_echoes, fallback_cards,
+    #: names_leaked}``), for staging review.
+    story_quality: dict[str, Any] | None = None
+    #: #2681: ``{declared, educational, stickers, figures, lines,
+    #: lines_with_props, coverage, closeups, scenes_without_visual}``.
+    props: dict[str, Any] | None = None
 
 
 # --- The course file --------------------------------------------------------
@@ -487,6 +556,8 @@ class StoryCourse(_Loose):
     #: ids or a key of the :data:`PLACES` catalog.
     places: list[Place] = Field(default_factory=list)
     facts: list[Fact] = Field(default_factory=list)
+    #: #2681: one declaration per concrete thing the story shows; ids unique.
+    props: list[Prop] = Field(default_factory=list)
     chapters: list[Chapter] = Field(default_factory=list)
     questions: list[Question] = Field(default_factory=list)
     exercises: list[Exercise] = Field(default_factory=list)

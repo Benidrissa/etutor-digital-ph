@@ -347,11 +347,28 @@ class TestGenerate:
         monkeypatch.setattr(story_courses, "dispatch_module_story_generation", dispatch)
         monkeypatch.setattr(script, "find_module_story", find_module_story)
         monkeypatch.setattr(script, "wait_for_task", wait_for_task)
-        state.dispatched, state.stored = dispatched, stored
+        printed: list[tuple[object, str, object]] = []
+
+        async def print_story(_session, module_id, language, record, dump):
+            printed.append((module_id, language, dump))
+            for line in script.story_transcript(record.content if record else None):
+                print(f"    {line}")
+
+        monkeypatch.setattr(script, "print_story", print_story)
+        state.dispatched, state.stored, state.printed = dispatched, stored, printed
         return state
 
     async def run(self, *argv):
         return await script.main(list(argv), session_factory=FakeSession)
+
+    async def test_the_dump_folder_is_passed_to_every_story(self, wired, tmp_path):
+        wired.stored.update(fr=module_story(), en=module_story(slug="module-abc-en"))
+        code = await self.run("generate", "--course", COURSE.slug, "--dump", str(tmp_path))
+        assert code == 0
+        assert [(language, dump) for _m, language, dump in wired.printed] == [
+            ("fr", str(tmp_path)),
+            ("en", str(tmp_path)),
+        ]
 
     async def test_dispatches_the_module_once_per_language_through_the_api_dedup(self, wired):
         wired.stored.update(fr=module_story(), en=module_story(slug="module-abc-en"))
@@ -409,9 +426,10 @@ class TestGenerate:
         assert wired.dispatched == []
         assert "no lesson unit" in capsys.readouterr().out
 
-    def test_the_default_wait_fits_a_first_run(self):
+    def test_the_default_wait_fits_the_deploy_workflow(self):
+        # Under the workflow's 60-minute SSH command timeout; a continuation is followed.
         for argv in (["generate", "--course", "x"], ["requests", "file.json"]):
-            assert script.parse_args(argv).timeout == 1800
+            assert script.parse_args(argv).timeout == 3300 < 60 * 60
 
     def test_a_module_index_below_one_is_refused(self):
         with pytest.raises(SystemExit):
@@ -472,12 +490,10 @@ class TestRequests:
     async def test_the_shipped_request_file_is_valid(self, capsys):
         path = Path(script.__file__).parent / "story_requests.json"
         requests = script.load_requests(str(path))
-        kids, test = requests[:2], requests[2:]
-        assert [r["query"] for r in kids] == ["biolog", "math"]
-        assert all(r["kids_only"] and r["languages"] == ("fr", "en") for r in kids)
-        assert all(r["module_index"] == 1 and r["module_id"] is None for r in kids)
-        assert [str(r["module_id"]) for r in test] == ["aab749f1-fba3-45d3-bcff-e0f4f925475a"]
-        assert test[0]["languages"] == ("fr",)
+        # #2680 makes every stored story stale once: until the owner approves the
+        # v4 story of the staging test module, the deploy pays for that one only.
+        assert [str(r["module_id"]) for r in requests] == ["aab749f1-fba3-45d3-bcff-e0f4f925475a"]
+        assert requests[0]["languages"] == ("fr",)
         # Module stories only: no entry still asks for a lesson.
         raw = json.loads(path.read_text(encoding="utf-8"))
         assert not any("lesson_index" in entry for entry in raw["requests"])
@@ -605,3 +621,28 @@ class TestWorkflow:
             pytest.skip("the workflow is not in this checkout")
         assert "module stories" in text.lower()
         assert "Story tab" not in text and "lesson 1" not in text
+
+
+# --------------------------------------------------------------------------
+# The transcript (#2680)
+# --------------------------------------------------------------------------
+
+
+def test_the_transcript_reads_the_whole_story_in_its_language():
+    from tests.test_story_module_assembly import MODULE_FIXTURE
+
+    fixture = json.loads(MODULE_FIXTURE.read_text(encoding="utf-8"))
+    doc = fixture["chapters"]["fr"]["1.1"]
+    plan = json.loads(
+        (Path(__file__).parent / "fixtures" / "story_module_plan.json").read_text("utf-8")
+    )
+    lines = script.story_transcript(doc, plan)
+    assert lines[0] == "EPISODE «Le panier des mystères»"
+    assert lines[1].startswith("LOGLINE: {child} and {friend} must sort")
+    assert "== Chapter 1 «L'escargot timide» (lesson ?) ==" in lines
+    assert "[La cour de Mamie] ({child}, {friend}, Mariam) props:" in "\n".join(lines)
+    assert any(line.startswith("  {friend} (surprised): Un escargot !") for line in lines)
+    assert "  [look closely: l'escargot]" in lines
+    assert any(line.startswith("  [card «La feuille timide»:") for line in lines)
+    assert any(line.startswith("  [question q1: Lequel de ces signes") for line in lines)
+    assert any(line.endswith("(refrain)") for line in lines)

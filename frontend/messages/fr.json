@@ -1107,6 +1107,8 @@
       "resetCategory": "Réinitialiser la catégorie",
       "resetConfirm": "Êtes-vous sûr ? Tous les paramètres de cette catégorie seront réinitialisés.",
       "saved": "Paramètre enregistré",
+      "saveFailed": "Paramètre non enregistré : la valeur a été refusée",
+      "notOffered": "n'est plus proposé",
       "resetDone": "Paramètre réinitialisé",
       "categoryResetDone": "{count} paramètres réinitialisés",
       "sensitive": "Paramètre de sécurité",
@@ -1309,8 +1311,8 @@
           "body": "{errors} appels IA ont échoué ({cost_cents} ¢ facturés malgré tout). Vérifiez les quotas et clés des fournisseurs concernés."
         },
         "image_fallback_active": {
-          "title": "Repli d'images Gemini → gpt-image-1 actif",
-          "body": "{failures} tentatives Gemini ont échoué et sont retombées sur gpt-image-1 (payant, OpenAI). Vérifiez la clé/le quota Google pour revenir au fournisseur prévu."
+          "title": "Repli d'images Gemini → OpenAI actif",
+          "body": "{failures} tentatives Gemini ont échoué et sont retombées sur le modèle d'images OpenAI (payant). Vérifiez la clé/le quota Google pour revenir au fournisseur prévu."
         },
         "low_cache_reuse": {
           "title": "Cache de prompts peu réutilisé",

@@ -878,7 +878,7 @@ def test_the_dedup_key_outlives_the_task_and_nothing_else():
     from app.tasks.content_generation import MODULE_STORY_HARD_LIMIT
 
     ttl = api._MODULE_STORY_DISPATCH_TTL_S
-    assert ttl == MODULE_STORY_HARD_LIMIT + 60 == 1920
+    assert ttl == MODULE_STORY_HARD_LIMIT + 60 == 2520
     assert ttl < 3600
     assert ttl <= celery_app.conf.result_expires
     visibility = (celery_app.conf.broker_transport_options or {}).get("visibility_timeout", 3600)
@@ -1406,22 +1406,18 @@ def story_db_url():
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def stored(story_db_url):
-    """A module story made by the real service (fake model) on PostgreSQL."""
-    import json
-
+    """A module story made by the real v4 service (fake model) on PostgreSQL."""
     import sqlalchemy as sa
-    from sqlalchemy.ext.asyncio import create_async_engine
 
     from tests import test_story_module_service as service_tests
     from tests._story_db import story_tables
 
-    engine = create_async_engine(story_db_url, pool_size=8, max_overflow=2)
-    sessions = service_tests.Sessions(engine)
-    raw = json.loads(service_tests.FIXTURE.read_text(encoding="utf-8"))
+    sessions = service_tests.Sessions(story_db_url)
+    engine = sessions.engine
     with patch("app.tasks.quality_assessment.assess_and_regenerate_unit_task"):
-        seed = await service_tests.seed(sessions, raw)
-        service, *_ = service_tests.make_service(raw)
-        record = await service_tests.generate(service, seed, sessions)
+        seed = await service_tests.seed(sessions, language="en")
+        service = service_tests.service_for(service_tests.FakeModel(language="en"))
+        record = await service_tests.run(service, sessions, seed, language="en")
     assert record.status == "published" and record.is_valid
 
     async def get_session():
@@ -1438,20 +1434,30 @@ async def stored(story_db_url):
 
 
 async def _bump_a_lesson(stored) -> None:
-    """Regenerate unit 1.2's lesson (its revision moves): its chapter and the story go stale."""
+    """Regenerate unit 1.2's lesson with a changed idea: its chapter and the story go stale.
+
+    (#2680: a lesson rewritten in prose, with the same ideas, key points and
+    figures, leaves the story fresh.)
+    """
+    import copy
+
     import sqlalchemy as sa
 
     from app.domain.models.content import GeneratedContent
 
     async with stored.sessions.maker() as session:
-        await session.execute(
-            sa.update(GeneratedContent)
-            .where(
-                GeneratedContent.module_unit_id == stored.seed.units["1.2"],
-                GeneratedContent.content_type == "lesson",
+        row = (
+            await session.execute(
+                sa.select(GeneratedContent).where(
+                    GeneratedContent.module_unit_id == stored.seed.units["1.2"],
+                    GeneratedContent.content_type == "lesson",
+                )
             )
-            .values(content_revision=GeneratedContent.content_revision + 1)
-        )
+        ).scalar_one()
+        content = copy.deepcopy(row.content)
+        content["concepts"][0] += " Even a germ is one."
+        row.content = content
+        row.content_revision = (row.content_revision or 1) + 1
         await session.commit()
 
 
@@ -1491,7 +1497,7 @@ class TestOnARealDatabase:
         assert status_body == {
             "state": "ready",
             "task_id": None,
-            "chapters": 5,  # four lessons and the rally
+            "chapters": 4,  # three lessons and the rally
             "revision": stored.record.content["module_story"]["revision"],
             "access": "ok",
         }
@@ -1530,6 +1536,42 @@ class TestOnARealDatabase:
         async with stored.sessions.maker() as session:
             assert await _cached_module_story(session, stored.seed.module_id, "en") is None
 
+    async def test_an_admin_resets_a_bible_of_defaults_never_a_real_one(self, client, stored):
+        """#2680: a course stuck on a bible of defaults is freed by an admin."""
+        import sqlalchemy as sa
+
+        from app.domain.models.story_bible import StoryCourseBible
+        from app.domain.services.story_bible import DEFAULTED_KEPT
+
+        url = f"/api/v1/story-courses/bibles/{stored.seed.course_id}/reset"
+        self._as("user")
+        assert (await client.post(url)).status_code == 403
+        self._as("admin")
+        resp = await client.post(url)
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error"] == "bible_not_defaulted"
+        async with stored.sessions.maker() as session:
+            await session.execute(
+                sa.update(StoryCourseBible)
+                .where(StoryCourseBible.course_id == stored.seed.course_id)
+                .values(model=DEFAULTED_KEPT)
+            )
+            await session.commit()
+        resp = await client.post(url)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "course_id": str(stored.seed.course_id),
+            "reset": True,
+            "was": DEFAULTED_KEPT,
+        }
+        async with stored.sessions.maker() as session:
+            count = await session.execute(
+                sa.select(sa.func.count())
+                .select_from(StoryCourseBible)
+                .where(StoryCourseBible.course_id == stored.seed.course_id)
+            )
+            assert count.scalar_one() == 0
+
     async def test_an_unknown_module_is_404(self, client, stored):
         self._as("admin")
         resp = await client.get(f"/api/v1/story-courses/module/{uuid.uuid4()}")
@@ -1546,15 +1588,15 @@ class TestOnARealDatabase:
         sys.modules[spec.name] = script
         spec.loader.exec_module(script)
 
-        argv = ["list", "--query", "Public health", "--module-index", "2"]
+        argv = ["list", "--query", "Life detectives", "--module-index", "1"]
         assert await script.main(argv, session_factory=stored.sessions.maker) == 0
         out = capsys.readouterr().out
-        assert "units=6 lessons=4" in out
-        assert "1.3 quiz_checkpoint (type=quiz)" in out
+        assert "units=5 lessons=3" in out
+        assert "1.5 quiz_checkpoint (type=quiz)" in out
         assert "1.4 case_checkpoint (type=case-study)" in out
         assert "[en] chapter: lesson-" in out and "fresh=True" in out
         assert "[en] module story: module-" in out
-        assert "valid=True fresh=True chapters=5 (ready=4 unavailable=0 checkpoint=2)" in out
+        assert "valid=True fresh=True chapters=4 (ready=3 unavailable=0 checkpoint=2)" in out
         assert "[fr] module story: none" in out
 
         async def wait_for_task(_task_id, _timeout):
@@ -1562,7 +1604,7 @@ class TestOnARealDatabase:
 
         course_id = str(stored.seed.course_id)
         with patch.object(script, "wait_for_task", wait_for_task):
-            argv = ["generate", "--course", course_id, "--module-index", "2", "--language", "en"]
+            argv = ["generate", "--course", course_id, "--module-index", "1", "--language", "en"]
             assert await script.main(argv, session_factory=stored.sessions.maker) == 0
             # French was never made: the run fails.
             argv[-1] = "fr"

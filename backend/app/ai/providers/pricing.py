@@ -54,11 +54,19 @@ _IMAGE_DEFAULT_CENTS = 6.3  # unknown image model/quality — flag estimated
 # call's usage is known it is priced from these instead of the flat per-image
 # table, which misses the input side: an edit's reference image is billed as
 # image-input tokens, and input_fidelity="high" makes those numerous.
-# gpt-image-1: text input $5/M, image input $10/M, image output $40/M (a medium
-# 1024x1536 image is ~1,584 output tokens = the 6.3c above).
+# gpt-image-1 (shut down 2026-10-23, kept for historical rows): text input
+# $5/M, image input $10/M, image output $40/M (a medium 1024x1536 image is
+# ~1,584 output tokens = the 6.3c above).
+# gpt-image-2.6-sunburst / -flare (#2689): text input $5/M, image input $8/M,
+# image output $30/M (OpenAI's pricing page). gpt-image-2.5-sunburst is priced
+# the same but not confirmed, so its rows are flagged estimated.
 _IMAGE_TOKEN_PRICING: dict[str, dict[str, int]] = {
     "gpt-image-1": {"text_input": 500, "image_input": 1000, "output": 4000},
+    "gpt-image-2.6-sunburst": {"text_input": 500, "image_input": 800, "output": 3000},
+    "gpt-image-2.6-flare": {"text_input": 500, "image_input": 800, "output": 3000},
+    "gpt-image-2.5-sunburst": {"text_input": 500, "image_input": 800, "output": 3000},
 }
+_IMAGE_TOKEN_PRICING_ESTIMATED = frozenset({"gpt-image-2.5-sunburst"})
 # gpt-4o-mini-tts ≈ $0.015/min of audio ≈ 750 chars/min → ~2¢ per 1K input chars.
 _TTS_CENTS_PER_1K_CHARS = 2.0
 # whisper-1: $0.006/min.
@@ -141,7 +149,7 @@ def estimate_cost_cents(
     if operation == "image":
         tokens = _image_token_cost_cents(model, usage)
         if tokens is not None:
-            return tokens, False
+            return tokens, model in _IMAGE_TOKEN_PRICING_ESTIMATED
         row = _IMAGE_PRICING_CENTS.get((model, image_quality))
         if row is not None:
             return row * (images_count or 0), False

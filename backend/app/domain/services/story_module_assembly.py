@@ -79,8 +79,15 @@ logger = structlog.get_logger(__name__)
 #: Recorded in ``module_story.assembler`` and the module row's manifest; a
 #: stored module story built by another version is stale. 2: the screenplay
 #: generator with the course bible (#2674) — chapters only for lessons, plus
-#: the rally.
-MODULE_ASSEMBLER_VERSION = 2
+#: the rally. 3: one episode told from a plan (#2680) — story titles, the
+#: episode title, retold lines kept and marked, refrains, props (#2681).
+MODULE_ASSEMBLER_VERSION = 3
+
+#: The one line a lesson whose chapter is not ready shows, in the story's voice.
+STILL_BEING_WRITTEN = {
+    "en": "This part of the adventure is still being written.",
+    "fr": "Cette partie de l'aventure est encore en cours d'écriture.",
+}
 
 UnitRole = Literal["lesson", "quiz_checkpoint", "case_checkpoint"]
 ChapterStatus = Literal["ready", "unavailable", "checkpoint"]
@@ -141,6 +148,8 @@ class ModuleStoryContext:
     is_kids: bool
     #: The course bible; ``None``: the audience's default (a module without a course).
     bible: StoryBible | None = None
+    #: The episode plan's title (#2680): the module story's title.
+    episode_title: dict[str, str] | None = None
 
     @property
     def story_bible(self) -> StoryBible:
@@ -358,16 +367,46 @@ def _drop_questions(doc: dict[str, Any], ids: set[str]) -> int:
     situations = {repair.situation_step_id(qid) for qid in ids}
     for chapter in doc["chapters"]:
         for scene in chapter["scenes"]:
-            scene["steps"] = [
-                step
-                for step in scene["steps"]
-                if not (step.get("type") == "ask" and step.get("ref") in ids)
-                and not (step.get("type") == "concept" and step.get("id") in situations)
-            ]
+            scene["steps"] = _without_asks(scene["steps"], ids, situations)
         chapter["scenes"] = [scene for scene in chapter["scenes"] if scene["steps"]]
     used = _used_misconceptions(doc)
     doc["misconceptions"] = [m for m in doc.get("misconceptions", []) if m.get("id") in used]
     return points
+
+
+def _without_asks(
+    steps: list[dict[str, Any]], ids: set[str], situations: set[str]
+) -> list[dict[str, Any]]:
+    """``steps`` without the asks of ``ids`` and their situation cards.
+
+    A dropped ask's lead-in goes with it (#2680): the ``say`` line right
+    before it, when it is the only story line between the step before and the
+    ask — it set up a question that is no longer asked.
+    """
+
+    def dropped(step: dict[str, Any]) -> bool:
+        return (step.get("type") == "ask" and step.get("ref") in ids) or (
+            step.get("type") == "concept" and step.get("id") in situations
+        )
+
+    gone: set[int] = set()
+    for index, step in enumerate(steps):
+        if not (step.get("type") == "ask" and step.get("ref") in ids):
+            continue
+        gone.add(index)
+        before = index - 1
+        while before >= 0 and dropped(steps[before]):
+            before -= 1
+        lead = steps[before] if before >= 0 else None
+        prior = steps[before - 1] if before >= 1 else None
+        if (
+            lead is not None
+            and lead.get("type") == "say"
+            and not lead.get("frame")
+            and (prior is None or prior.get("type") not in ("say", "narrate"))
+        ):
+            gone.add(before)
+    return [step for index, step in enumerate(steps) if index not in gone and not dropped(step)]
 
 
 def _chapter_steps(doc: dict[str, Any]) -> list[list[dict[str, Any]]]:
@@ -381,16 +420,16 @@ def _chapter_steps(doc: dict[str, Any]) -> list[list[dict[str, Any]]]:
 def _runs_hold_without(doc: dict[str, Any], ids: set[str]) -> bool:
     """Whether ``doc`` keeps at most MAX_ASKS_IN_A_ROW asks in a row without ``ids``.
 
-    Their asks and situation cards go, as :func:`_drop_questions` removes them:
-    a situation card can be what separates two runs.
+    Exactly what :func:`_drop_questions` removes goes, scene by scene
+    (:func:`_without_asks`): the asks, their situation cards and a lead-in
+    left with nothing to set up — any of them can be what separates two runs.
     """
     situations = {repair.situation_step_id(qid) for qid in ids}
-    for steps in _chapter_steps(doc):
+    for chapter in doc.get("chapters") or []:
         kept = [
             step
-            for step in steps
-            if not (step.get("type") == "ask" and step.get("ref") in ids)
-            and not (step.get("type") == "concept" and step.get("id") in situations)
+            for scene in chapter["scenes"]
+            for step in _without_asks(scene["steps"], ids, situations)
         ]
         if repair.ask_run_excess(kept):
             return False
@@ -506,31 +545,22 @@ class _Namespace:
 
 
 def _unavailable_scene(unit: StoryUnit, prefix: str, place: str, cast: list[str]) -> dict[str, Any]:
-    number = unit.unit_number
-    title = _unit_title(unit)
+    """The scene of a lesson whose chapter is not ready: one narrator line.
+
+    The player shows the existing "open the lesson" button for a chapter
+    whose ``covers.status`` is ``unavailable``; the line says so in the
+    story's own voice, without a lesson number or a page.
+    """
     return {
         "place": place,
         "cast": cast,
         "steps": [
             _line(
                 "narrate",
-                f"Lesson {number} is not in the story yet, {{child}}.",
-                f"La leçon {number} n'est pas encore dans l'histoire, {{child}}.",
+                STILL_BEING_WRITTEN["en"],
+                STILL_BEING_WRITTEN["fr"],
                 FRAME_UNAVAILABLE,
-            ),
-            _concept(
-                f"{prefix}unavailable",
-                {"en": f"Lesson {number}", "fr": f"Leçon {number}"},
-                {"en": [title["en"]], "fr": [title["fr"]]},
-                FRAME_UNAVAILABLE,
-            ),
-            _line(
-                "say",
-                f"Read lesson {number} on its own page, {{child}}, then come back.",
-                f"Lis la leçon {number} sur sa page, {{child}}, puis reviens.",
-                FRAME_UNAVAILABLE,
-                repair.MENTOR_ID,
-            ),
+            )
         ],
     }
 
@@ -681,24 +711,102 @@ def _max_points(source_doc: dict[str, Any], dropped_points: int) -> int:
     return max(max_points - dropped_points, 0)
 
 
-def _drop_retold_lines(doc: dict[str, Any], seen: set[tuple[str, str]]) -> None:
-    """A line told in an earlier chapter is dropped from this one (never a frame line).
+def _mark_retold_lines(doc: dict[str, Any], seen: set[tuple[str, str]]) -> None:
+    """A line told in an earlier chapter is kept and marked ``retold`` (#2680).
 
-    Unless it is all that separates two runs of questions: dropping it would
-    join them into one longer than :data:`story_repair.MAX_ASKS_IN_A_ROW`. It
-    then stays, marked ``retold`` so the repetition check lets it pass.
+    Deleting it left gaps in the dialogue; generation already sent such
+    repeats back to the model. A refrain (one of the episode's catchphrases)
+    and the application's own lines are never marked.
     """
-
-    def told_before(step: dict[str, Any]) -> bool:
-        keys = repair.repeat_keys(step)
-        if keys & seen:
-            return True
-        seen.update(keys)
-        return False
-
     for chapter in doc.get("chapters") or []:
-        for step in repair.drop_steps_keeping_runs(chapter["scenes"], told_before):
-            step["retold"] = True
+        for scene in chapter["scenes"]:
+            for step in scene["steps"]:
+                if step.get("refrain") or step.get("frame"):
+                    continue
+                keys = repair.repeat_keys(step)
+                if keys & seen:
+                    step["retold"] = True
+                else:
+                    seen.update(keys)
+
+
+def _lesson_title(doc: dict[str, Any] | None, unit: StoryUnit) -> dict[str, str]:
+    """A lesson chapter's title: its story title (v4), else "1.2 · lesson title".
+
+    A chapter told from the episode plan carries the plan's story title; the
+    chapter list shows "Leçon 1.2" from ``covers.unit_number``, so no prefix.
+    """
+    marker = doc.get("sira_chapter") if isinstance(doc, dict) else None
+    if isinstance(marker, dict) and marker.get("plan"):
+        title = (doc.get("chapters") or [{}])[0].get("title")
+        if isinstance(title, dict) and title.get("en") and title.get("fr"):
+            return {"en": str(title["en"]), "fr": str(title["fr"])}
+    title = _unit_title(unit)
+    return {
+        "en": f"{unit.unit_number} · {title['en']}",
+        "fr": f"{unit.unit_number} · {title['fr']}",
+    }
+
+
+def _merge_props(merged: list[dict[str, Any]], doc: dict[str, Any]) -> None:
+    """Join a chapter's props into the module's, by id (#2681); remap its refs.
+
+    The same thing (kind and normalised query) under another id takes the
+    first id; another thing under a taken id is renamed ``<id>_<n>``. A
+    merged prop is educational if any declaration was.
+    """
+    from app.domain.services.story_props import query_key
+
+    rename: dict[str, str] = {}
+    for prop in doc.get("props") or []:
+        if not isinstance(prop, dict) or not prop.get("id"):
+            continue
+        same = next((p for p in merged if query_key(p) == query_key(prop)), None)
+        if same is not None:
+            rename[prop["id"]] = same["id"]
+            same["educational"] = bool(same.get("educational") or prop.get("educational"))
+            same["chapters"] = sorted({*same.get("chapters", []), *prop.get("chapters", [])})
+            if not same.get("figure") and prop.get("figure"):
+                same["figure"] = copy.deepcopy(prop["figure"])
+            continue
+        new_id, n = prop["id"], 2
+        while any(p["id"] == new_id for p in merged):
+            new_id, n = f"{prop['id']}_{n}", n + 1
+        if new_id != prop["id"]:
+            rename[prop["id"]] = new_id
+        merged.append({**copy.deepcopy(prop), "id": new_id})
+    if not rename:
+        return
+    for chapter in doc.get("chapters") or []:
+        for scene in chapter["scenes"]:
+            if scene.get("props"):
+                scene["props"] = list(dict.fromkeys(rename.get(p, p) for p in scene["props"]))
+            for step in scene["steps"]:
+                if step.get("props"):
+                    step["props"] = list(dict.fromkeys(rename.get(p, p) for p in step["props"]))
+                params = step.get("params")
+                if step.get("visual") == "prop" and isinstance(params, dict):
+                    params["prop"] = rename.get(params.get("prop"), params.get("prop"))
+
+
+def _ground_held_props(props: list[dict[str, Any]], chapters: list[dict[str, Any]]) -> None:
+    """A held prop whose holder is off stage in a scene that shows it goes to the ground.
+
+    Each chapter settled its own scenes, but the module keeps a prop's first
+    declaration: a later chapter that showed it without its holder put its
+    own copy on the ground, and that change is not merged.
+    """
+    for prop in props:
+        if prop.get("at") != "held":
+            continue
+        pid, holder = prop.get("id"), prop.get("holder")
+        if any(
+            pid in (scene.get("props") or []) and holder not in (scene.get("cast") or [])
+            for chapter in chapters
+            for scene in chapter["scenes"]
+        ):
+            prop["at"] = "ground"
+            prop.pop("holder", None)
 
 
 def _cap_runs(doc: dict[str, Any]) -> int:
@@ -798,15 +906,16 @@ def assemble_module_story(
     typical_points = 0
     typical_plans: list[str] = []
     seen_lines: set[tuple[str, str]] = set()
+    merged_props: list[dict[str, Any]] = []
     place = next(iter(p["id"] for p in doc_places(bible.content)), "classroom")
 
     for index, source in enumerate(told):
         unit, prefix = source.unit, prefixes[index]
-        title = _unit_title(unit)
         max_points = 0
         if index in ready:
             chapter_doc = ready[index].doc
-            _drop_retold_lines(chapter_doc, seen_lines)
+            _mark_retold_lines(chapter_doc, seen_lines)
+            _merge_props(merged_props, chapter_doc)
             ready[index].dropped_points += _cap_runs(chapter_doc)
             ns = _Namespace(prefix, chapter_doc)
             scenes = _lesson_scenes(chapter_doc, ns)
@@ -817,7 +926,7 @@ def assemble_module_story(
             typical_plans.append(f"{label}: {typical['plan']}")
             max_points = _max_points(source.doc or {}, ready[index].dropped_points)
         else:
-            scenes = [_unavailable_scene(unit, prefix, place, [repair.MENTOR_ID])]
+            scenes = [_unavailable_scene(unit, prefix, place, [repair.HERO_ID, repair.MENTOR_ID])]
 
         if source is rally_source:
             chapter_title = _pair(
@@ -836,10 +945,7 @@ def assemble_module_story(
                 "rally": True,
             }
         else:
-            chapter_title = {
-                "en": f"{unit.unit_number} · {title['en']}",
-                "fr": f"{unit.unit_number} · {title['fr']}",
-            }
+            chapter_title = _lesson_title(ready[index].doc if index in ready else None, unit)
             status = statuses[index]
             covers = {
                 "module_unit_id": str(unit.module_unit_id),
@@ -862,10 +968,12 @@ def assemble_module_story(
             rest = {key: value for key, value in scene.items() if key != "id"}
             renumbered.append({"id": f"s{scene_number}", **rest})
         chapter["scenes"] = renumbered
+    _ground_held_props(merged_props, module_chapters)
 
     module_title = _pair(
         ctx.module_title, f"Module {ctx.module_number}", f"Module {ctx.module_number}"
     )
+    episode_title = _pair(ctx.episode_title or ctx.module_title, *module_title.values())
     course_title = _pair(ctx.course_title, "", "")
     revision_rows = [
         [
@@ -882,7 +990,7 @@ def assemble_module_story(
         "course": course_title[language] or module_title[language] or "Sira",
         "unit": f"Module {ctx.module_number} · {module_title[language]}",
         "week": max(int(ctx.module_number or 1), 1),
-        "title": module_title,
+        "title": episode_title,
         "languages": repair.language_pair(language),
         "learner": {"first_name": repair.CHILD},
         "sources": merged["sources"],
@@ -893,6 +1001,7 @@ def assemble_module_story(
         "cast": doc_cast(bible.content),
         "places": doc_places(bible.content),
         "facts": merged["facts"],
+        **({"props": merged_props} if merged_props else {}),
         "chapters": module_chapters,
         "questions": merged["questions"],
         "exercises": merged["exercises"],

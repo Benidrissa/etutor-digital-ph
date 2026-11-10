@@ -25,6 +25,7 @@ from app.domain.services.story_bible import (
     default_bible,
     doc_cast,
     doc_places,
+    find_bible,
     mission_for,
     mission_of,
     normalise_bible,
@@ -240,6 +241,12 @@ class FakeSession:
         self.pending.clear()
         self.commits += 1
 
+    async def rollback(self):
+        self.pending.clear()
+
+    async def delete(self, row):
+        self.rows.pop(row.course_id, None)
+
 
 async def test_the_first_story_of_a_course_writes_its_bible_and_the_rest_reuse_it():
     answer = {
@@ -264,17 +271,40 @@ async def test_the_first_story_of_a_course_writes_its_bible_and_the_rest_reuse_i
     assert len(model.calls) == 2 and other.digest != first.digest
 
 
-async def test_an_unreadable_answer_is_asked_again_once_then_fails():
-    model = FakeClaude({"raw_response": True}, ValueError("truncated"))
-    session = FakeSession()
-    with pytest.raises(StoryBibleUnavailable):
-        await StoryBibleService(model).get_or_create(session, course(), [MODULE])
-    assert len(model.calls) == 2 and session.rows == {}
-
+async def test_an_unreadable_answer_is_asked_again_once():
     model = FakeClaude({"raw_response": True}, {"cast": [{"id": "mentor", "name": "Zida"}]})
-    bible = await StoryBibleService(model).get_or_create(session, course(), [MODULE])
+    bible = await StoryBibleService(model).get_or_create(FakeSession(), course(), [MODULE])
     assert len(model.calls) == 2
     assert next(m for m in bible.content["cast"] if m["id"] == "mentor")["name"] == "Zida"
+
+
+async def test_unusable_answers_twice_store_defaults_retried_once_then_kept():
+    """#2680: unusable output is not an outage — the course still gets a story."""
+    from app.domain.services.story_bible import DEFAULTED, DEFAULTED_KEPT
+
+    session = FakeSession()
+    service = StoryBibleService(FakeClaude({"raw_response": True}, ValueError("truncated")))
+    first = await service.get_or_create(session, course(), [MODULE])
+    row = session.rows[course().id]
+    assert row.model == DEFAULTED and len(service.claude_service.calls) == 2
+    assert first.content["cast"] == normalise_bible({}, is_kids=False, modules=[MODULE])["cast"]
+
+    # The next story tries once more: still unusable, the defaults are kept.
+    service.claude_service = FakeClaude({"text": "Sorry"}, {"cast": [{"id": "dragon"}]})
+    kept = await service.get_or_create(session, course(), [MODULE])
+    assert row.model == DEFAULTED_KEPT and kept.digest == first.digest
+    assert len(service.claude_service.calls) == 2
+    again = await service.get_or_create(session, course(), [MODULE])
+    assert again.digest == kept.digest and len(service.claude_service.calls) == 2
+
+    # Or the retry works and replaces the defaults.
+    session = FakeSession()
+    service = StoryBibleService(FakeClaude({"text": "Sorry"}))
+    await service.get_or_create(session, course(), [MODULE])
+    service.claude_service = FakeClaude({"cast": [{"id": "mentor", "name": "Zida"}]})
+    second = await service.get_or_create(session, course(), [MODULE])
+    assert session.rows[course().id].model == "fake-model-1"
+    assert next(m for m in second.content["cast"] if m["id"] == "mentor")["name"] == "Zida"
 
 
 # --------------------------------------------------------------------------
@@ -314,6 +344,64 @@ async def test_concurrent_stories_of_a_course_make_one_bible_with_one_call(datab
         async with maker() as session:
             count = await session.execute(sa.select(sa.func.count()).select_from(StoryCourseBible))
             assert count.scalar_one() == 1
+    finally:
+        await engine.dispose()
+
+
+async def test_the_retry_of_a_bible_of_defaults_is_made_once_by_concurrent_stories(
+    database_url,
+):
+    """#2680: the row is read again after the lock, so the waiter sees the new bible.
+
+    Before, the post-lock read returned the session's stale DEFAULTED row: two
+    stories of the course paid for two bible calls and the second digest
+    overwrote the first, making the first story's chapters stale at once.
+    """
+    from app.domain.services.story_bible import DEFAULTED
+
+    engine = create_async_engine(database_url, pool_size=4)
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    course_id = uuid.uuid4()
+    try:
+        async with maker() as session:
+            session.add(
+                Course(id=course_id, slug=f"c-{course_id.hex[:8]}", title_en="C", title_fr="C")
+            )
+            await session.commit()
+            the_course = await session.get(Course, course_id)
+            content = normalise_bible({}, is_kids=False, modules=[MODULE])
+            session.add(
+                StoryCourseBible(
+                    id=uuid.uuid4(),
+                    course_id=course_id,
+                    content=content,
+                    digest=StoryBible.of(content).digest,
+                    model=DEFAULTED,
+                )
+            )
+            await session.commit()
+
+        class Slow(FakeClaude):
+            async def generate_structured_content(self, *args, **kwargs):
+                await asyncio.sleep(0.2)  # the other story waits on the lock meanwhile
+                return await super().generate_structured_content(*args, **kwargs)
+
+        model = Slow({"cast": [{"id": "mentor", "name": "Zida"}]})
+        service = StoryBibleService(model)
+
+        async def make() -> StoryBible:
+            async with maker() as session:
+                # The session already holds the DEFAULTED row, as the module
+                # story's own read of the stored bible leaves it.
+                await find_bible(session, course_id)
+                return await service.get_or_create(session, the_course, [MODULE])
+
+        first, second = await asyncio.gather(make(), make())
+        assert len(model.calls) == 1
+        assert first.digest == second.digest
+        async with maker() as session:
+            row = await find_bible(session, course_id)
+            assert row.digest == first.digest and row.model == "fake-model-1"
     finally:
         await engine.dispose()
 
@@ -390,38 +478,63 @@ async def test_a_wrapped_answer_is_opened():
     assert next(m for m in bible.content["cast"] if m["id"] == "mentor")["name"] == "Zida"
 
 
-async def test_a_junk_answer_is_asked_again_then_fails_and_stores_nothing():
+async def test_a_junk_answer_is_never_stored_as_a_bible():
+    from app.domain.services.story_bible import DEFAULTED
+
     model = FakeClaude({"text": "Sorry"}, {"cast": [{"id": "dragon"}]})
     session = FakeSession()
-    with pytest.raises(StoryBibleUnavailable):
-        await StoryBibleService(model).get_or_create(session, course(), [MODULE])
-    assert len(model.calls) == 2 and session.rows == {}
+    bible = await StoryBibleService(model).get_or_create(session, course(), [MODULE])
+    assert len(model.calls) == 2 and session.rows[course().id].model == DEFAULTED
+    assert all(m["id"] != "dragon" for m in bible.content["cast"])
 
 
-async def test_defaults_are_stored_only_when_the_model_cannot_be_called():
-    from app.domain.services.story_bible import DEFAULTED, DEFAULTED_KEPT
+async def test_an_outage_stores_nothing_and_never_spends_the_retry():
+    """#2680: a provider outage (401, 429, timeout) never freezes a bible of defaults."""
+    from app.domain.services.story_bible import DEFAULTED, StoryProviderUnavailable
 
     down = FakeClaude(RuntimeError("provider down"))
     session = FakeSession()
     service = StoryBibleService(down)
-    first = await service.get_or_create(session, course(), [MODULE])
-    row = session.rows[course().id]
-    assert row.model == DEFAULTED and len(down.calls) == 2
-    assert first.content["cast"] == normalise_bible({}, is_kids=False, modules=[MODULE])["cast"]
+    with pytest.raises(StoryProviderUnavailable):
+        await service.get_or_create(session, course(), [MODULE])
+    # One call (a timeout already used the provider's whole timeout), nothing stored.
+    assert len(down.calls) == 1 and session.rows == {}
+    assert issubclass(StoryProviderUnavailable, StoryBibleUnavailable)
 
-    # The next story tries once more: it works, and replaces the defaults.
-    service.claude_service = FakeClaude({"cast": [{"id": "mentor", "name": "Zida"}]})
-    second = await service.get_or_create(session, course(), [MODULE])
-    assert row.model == "fake-model-1" and row.digest == second.digest != first.digest
-    assert len(service.claude_service.calls) == 1
-
-    # Or it fails again: the defaults are kept for good, and never retried.
+    # A bible of defaults waiting for its retry keeps waiting through an outage.
     session = FakeSession()
-    service = StoryBibleService(FakeClaude(RuntimeError("down")))
-    kept = await service.get_or_create(session, course(), [MODULE])
-    again = await service.get_or_create(session, course(), [MODULE])
+    await StoryBibleService(FakeClaude({"text": "junk"})).get_or_create(session, course(), [MODULE])
+    row = session.rows[course().id]
+    assert row.model == DEFAULTED
+    with pytest.raises(StoryProviderUnavailable):
+        await StoryBibleService(FakeClaude(TimeoutError("read timeout"))).get_or_create(
+            session, course(), [MODULE]
+        )
+    assert row.model == DEFAULTED
+    # The provider is back: the retry is still there, and makes the real bible.
+    service = StoryBibleService(FakeClaude({"cast": [{"id": "mentor", "name": "Zida"}]}))
+    bible = await service.get_or_create(session, course(), [MODULE])
+    assert row.model == "fake-model-1" and len(service.claude_service.calls) == 1
+    assert next(m for m in bible.content["cast"] if m["id"] == "mentor")["name"] == "Zida"
+
+
+async def test_an_admin_resets_a_bible_of_defaults_but_never_a_real_one():
+    from app.domain.services.story_bible import DEFAULTED_KEPT, reset_defaulted_bible
+
+    session = FakeSession()
+    model = FakeClaude({"cast": [{"id": "mentor", "name": "Zida"}]})
+    await StoryBibleService(model).get_or_create(session, course(), [MODULE])
+    assert await reset_defaulted_bible(session, course().id) is None
+    assert course().id in session.rows  # a real bible: its art is keyed on it
+
+    session = FakeSession()
+    service = StoryBibleService(FakeClaude({"text": "junk"}))
+    await service.get_or_create(session, course(), [MODULE])
+    await service.get_or_create(session, course(), [MODULE])
     assert session.rows[course().id].model == DEFAULTED_KEPT
-    assert again.digest == kept.digest
-    assert len(service.claude_service.calls) == 4
-    third = await service.get_or_create(session, course(), [MODULE])
-    assert third.digest == kept.digest and len(service.claude_service.calls) == 4
+    assert await reset_defaulted_bible(session, course().id) == DEFAULTED_KEPT
+    assert session.rows == {}
+    # The next story of the course asks the model again.
+    service.claude_service = FakeClaude({"cast": [{"id": "mentor", "name": "Zida"}]})
+    bible = await service.get_or_create(session, course(), [MODULE])
+    assert next(m for m in bible.content["cast"] if m["id"] == "mentor")["name"] == "Zida"

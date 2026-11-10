@@ -22,6 +22,7 @@ import sqlalchemy as sa
 from app.domain.models import Base
 from app.domain.models.story_bible import StoryCourseBible
 from app.domain.models.story_course import StoryCourseRecord
+from app.domain.models.story_module_plan import StoryModulePlan
 from tests._story_db import create_tables, scratch_database, story_tables, sync_engine
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -30,6 +31,7 @@ MIGRATION_105 = VERSIONS / "105_add_story_courses.py"
 MIGRATION_106 = VERSIONS / "106_add_story_unit_binding.py"
 MIGRATION_107 = VERSIONS / "107_story_module_binding.py"
 MIGRATION_108 = VERSIONS / "108_story_course_bible.py"
+MIGRATION_110 = VERSIONS / "110_story_module_plans.py"
 
 #: Columns migration 106 adds; every one must stay nullable so hand-authored
 #: weeks are untouched.
@@ -741,5 +743,104 @@ def test_108_on_postgres_upgrades_cascades_and_downgrades(monkeypatch):
             assert "story_course_bibles" not in sa.inspect(engine).get_table_names()
             command.upgrade(config, "108_story_course_bible")
             assert "story_course_bibles" in sa.inspect(engine).get_table_names()
+        finally:
+            engine.dispose()
+
+
+# --------------------------------------------------------------------------
+# 110: the episode plan of a module story (#2680)
+# --------------------------------------------------------------------------
+
+
+def test_110_revision_chain():
+    module = _load(MIGRATION_110, "migration_110_meta")
+    assert module.revision == "110_story_module_plans"
+    assert module.down_revision == "109_story_art"
+    assert len(module.revision) <= 32
+
+
+def test_110_creates_the_plan_table_of_the_model():
+    recorder = _RecordingOp()
+    module = _load(MIGRATION_110, "migration_110_only")
+    module.op = recorder  # type: ignore[attr-defined]
+    module.upgrade()
+    assert set(recorder.tables) == {"story_module_plans"}
+    columns = {c.name: c for c in recorder.columns("story_module_plans")}
+    model = {c.name: c for c in StoryModulePlan.__table__.columns}
+    assert set(columns) == set(model)
+    for name, column in model.items():
+        assert columns[name].nullable == column.nullable, name
+    (fk,) = columns["module_id"].foreign_keys
+    assert fk.target_fullname == "modules.id" and fk.ondelete == "CASCADE"
+    for name in ("inputs", "digest", "global_digest"):
+        assert columns[name].type.length == model[name].type.length == 64
+    assert columns["language"].type.length == 5 and columns["model"].type.length == 100
+
+    recorder = _RecordingOp()
+    module.op = recorder  # type: ignore[attr-defined]
+    module.downgrade()
+    assert recorder.calls == [("drop_table", "story_module_plans")]
+
+
+def test_110_on_postgres_one_plan_per_module_and_language(monkeypatch):
+    """109 -> 110: unique per (module, language), deleted with its module; then downgrade."""
+    from alembic import command
+
+    from app.infrastructure.config.settings import settings
+
+    with scratch_database("story_mig110") as url:
+        create_tables(
+            url,
+            story_tables(without={"story_courses", "story_course_bibles", "story_module_plans"}),
+        )
+        monkeypatch.setattr(settings, "database_url", url)
+        config = _alembic_config()
+        command.stamp(config, "104_add_ai_usage_events")
+        command.upgrade(config, "110_story_module_plans")
+        engine = sync_engine(url)
+        tables = Base.metadata.tables
+        course_id, module_id = uuid.uuid4(), uuid.uuid4()
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    tables["courses"]
+                    .insert()
+                    .values(id=course_id, slug="c-110", title_fr="C", title_en="C")
+                )
+                conn.execute(
+                    tables["modules"]
+                    .insert()
+                    .values(
+                        id=module_id,
+                        module_number=1,
+                        level=1,
+                        title_fr="M",
+                        title_en="M",
+                        course_id=course_id,
+                    )
+                )
+                row = {
+                    "module_id": module_id,
+                    "language": "fr",
+                    "version": 1,
+                    "inputs": "0" * 64,
+                    "digest": "1" * 64,
+                    "global_digest": "2" * 64,
+                    "content": {"plan": {}},
+                }
+                conn.execute(tables["story_module_plans"].insert().values(id=uuid.uuid4(), **row))
+                conn.execute(
+                    tables["story_module_plans"]
+                    .insert()
+                    .values(id=uuid.uuid4(), **{**row, "language": "en"})
+                )
+            with pytest.raises(sa.exc.IntegrityError), engine.begin() as conn:
+                conn.execute(tables["story_module_plans"].insert().values(id=uuid.uuid4(), **row))
+            with engine.begin() as conn:
+                conn.execute(tables["modules"].delete().where(tables["modules"].c.id == module_id))
+                left = conn.execute(sa.text("SELECT count(*) FROM story_module_plans"))
+                assert left.scalar_one() == 0
+            command.downgrade(config, "109_story_art")
+            assert "story_module_plans" not in sa.inspect(engine).get_table_names()
         finally:
             engine.dispose()
