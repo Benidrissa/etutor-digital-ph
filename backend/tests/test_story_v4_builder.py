@@ -12,10 +12,13 @@ from typing import Any
 
 import pytest
 
+from app.ai.prompts.story_from_lesson import build_chapter_story_message, build_name_blocklist
 from app.api.v1.schemas.story_course import StoryCourse, ValidationIssue, ValidationReport
 from app.domain.services import story_repair as repair
+from app.domain.services.story_checks import check_story
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_from_lesson_service import pack_issues, validate_document
+from app.domain.services.story_props import names_prop
 from tests.test_story_screenplay_module import (
     data,
     make_run,
@@ -631,3 +634,346 @@ def test_the_pack_message_alone_carries_the_wrong_options_and_misconceptions():
     assert "<- correct" in message
     assert "GAME: no" in message and "exactly 1 of your own" in message
     copy.deepcopy(message)
+
+
+# --------------------------------------------------------------------------
+# The review of #2687: names, close-ups, runs of questions, the prompt
+# --------------------------------------------------------------------------
+
+
+def test_the_blocklist_keeps_the_country_the_bible_the_calendar_and_the_fact_sheet():
+    lesson = {
+        "introduction": {
+            "fr": "Au Burkina Faso, Aminata vend ses mangues à Ouagadougou le Samedi, chez"
+            " Mamie Mariam.",
+            "en": "In Burkina Faso, Aminata sells mangoes on Friday in March.",
+        },
+        "aof_example": {
+            "fr": "À Bouaké, Moussa Traoré mesure le Soleil chaque Lundi de Mars.",
+            "en": "In Bouaké, Moussa Traoré measures the Sun every Monday.",
+        },
+        "concepts": ["Le Soleil chauffe la Terre, même en Décembre."],
+        "key_points": ["La Terre tourne autour du Soleil."],
+    }
+    blocked = build_name_blocklist(
+        [lesson], ["Que vend Koffi au marché ?"], data()["bible"], country="BF"
+    )
+    for name in ("Aminata", "Bouaké", "Moussa", "Traoré", "Moussa Traoré", "Koffi"):
+        assert name in blocked, name
+    for word in (
+        "Burkina",
+        "Faso",
+        "Burkina Faso",
+        "Ouagadougou",  # a place of the bible
+        "Mamie",
+        "Mariam",
+        "Samedi",
+        "Lundi",
+        "Mars",
+        "Friday",
+        "March",
+        "Monday",
+        "Soleil",  # words of the fact sheet: the story must use them
+        "Terre",
+    ):
+        assert word not in blocked, word
+
+
+def test_a_name_from_the_lesson_is_matched_as_written_in_story_lines_only():
+    ctx = chapter_ctx()
+    ctx.blocklist = ["Aminata", "Soleil"]
+    the_spine = spine()
+    steps = steps_of(the_spine, 0)
+    steps[1]["fr"] = "Le soleil tape sur mes trésors pour votre table de la foire."
+    steps[1]["en"] = "The sun beats down on my treasures for your fair table."
+    card = steps[index_of(steps, type="concept")]
+    card["en"] = ["Aminata's rule: what lives reacts.", *card["en"][1:]]
+    assert repair.NAME_FROM_LESSON not in codes(build(ctx, the_spine))
+    steps[1]["en"] = "Aminata sent these treasures for your fair table, children."
+    assert repair.NAME_FROM_LESSON in codes(build(ctx, the_spine))
+
+
+def test_a_paper_task_the_model_left_out_never_ends_a_chapter_of_dialogue():
+    """The last scene is all lines (a cliffhanger): the task goes before its closing lines."""
+    assert [repair._before_closing_lines([{"type": "say"}] * n) for n in (0, 1, 2, 3, 4)] == [
+        0,
+        0,
+        0,
+        1,
+        2,
+    ]
+    assert repair._before_closing_lines([{"type": "ask"}, {"type": "say"}]) == 1
+    the_spine = spine()
+    steps = steps_of(the_spine, 2)
+    del steps[index_of(steps, type="photo")]
+    last = copy.deepcopy(the_spine["scenes"][2])
+    last["props"] = []
+    last["steps"] = [
+        {"type": "narrate", "en": "Night falls on the school.", "fr": "La nuit tombe sur l'école."},
+        {"type": "say", "who": "friend", "en": "Did you hear that?", "fr": "Tu as entendu ?"},
+        {
+            "type": "say",
+            "who": "hero",
+            "en": "Something is in the yard!",
+            "fr": "Il y a quelque chose dans la cour !",
+        },
+    ]
+    the_spine["scenes"].append(last)
+    result = build(chapter_ctx(), the_spine)
+    assert repair.UNPLACED_ITEM in codes(result)
+    final = result.doc["chapters"][0]["scenes"][-1]["steps"]
+    assert [s["type"] for s in final] == ["narrate", "photo", "say", "say"]
+    assert repair.ENDING_NOT_STORY not in codes(result)
+
+
+def test_an_added_close_up_never_splits_a_lead_in_from_its_question():
+    """The pebble is first named in the lead-in of q3: its close-up comes after the reaction."""
+    the_spine = spine()
+    steps = steps_of(the_spine, 1)
+    del steps[index_of(steps, type="show", prop="pebble")]
+    steps[0].update(
+        en="Grandma rolls a brown néré seed along the bench.",
+        fr="Mamie fait rouler une graine de néré brune sur le banc.",
+        props=["nere_seed"],
+    )
+    friend = index_of(steps, type="say", who="friend")
+    steps[friend].update(
+        en="This seed does nothing. No legs, no eyes. Dead as a stone!",
+        fr="Cette graine ne fait rien. Pas de pattes, pas d'yeux. Morte comme une pierre !",
+        props=["nere_seed"],
+    )
+    result = build(chapter_ctx(), the_spine)
+    assert "closeup_missing" in codes(result)
+    scene = result.doc["chapters"][0]["scenes"][1]["steps"]
+    ask = index_of(scene, type="ask", ref="q3")
+    assert scene[ask - 1]["type"] == "say" and "pebble" in scene[ask - 1]["props"]
+    assert scene[ask + 2] == {"type": "show", "visual": "prop", "params": {"prop": "pebble"}}
+    assert repair.ASK_NOT_SET_UP not in codes(result)
+
+
+def test_a_close_up_never_follows_the_line_that_ends_the_chapter():
+    the_spine = spine()
+    the_spine["props"].append(
+        {
+            "id": "trail",
+            "label": {"en": "the silver trail", "fr": "la trace argentée"},
+            "query": "snail slime trail",
+            "kind": "real",
+        }
+    )
+    last = steps_of(the_spine, 2)[-1]
+    last["props"] = ["trail"]
+    result = build(chapter_ctx(), the_spine)
+    built = built_steps(result)
+    assert built[-1]["type"] == "narrate" and "trail" in built[-1]["props"]
+    assert {"type": "show", "visual": "prop", "params": {"prop": "trail"}} not in built
+    assert repair.ENDING_NOT_STORY not in codes(result)
+
+
+def test_model_close_ups_are_capped_at_two_a_scene_and_a_moved_one_is_kept():
+    the_spine = spine()
+    first = steps_of(the_spine, 0)
+    del first[index_of(first, type="show", prop="mimosa")]
+    second = steps_of(the_spine, 1)
+    at = index_of(second, type="say", who="friend") + 1
+    second[at:at] = [
+        {
+            "type": "say",
+            "who": "hero",
+            "en": "Like the mimosa, it waits.",
+            "fr": "Comme le mimosa, elle attend.",
+            "props": ["mimosa"],
+        },
+        {"type": "show", "prop": "mimosa"},
+    ]
+    # The microscope's close-up before any line names it, in an earlier scene.
+    third = steps_of(the_spine, 2)
+    del third[index_of(third, type="show", prop="microscope")]
+    first.insert(0, {"type": "show", "prop": "microscope"})
+    result = build(chapter_ctx(), the_spine)
+    messages = [i.message for i in result.issues if i.code == "closeup_invalid"]
+    assert any("close-ups at most" in m for m in messages)
+    scenes = result.doc["chapters"][0]["scenes"]
+
+    def closeups(scene):
+        return [s["params"]["prop"] for s in scene["steps"] if s.get("visual") == "prop"]
+
+    assert closeups(scenes[1]) == ["nere_seed", "pebble"]
+    assert "mimosa" in closeups(scenes[0])  # moved after the line that first names it
+    assert "microscope" in closeups(scenes[2])  # moved, and kept (#2687 review)
+    line = index_of(scenes[2]["steps"], type="say", who="hero")
+    assert scenes[2]["steps"][line + 1]["params"] == {"prop": "microscope"}
+    report = validate_story_course(StoryCourse.model_validate(result.doc), generated=True)
+    assert report.ok and "too_many_closeups_in_scene" not in {e.code for e in report.errors}
+
+
+def test_a_close_up_the_model_put_before_a_question_or_at_the_end_is_moved():
+    the_spine = spine()
+    steps = steps_of(the_spine, 1)
+    del steps[index_of(steps, type="show", prop="pebble")]
+    steps.insert(index_of(steps, type="ask", ref="q3"), {"type": "show", "prop": "pebble"})
+    last = steps_of(the_spine, 2)
+    del last[index_of(last, type="show", prop="microscope")]
+    last.append({"type": "show", "prop": "microscope"})
+    result = build(chapter_ctx(), the_spine)
+    found = codes(result)
+    assert "closeup_invalid" in found
+    assert repair.ASK_NOT_SET_UP not in found and repair.ENDING_NOT_STORY not in found
+    scene = result.doc["chapters"][0]["scenes"][1]["steps"]
+    assert scene[index_of(scene, type="ask", ref="q3") - 1]["type"] == "say"
+    built = built_steps(result)
+    assert built[-1]["type"] == "narrate"
+    assert sum(1 for s in built if s.get("params") == {"prop": "microscope"}) == 1
+
+
+def test_the_story_checks_see_through_a_close_up():
+    """A close-up is no lead-in and no ending: the line before it is."""
+    show = {"type": "show", "visual": "prop", "params": {"prop": "snail"}}
+    lines = [
+        {"type": "say", "who": "friend", "en": f"Line {n} of the scene.", "fr": f"Ligne {n}."}
+        for n in range(6)
+    ]
+    scenes = [
+        {
+            "steps": [
+                lines[0],
+                lines[1],
+                copy.deepcopy(show),
+                {"type": "ask", "ref": "q1"},
+                copy.deepcopy(show),
+                lines[2],
+                lines[3],
+                copy.deepcopy(show),
+            ]
+        }
+    ]
+    found: list[str] = []
+    check_story(chapter_ctx(), scenes, {}, lambda code, path, message: found.append(code))
+    assert repair.ASK_NOT_SET_UP not in found
+    assert repair.ASK_NOT_FOLLOWED not in found
+    assert repair.ENDING_NOT_STORY not in found
+
+
+def test_a_close_up_never_separates_two_runs_of_questions():
+    show = {"type": "show", "visual": "prop", "params": {"prop": "snail"}}
+
+    def ask(ref: str) -> dict[str, Any]:
+        return {"type": "ask", "ref": ref}
+
+    steps = [ask("a"), ask("b"), show, ask("c"), ask("d")]
+    assert repair.ask_run_excess(steps) == ["d"]
+    assert not repair.joins_ask_runs(steps, 2)  # removing a close-up joins nothing
+    joined = [ask("a"), ask("b"), {"type": "say"}, ask("c"), show, ask("d")]
+    assert repair.joins_ask_runs(joined, 2)
+    scenes = [{"steps": copy.deepcopy(steps)}]
+    assert repair._cap_ask_runs(scenes) == {"d"}
+    # The validator counts a run through a close-up too.
+    result = build(chapter_ctx(), spine())
+    doc = copy.deepcopy(result.doc)
+    flat = [s for sc in doc["chapters"][0]["scenes"] for s in sc["steps"]]
+    closeup = next(s for s in flat if s.get("visual") == "prop")
+    for scene in doc["chapters"][0]["scenes"]:
+        scene["steps"] = [s for s in scene["steps"] if s.get("type") != "ask" and s is not closeup]
+    first = doc["chapters"][0]["scenes"][0]["steps"]
+    at = index_of(first, type="concept") + 1
+    first[at:at] = [ask("q1"), ask("q2"), closeup, ask("q3"), ask("x1")]
+    report = validate_story_course(StoryCourse.model_validate(doc), generated=True)
+    assert "too_many_questions_in_a_row" in {e.code for e in report.errors}
+
+
+NERE = {"label": {"en": "the néré seed", "fr": "la graine de néré"}}
+
+
+@pytest.mark.parametrize(
+    ("line", "named"),
+    [
+        ("Mamie fait rouler une graine de néré brune.", True),
+        ("Les graines du néré sont là.", True),
+        ("Cette graine ne fait rien.", True),
+        ("La graine de haricot germe.", False),
+    ],
+)
+def test_the_french_matcher_reads_the_whole_label_first(line, named):
+    assert names_prop(line, NERE, "fr") is named
+
+
+def test_a_shared_head_or_a_cast_name_is_never_matched_alone():
+    leaf = {"label": {"fr": "la feuille de mimosa"}}
+    assert not names_prop("Les feuilles du manguier tombent.", leaf, "fr")
+    assert not names_prop("Une feuille tombe.", leaf, "fr", shared_heads={"feuille"})
+    assert names_prop("La feuille de mimosa se ferme.", leaf, "fr", shared_heads={"feuille"})
+    stone = {"label": {"en": "a stone", "fr": "une pierre"}}
+    assert not names_prop("Pierre, viens voir !", stone, "fr", names={"pierre"})
+    assert names_prop("Une pierre roule.", stone, "fr")
+    onion = {"label": {"fr": "des cellules d'oignon"}}
+    assert names_prop("Regarde ces cellules d’oignon !", onion, "fr")
+
+
+def test_the_example_puts_the_figure_four_lines_before_the_card():
+    ctx = chapter_ctx()
+    ctx.figures = [
+        {
+            "id": "3f2c0000-0000-0000-0000-000000000001",
+            "caption_en": "Cells",
+            "caption_fr": "Cellules",
+        }
+    ]
+    message = build_chapter_story_message(ctx, pack("1.1", LANGUAGE))
+    example = message.split("=== OUTPUT ===", 1)[1]
+    figure = example.index('{"type": "show", "figure": 1}')
+    card = example.index('{"type": "concept"')
+    assert example[figure:card].count('"type": "say"') == 4
+    assert "its figure comes early, 4 story lines before the card" in example
+
+
+def test_margo_speaks_only_in_a_scene_whose_cast_lists_her():
+    message = build_chapter_story_message(chapter_ctx(), pack("1.1", LANGUAGE))
+    assert 'Margo speaks only in a scene whose "cast" lists "margo"' in message
+
+
+def test_the_last_chapter_of_a_module_without_a_rally_resolves_the_episode():
+    ctx = chapter_ctx("1.3")
+    assert ctx.chapter_index == ctx.chapter_count == 3
+    with_rally = build_chapter_story_message(ctx, pack("1.3", LANGUAGE))
+    assert "THE LAST CHAPTER:" not in with_rally and "never a cliffhanger" not in with_rally
+    ctx.plan = {**ctx.plan, "rally": None}
+    message = build_chapter_story_message(ctx, pack("1.3", LANGUAGE))
+    assert "THE LAST CHAPTER: this module has no rally" in message
+    assert "ENDS ON is its warm last image, never a cliffhanger" in message
+    middle = chapter_ctx("1.2")
+    middle.plan = {**middle.plan, "rally": None}
+    assert "THE LAST CHAPTER:" not in build_chapter_story_message(middle, pack("1.2", LANGUAGE))
+
+
+class _PackModel:
+    """Answers the pack call with ``first``, raises ``then`` on every later call."""
+
+    def __init__(self, first: Any, then: Exception) -> None:
+        self.first, self.then, self.calls = first, then, 0
+
+    async def generate_structured_content(self, system, user, content_type, max_retries=1):
+        self.calls += 1
+        if self.calls > 1:
+            raise self.then
+        if isinstance(self.first, Exception):
+            raise self.first
+        return copy.deepcopy(self.first)
+
+
+def test_a_provider_error_on_a_pack_repair_keeps_the_paid_pack():
+    import asyncio
+
+    from app.domain.services.story_from_lesson_service import StoryFromLessonService
+
+    ctx = chapter_ctx()
+    bad = pack("1.1", LANGUAGE)
+    bad["derived"] = [d for d in bad["derived"] if d["ref"] != "q3"]  # sent back for repair
+    model = _PackModel({**bad, "__complete": True}, RuntimeError("529 overloaded"))
+    result = asyncio.run(StoryFromLessonService(model).generate_pack(ctx, system_prompt="s"))
+    assert model.calls == 2 and result.model_calls == 2
+    assert result.pack["derived"] == bad["derived"]
+    assert "assigned_ref_missing" in {i.code for i in result.issues}
+    # No readable answer at all: the provider's error is the run's.
+    failing = _PackModel(RuntimeError("401 invalid key"), RuntimeError("never"))
+    with pytest.raises(RuntimeError, match="401"):
+        asyncio.run(StoryFromLessonService(failing).generate_pack(ctx, system_prompt="s"))

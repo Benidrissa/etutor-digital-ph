@@ -1029,6 +1029,10 @@ class StoryCourseValidator:
             flat_types: list[str] = []
             for scene in chapter.scenes:
                 for step in scene.steps:
+                    if step.type == "show" and step.visual == "prop":
+                        # A close-up does not end a run: the player drops one
+                        # it has no picture for.
+                        continue
                     flat_types.append(step.type)
                     if step.type == "ask" and step.ref:
                         asked.append(step.ref)
@@ -1046,7 +1050,8 @@ class StoryCourseValidator:
             self._error(
                 "too_many_questions_in_a_row",
                 "chapters",
-                "more than 3 questions in a row — put a concept or visual between them",
+                "more than 3 questions in a row — put a line, a concept card or a figure"
+                " between them (a prop close-up does not count)",
             )
         self._check_lines_not_repeated()
 

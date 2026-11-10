@@ -45,6 +45,22 @@ async def mark_dispatched(task_id: str) -> None:
         logger.warning("task_status.mark_dispatched_failed", task_id=task_id, error=str(exc))
 
 
+def dispatch_markers(
+    task_id: str, owner_key: str | None = None, owner_ttl_s: int | None = None
+) -> list[tuple[str, int, str]]:
+    """``(key, ttl, value)`` of what :func:`mark_dispatched` and :func:`vouch_while_owned` write.
+
+    For a dispatcher without the async client (a Celery task dispatching its
+    own continuation): it writes these with ``SETEX`` before ``apply_async``.
+    """
+    if not task_id:
+        return []
+    markers = [(_key(task_id), _TTL_SECONDS, datetime.now(tz=UTC).isoformat())]
+    if owner_key and owner_ttl_s:
+        markers.append((f"{_OWNER_PREFIX}{task_id}", owner_ttl_s, owner_key))
+    return markers
+
+
 async def dispatched_at(task_id: str) -> datetime | None:
     if not task_id:
         return None

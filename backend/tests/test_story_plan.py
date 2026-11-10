@@ -31,10 +31,13 @@ from app.domain.services.story_plan import (
     StoryPlanService,
     default_plan,
     entry_refs,
+    find_plan_digests,
     global_digest,
     normalise_plan,
     plan_inputs,
+    save_pack,
     sha,
+    stored_packs,
     validate_plan,
 )
 from tests._story_db import create_tables, scratch_database, story_tables
@@ -351,7 +354,7 @@ async def test_a_plan_is_made_once_and_reused(maker):
     assert again.digest == first.digest and again.global_digest == first.global_digest
     row = await stored(maker, req)
     assert row.model == "fake-plan-model" and row.version == repair.PLAN_VERSION
-    assert set(row.content) == {"plan", "inputs", "gaps", "pins", "beats"}
+    assert set(row.content) == {"plan", "inputs", "gaps", "pins", "beats", "packs"}
     assert row.content["beats"]["rally"] and len(row.content["beats"]) == 4
 
 
@@ -430,6 +433,143 @@ async def test_a_changed_quiz_re_plans_everything(maker):
     async with maker() as session:
         await service.get_or_create(session, req, system_prompt="s")
     assert len(model.messages) == 2 and "Rewrite ONLY" not in model.messages[1]
+
+
+def _with_changed_sheet(req, index: int = 1):
+    lesson = req.lessons[index]
+    ideas = list(lesson.sheet.ideas)
+    ideas[0] += " Even a germ."
+    req.lessons[index] = replace(
+        lesson,
+        sheet=build_fact_sheet({"concepts": ideas, "key_points": list(lesson.sheet.key_facts)}),
+    )
+
+
+async def test_an_incremental_re_plan_that_fails_keeps_every_other_entry(maker):
+    """Unusable twice on one lesson's change: only that chapter is made in code."""
+    req = await seeded_request(maker)
+    good = {**answer(), "__complete": True}
+    model = FakeModel(good, ValueError("truncated"), {"raw_response": "nope"}, good)
+    service = StoryPlanService(model)
+    async with maker() as session:
+        first = await service.get_or_create(session, req, system_prompt="s")
+    _with_changed_sheet(req)
+    async with maker() as session:
+        second = await service.get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 3 and "Rewrite ONLY the entry of chapter 1.2" in model.messages[1]
+    # The good plan is not thrown away: the global block and the other
+    # chapters are kept byte for byte, so nothing else goes stale.
+    assert second.global_digest == first.global_digest
+    assert second.chapter("1.1") == first.chapter("1.1")
+    assert second.chapter("1.3") == first.chapter("1.3")
+    assert second.rally == first.rally
+    assert second.chapter("1.2") != first.chapter("1.2")
+    assert entry_refs(second.chapter("1.2")) == entry_refs(first.chapter("1.2"))
+    row = await stored(maker, req)
+    assert row.model == DEFAULTED and row.content["retry_units"] == ["1.2"]
+    assert "chapters 1.2 made in code" in row.content["gaps"]
+    async with maker() as session:
+        assert await find_plan_digests(session, req.module_id, req.language) is None
+    # The next run retries that chapter once, incrementally.
+    async with maker() as session:
+        third = await service.get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 4
+    assert "Rewrite ONLY the entry of chapter 1.2" in model.messages[3]
+    assert third.global_digest == first.global_digest
+    assert third.chapter("1.1") == first.chapter("1.1")
+    row = await stored(maker, req)
+    assert row.model == "fake-plan-model" and "retry_units" not in row.content
+    async with maker() as session:
+        assert await find_plan_digests(session, req.module_id, req.language) is not None
+
+
+async def test_an_incremental_retry_that_fails_again_is_kept(maker):
+    req = await seeded_request(maker)
+    bad = ValueError("truncated")
+    model = FakeModel({**answer(), "__complete": True}, bad, bad, bad, bad)
+    service = StoryPlanService(model)
+    async with maker() as session:
+        first = await service.get_or_create(session, req, system_prompt="s")
+    _with_changed_sheet(req)
+    for _ in range(2):
+        async with maker() as session:
+            plan = await service.get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 5
+    row = await stored(maker, req)
+    assert row.model == DEFAULTED_KEPT and "retry_units" not in row.content
+    assert plan.chapter("1.1") == first.chapter("1.1")
+    async with maker() as session:
+        assert await find_plan_digests(session, req.module_id, req.language) is not None
+        await service.get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 5  # kept: never asked again for these inputs
+
+
+async def test_a_plan_made_in_code_is_stale_for_its_one_retry_only(maker):
+    req = await seeded_request(maker)
+    model = FakeModel(ValueError("truncated"))
+    async with maker() as session:
+        await StoryPlanService(model).get_or_create(session, req, system_prompt="s")
+    async with maker() as session:
+        assert await find_plan_digests(session, req.module_id, req.language) is None
+        await StoryPlanService(model).get_or_create(session, req, system_prompt="s")
+    async with maker() as session:
+        found = await find_plan_digests(session, req.module_id, req.language)
+    assert found is not None and (await stored(maker, req)).model == DEFAULTED_KEPT
+
+
+async def test_a_provider_error_on_the_repair_keeps_the_first_answer(maker):
+    req = await seeded_request(maker)
+    bad = answer()
+    bad["chapters"][0]["beats"][0]["place"] = "mars"
+    model = FakeModel(bad, RuntimeError("429 rate limited"))
+    async with maker() as session:
+        plan = await StoryPlanService(model).get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 2
+    # The paid first answer is kept, fixed in code; it is a real plan.
+    assert plan.plan["chapters"][0]["beats"][0]["place"] == "rood_woko_market"
+    assert (await stored(maker, req)).model == "fake-plan-model"
+
+
+async def test_packs_are_kept_one_by_one_and_survive_a_new_plan(maker):
+    req = await seeded_request(maker)
+    service = StoryPlanService(FakeModel({**answer(), "__complete": True}))
+    async with maker() as session:
+        await service.get_or_create(session, req, system_prompt="s")
+
+    async def keep(key: str) -> None:
+        async with maker() as session:
+            await save_pack(
+                session, req.module_id, req.language, key, {"inputs": key, "spine": {"k": key}}
+            )
+
+    import asyncio
+
+    await asyncio.gather(*(keep(k) for k in ("a", "b", "c", "rally")))
+    async with maker() as session:
+        packs = await stored_packs(session, req.module_id, req.language)
+    assert set(packs) == {"a", "b", "c", "rally"} and packs["b"]["spine"] == {"k": "b"}
+    # A re-plan keeps them: their inputs say whether they still fit.
+    _with_changed_sheet(req)
+    async with maker() as session:
+        await service.get_or_create(session, req, system_prompt="s")
+    async with maker() as session:
+        assert set(await stored_packs(session, req.module_id, req.language)) == set(packs)
+
+
+def test_margo_is_cast_in_the_beats_where_she_speaks():
+    message = build_plan_user_message(request("fr"))
+    assert 'Margo speaks only in a beat whose "cast" lists "margo"' in message
+
+
+def test_a_module_without_a_rally_resolves_on_its_last_chapter():
+    req = request("fr")
+    assert "no rally" not in build_plan_user_message(req).split("RULES:")[1]
+    req.has_rally = False
+    message = build_plan_user_message(req)
+    assert "This module has no rally: chapter 1.3 is the climax" in message
+    assert "never a cliffhanger" in message and '"paid_off": "1.3"' in message
+    assert '"paid_off": "rally"' not in message and '"rally": {' not in message
+    assert "is past by the last chapter" in message
 
 
 def test_candidates_keep_their_content_key():

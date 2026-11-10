@@ -41,6 +41,7 @@ from app.domain.services.story_bible import StoryProviderUnavailable, find_bible
 from app.domain.services.story_module_assembly import MODULE_ASSEMBLER_VERSION
 from app.domain.services.story_module_service import (
     ASSEMBLY_FAILURE_CAP,
+    CHAPTER_FAILURE_CAP,
     ChapterGenerationFailed,
     ModuleStoryService,
     NoStoryContent,
@@ -49,6 +50,7 @@ from app.domain.services.story_module_service import (
     live_figures,
     module_story_is_fresh,
 )
+from app.domain.services.story_plan import DEFAULTED, DEFAULTED_KEPT
 from tests._story_db import create_tables, scratch_database, story_tables
 from tests.test_story_screenplay_module import (
     data,
@@ -450,16 +452,15 @@ async def test_a_failed_chapter_does_not_stop_the_next_one(sessions):
     assert rows["1.2"].status == "draft" and rows["1.2"].source_rows["failures"] == 1
     assert rows["1.2"].source_rows["pack"]["spine"]
 
-    # The next run tells only 1.2, from both its neighbours' real scenes.
+    # The next run tells only 1.2, from both its neighbours' real scenes. No
+    # pack is paid again: 1.2's is in its draft, the rally's was kept with the
+    # plan the moment it was made.
     model.unreadable.clear()
     model.calls.clear()
     model.messages.clear()
     record = await run(service_for(model), sessions, seed_)
     assert record.is_valid
-    assert [c for c in model.calls if c[0] in ("plan", "story")] == [
-        ("story", "1.2"),
-        ("story", "rally"),
-    ]
+    assert model.calls == [("story", "1.2"), ("story", "rally")]
     message = model.messages[("story", "1.2")][0]
     assert "=== WHERE THE LAST CHAPTER STOPPED" in message
     assert "=== WHERE THE NEXT CHAPTER STARTS" in message
@@ -496,6 +497,144 @@ async def test_a_chapter_that_cannot_be_made_valid_twice_is_kept_as_a_draft(sess
     chapter = next(c for c in record.content["chapters"] if c["covers"]["unit_number"] == "1.2")
     assert chapter["covers"]["status"] == "unavailable"
     assert chapter["scenes"][0]["steps"][0]["fr"].startswith("Cette partie de l'aventure")
+
+
+# --------------------------------------------------------------------------
+# A quiz unit that holds a case study (#2163): one rule for its quiz row
+# --------------------------------------------------------------------------
+
+
+async def add_case_row(sessions: Sessions, seed_: Seed, number: str = "1.5") -> None:
+    """A ``case`` row on a unit typed "quiz": it becomes a case checkpoint."""
+    async with sessions.maker() as session:
+        session.add(_row(seed_.module_id, seed_.units[number], "case", {"scenario": "Un cas."}))
+        await session.commit()
+
+
+async def test_a_quiz_unit_holding_a_case_study_keeps_its_chapters_fresh(sessions):
+    """Its quiz row covers the chapters (as freshness reads it): no paid re-tell loop."""
+    seed_ = await seed(sessions)
+    await add_case_row(sessions, seed_)
+    model = FakeModel()
+    service = service_for(model)
+    record = await run(service, sessions, seed_)
+    assert record.is_valid
+    assert service.quiz_service.calls == []  # a case checkpoint never gets a quiz made
+    assert model.count("story", "rally") == 0  # and no rally: no quiz checkpoint
+    rows = await chapter_rows(sessions, seed_)
+    assert all(rows[u].source_quiz_content_id is not None for u in LESSONS)
+    # The chapters were told with the course's questions of that quiz row.
+    assert "[q1]" in model.messages[("plan", "")][0]
+    assert await fresh(sessions, seed_)
+    model.calls.clear()
+    again = await run(service_for(model), sessions, seed_)
+    assert model.calls == [] and again.id == record.id
+    assert await fresh(sessions, seed_)
+
+
+async def test_a_quiz_unit_holding_a_case_study_stops_paying_after_the_failure_cap(sessions):
+    """The same module whose chapters never validate: kept as drafts after the cap."""
+    seed_ = await seed(sessions)
+    await add_case_row(sessions, seed_)
+    model = FakeModel()
+    broken = {**story_answer("1.1"), "scenes": [], "props": [], "__complete": True}
+
+    async def never_valid(system, user, content_type, max_retries=1):
+        kind, unit = FakeModel.kind_of(user)
+        if kind == "story":
+            model.calls.append((kind, unit))
+            return copy.deepcopy(broken)
+        return await FakeModel.generate_structured_content(model, system, user, content_type)
+
+    model.generate_structured_content = never_valid  # type: ignore[method-assign]
+    for _ in range(CHAPTER_FAILURE_CAP - 1):
+        with pytest.raises(ChapterGenerationFailed):
+            await run(service_for(model), sessions, seed_)
+    await run(service_for(model), sessions, seed_)  # the cap: written with placeholders
+    rows = await chapter_rows(sessions, seed_)
+    assert all(rows[u].source_rows["failures"] == CHAPTER_FAILURE_CAP for u in LESSONS)
+    assert await fresh(sessions, seed_)
+    model.calls.clear()
+    await run(service_for(model), sessions, seed_)
+    assert model.calls == []
+
+
+# --------------------------------------------------------------------------
+# A plan made in code: retried once, then kept
+# --------------------------------------------------------------------------
+
+
+async def set_plan_model(sessions: Sessions, seed_: Seed, model: str) -> None:
+    async with sessions.maker() as session:
+        await session.execute(
+            sa.update(StoryModulePlan)
+            .where(StoryModulePlan.module_id == seed_.module_id)
+            .values(model=model)
+        )
+        await session.commit()
+
+
+async def plan_row(sessions: Sessions, seed_: Seed) -> StoryModulePlan:
+    async with sessions.maker() as session:
+        return (
+            await session.execute(
+                sa.select(StoryModulePlan).where(StoryModulePlan.module_id == seed_.module_id)
+            )
+        ).scalar_one()
+
+
+async def test_a_plan_made_in_code_is_retried_on_the_next_open_once(sessions):
+    seed_, model = await told(sessions)
+    await set_plan_model(sessions, seed_, DEFAULTED)
+    assert not await fresh(sessions, seed_)  # its one retry is due
+    record = await run(service_for(model), sessions, seed_)
+    # The retry made the same plan: no chapter, pack or rally is paid again.
+    assert model.calls == [("plan", "")] and record.is_valid
+    assert (await plan_row(sessions, seed_)).model == "fake-model"
+    assert await fresh(sessions, seed_)
+    model.calls.clear()
+    await run(service_for(model), sessions, seed_)
+    assert model.calls == []
+
+
+async def test_a_plan_kept_after_its_retry_is_current(sessions):
+    seed_, model = await told(sessions)
+    await set_plan_model(sessions, seed_, DEFAULTED_KEPT)
+    assert await fresh(sessions, seed_)
+    await run(service_for(model), sessions, seed_)
+    assert model.calls == []
+
+
+async def test_a_failed_incremental_re_plan_re_tells_only_the_changed_chapter(sessions):
+    seed_, model = await told(sessions)
+    before = await plan_row(sessions, seed_)
+
+    def change(content):
+        content["concepts"][0] += " Même un microbe."
+
+    await edit_lesson(sessions, seed_, "1.2", change)
+    model.unreadable.add(("plan", ""))
+    await run(service_for(model), sessions, seed_)
+    # Two unusable plan answers; only 1.2 is made in code and told again.
+    assert model.count("plan") == 2
+    assert sorted(c for c in model.calls if c[0] != "plan") == [("pack", "1.2"), ("story", "1.2")]
+    after = await plan_row(sessions, seed_)
+    assert after.global_digest == before.global_digest
+    assert after.model == DEFAULTED and after.content["retry_units"] == ["1.2"]
+    assert (
+        after.content["beats"][str(seed_.units["1.1"])]
+        == before.content["beats"][str(seed_.units["1.1"])]
+    )
+    # The next open retries that chapter's entry once; nothing else is paid.
+    assert not await fresh(sessions, seed_)
+    model.unreadable.clear()
+    model.calls.clear()
+    model.messages.clear()
+    await run(service_for(model), sessions, seed_)
+    assert "Rewrite ONLY the entry of chapter 1.2" in model.messages[("plan", "")][0]
+    assert sorted(model.calls) == [("pack", "1.2"), ("plan", ""), ("story", "1.2")]
+    assert (await plan_row(sessions, seed_)).model == "fake-model"
+    assert await fresh(sessions, seed_)
 
 
 # --------------------------------------------------------------------------
@@ -541,8 +680,9 @@ async def test_re_telling_one_chapter_keeps_the_next_one_fresh(sessions):
         await session.commit()
     assert not await fresh(sessions, seed_)
     await run(service_for(model), sessions, seed_)
-    # Its pack and story; 1.2, 1.3 and the rally (same recaps) are kept.
-    assert sorted(model.calls) == [("pack", "1.1"), ("story", "1.1")]
+    # Its story (its pack was kept with the plan); 1.2, 1.3 and the rally
+    # (same recaps) are kept.
+    assert model.calls == [("story", "1.1")]
     assert await fresh(sessions, seed_)
 
 
@@ -632,11 +772,12 @@ async def test_the_run_stops_before_a_story_call_it_has_no_time_for(sessions):
     assert stopped.value.told == ["1.1"]
     assert model.count("story", "1.2") == 0
     assert set(await chapter_rows(sessions, seed_)) == {"1.1"}
-    # The continuation tells only the rest.
+    assert model.count("pack") == 4  # every pack once, each kept as it was made
+    # The continuation tells only the rest, and pays for no pack again.
     model.calls.clear()
     record = await run(service_for(model), sessions, seed_)
     assert record.is_valid
-    assert [u for k, u in model.calls if k == "story"] == ["1.2", "1.3", "rally"]
+    assert model.calls == [("story", "1.2"), ("story", "1.3"), ("story", "rally")]
 
 
 async def test_a_soft_time_limit_inside_a_story_cancels_the_packs_and_propagates(sessions):

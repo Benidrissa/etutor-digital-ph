@@ -420,16 +420,16 @@ def _chapter_steps(doc: dict[str, Any]) -> list[list[dict[str, Any]]]:
 def _runs_hold_without(doc: dict[str, Any], ids: set[str]) -> bool:
     """Whether ``doc`` keeps at most MAX_ASKS_IN_A_ROW asks in a row without ``ids``.
 
-    Their asks and situation cards go, as :func:`_drop_questions` removes them:
-    a situation card can be what separates two runs.
+    Exactly what :func:`_drop_questions` removes goes, scene by scene
+    (:func:`_without_asks`): the asks, their situation cards and a lead-in
+    left with nothing to set up — any of them can be what separates two runs.
     """
     situations = {repair.situation_step_id(qid) for qid in ids}
-    for steps in _chapter_steps(doc):
+    for chapter in doc.get("chapters") or []:
         kept = [
             step
-            for step in steps
-            if not (step.get("type") == "ask" and step.get("ref") in ids)
-            and not (step.get("type") == "concept" and step.get("id") in situations)
+            for scene in chapter["scenes"]
+            for step in _without_asks(scene["steps"], ids, situations)
         ]
         if repair.ask_run_excess(kept):
             return False
@@ -789,6 +789,26 @@ def _merge_props(merged: list[dict[str, Any]], doc: dict[str, Any]) -> None:
                     params["prop"] = rename.get(params.get("prop"), params.get("prop"))
 
 
+def _ground_held_props(props: list[dict[str, Any]], chapters: list[dict[str, Any]]) -> None:
+    """A held prop whose holder is off stage in a scene that shows it goes to the ground.
+
+    Each chapter settled its own scenes, but the module keeps a prop's first
+    declaration: a later chapter that showed it without its holder put its
+    own copy on the ground, and that change is not merged.
+    """
+    for prop in props:
+        if prop.get("at") != "held":
+            continue
+        pid, holder = prop.get("id"), prop.get("holder")
+        if any(
+            pid in (scene.get("props") or []) and holder not in (scene.get("cast") or [])
+            for chapter in chapters
+            for scene in chapter["scenes"]
+        ):
+            prop["at"] = "ground"
+            prop.pop("holder", None)
+
+
 def _cap_runs(doc: dict[str, Any]) -> int:
     """Leave out the asks of a run past MAX_ASKS_IN_A_ROW (a backstop); returns their points.
 
@@ -948,6 +968,7 @@ def assemble_module_story(
             rest = {key: value for key, value in scene.items() if key != "id"}
             renumbered.append({"id": f"s{scene_number}", **rest})
         chapter["scenes"] = renumbered
+    _ground_held_props(merged_props, module_chapters)
 
     module_title = _pair(
         ctx.module_title, f"Module {ctx.module_number}", f"Module {ctx.module_number}"

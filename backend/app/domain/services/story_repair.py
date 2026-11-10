@@ -2143,15 +2143,29 @@ def repeat_keys(step: dict[str, Any]) -> set[tuple[str, str]]:
     return {key for key in keys if len(key[1]) >= MIN_REPEAT_LENGTH}
 
 
+def is_closeup(step: dict[str, Any]) -> bool:
+    """A prop's close-up: transparent in a run of questions.
+
+    The player drops a close-up it has no picture for, so it never separates
+    two runs: a run is counted through it.
+    """
+    return step.get("type") == "show" and step.get("visual") == "prop"
+
+
 def joins_ask_runs(steps: list[dict[str, Any]], index: int) -> bool:
-    """Whether removing ``steps[index]`` leaves more than MAX_ASKS_IN_A_ROW asks in a row."""
+    """Whether removing ``steps[index]`` leaves more than MAX_ASKS_IN_A_ROW asks in a row.
+
+    Close-ups are seen through (:func:`is_closeup`); removing one joins nothing.
+    """
+    if is_closeup(steps[index]):
+        return False
     before = after = 0
     i = index - 1
-    while i >= 0 and steps[i].get("type") == "ask":
-        before, i = before + 1, i - 1
+    while i >= 0 and (steps[i].get("type") == "ask" or is_closeup(steps[i])):
+        before, i = before + (steps[i].get("type") == "ask"), i - 1
     i = index + 1
-    while i < len(steps) and steps[i].get("type") == "ask":
-        after, i = after + 1, i + 1
+    while i < len(steps) and (steps[i].get("type") == "ask" or is_closeup(steps[i])):
+        after, i = after + (steps[i].get("type") == "ask"), i + 1
     return before + after > MAX_ASKS_IN_A_ROW
 
 
@@ -2184,7 +2198,10 @@ def drop_steps_keeping_runs(
 
 
 def ask_run_excess(steps: list[dict[str, Any]]) -> list[str]:
-    """The refs of the asks beyond :data:`MAX_ASKS_IN_A_ROW` in each run of ``steps``."""
+    """The refs of the asks beyond :data:`MAX_ASKS_IN_A_ROW` in each run of ``steps``.
+
+    A close-up does not end a run (:func:`is_closeup`).
+    """
     excess: list[str] = []
     run = 0
     for step in steps:
@@ -2192,7 +2209,7 @@ def ask_run_excess(steps: list[dict[str, Any]]) -> list[str]:
             run += 1
             if run > MAX_ASKS_IN_A_ROW and step.get("ref"):
                 excess.append(step["ref"])
-        else:
+        elif not is_closeup(step):
             run = 0
     return excess
 
@@ -2297,20 +2314,30 @@ def _place_unasked(
 
 
 def _before_closing_lines(steps: list[dict[str, Any]]) -> int:
-    """Where to insert something before the final run of story lines of ``steps``."""
+    """Where to insert something before the final run of story lines of ``steps``.
+
+    A scene of story lines only (a cliffhanger) keeps its last two lines
+    after the item, its only line when it has one: never appended.
+    """
     position = len(steps)
     while position > 0 and steps[position - 1].get("type") in ("say", "narrate"):
         position -= 1
-    return position if position > 0 else len(steps)
+    return position if position > 0 else max(len(steps) - 2, 0)
 
 
 def _cap_ask_runs(scenes: list[dict[str, Any]]) -> set[str]:
-    """Asks beyond :data:`MAX_ASKS_IN_A_ROW` in a run are left out; their ids returned."""
+    """Asks beyond :data:`MAX_ASKS_IN_A_ROW` in a run are left out; their ids returned.
+
+    A close-up does not end a run (:func:`is_closeup`): the player may drop it.
+    """
     dropped: set[str] = set()
     run = 0
     for scene in scenes:
         kept: list[dict[str, Any]] = []
         for step in scene["steps"]:
+            if is_closeup(step):
+                kept.append(step)
+                continue
             if step["type"] == "ask":
                 if run >= MAX_ASKS_IN_A_ROW:
                     dropped.add(step["ref"])
@@ -2892,6 +2919,7 @@ def _assemble(
         figures=ctx.figure_refs(),
         cast_ids=cast.ids,
         issue=builder_issue,
+        cast_names=cast.names(),
     )
     # A generated scene is set at one of the bible's places, never at a key of
     # the old catalog: the course's art is made for those places only.
@@ -2952,6 +2980,11 @@ def _assemble(
         _place_items(scenes, refs, exercises)
         _infer_objectives(scenes, built)
         props = book.finish(scenes, module_count=len(ctx.known_props))
+        # The props removed close-ups: runs are capped once more (a backstop,
+        # as close-ups are seen through, removing one never joins two runs).
+        recapped = _cap_ask_runs(scenes)
+        if recapped:
+            built = [q for q in built if q.doc["id"] not in recapped]
         if ctx.is_v4 and story_checks:
             story = check_story(
                 ctx, scenes, _question_facts(built), builder_issue, fallback_cards=fallback_cards

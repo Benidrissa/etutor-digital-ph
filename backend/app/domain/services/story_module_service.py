@@ -21,8 +21,9 @@ Story generator v4 ("plan, then tell"), run by
    premise, voices, catchphrases, props, and per chapter its beats, hook and
    course questions; then the rally. Cached in ``story_module_plans``.
 2. **Practice packs**, concurrently (at most ``concurrency`` at a time): each
-   chapter's questions, paper task and game, written apart from its story
-   and cached in the chapter row.
+   chapter's questions, paper task and game, written apart from its story.
+   Each is kept with the plan the moment it is made (:func:`story_plan.save_pack`),
+   so a run that stops — a deadline, a failed chapter — never pays for it again.
 3. **The chapters, in order**: each told from the plan, the story so far and
    the previous chapter's real last scene (``WHERE THE LAST CHAPTER
    STOPPED``). A chapter that fails does not stop the others: the next one
@@ -126,7 +127,9 @@ from app.domain.services.story_plan import (
     find_plan,
     find_plan_digests,
     mcq_key,
+    save_pack,
     sha,
+    stored_packs,
 )
 from app.domain.services.story_props import plan_props
 
@@ -709,6 +712,13 @@ class _Run:
     told: list[str] = field(default_factory=list)
     #: Model calls of this run, by phase (for the cost report).
     calls: dict[str, int] = field(default_factory=dict)
+    #: The packs kept with the plan (lesson unit id or "rally" → pack).
+    packs_kept: dict[str, Any] = field(default_factory=dict)
+    #: The packs whose model call has started (a stop lets them finish).
+    packs_started: set[str] = field(default_factory=set)
+
+    def time_left(self) -> float | None:
+        return None if self.deadline is None else max(0.0, self.deadline - self.clock())
 
     def count(self, phase: str, calls: int) -> None:
         self.calls[phase] = self.calls.get(phase, 0) + calls
@@ -905,6 +915,8 @@ class ModuleStoryService:
                 session, run.request, system_prompt=plan_prompt, force=force_regenerate
             )
             run.count("plan", run.plan.calls)
+            if not force_regenerate:
+                run.packs_kept = await stored_packs(session, module_id, language)
             if self.figure_storage is not None:
                 for unit in lessons:
                     row = run.lesson_rows[unit.module_unit_id]
@@ -952,14 +964,16 @@ class ModuleStoryService:
         rally_previous = previous_manifest.get("rally")
         rally_pack_inputs = self._rally_pack_inputs(run) if run.plan.rally and rally_unit else None
         rally_pack_cached = (
-            rally_previous.get("pack")
-            if isinstance(rally_previous, dict)
-            and isinstance(rally_previous.get("pack"), dict)
-            and rally_previous["pack"].get("inputs") == rally_pack_inputs
-            and not force_regenerate
+            _fitting_pack(
+                rally_previous.get("pack") if isinstance(rally_previous, dict) else None,
+                run.packs_kept.get("rally"),
+                inputs=rally_pack_inputs,
+            )
+            if rally_pack_inputs is not None and not force_regenerate
             else None
         )
         tasks: dict[str, asyncio.Task[Any]] = {}
+        abort = True
         try:
             for unit in stale:
                 tasks[unit.unit_number] = asyncio.create_task(
@@ -988,11 +1002,12 @@ class ModuleStoryService:
                     previous=rally_previous,
                     system_prompt=story_prompt,
                 )
+            abort = False
+        except (StoryDeadlineReached, ChapterGenerationFailed):
+            abort = False  # a clean stop: the packs in flight are paid, keep them
+            raise
         finally:
-            for task in tasks.values():
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*tasks.values(), return_exceptions=True)
+            await _settle_packs(run, tasks, abort=abort)
         record = await self._merge(
             session_factory, ctx, units, course_id, rally, run.plan, previous_manifest
         )
@@ -1162,9 +1177,16 @@ class ModuleStoryService:
 
         Pinning keeps one story for every learner: a learner whose level or
         country picks another row never makes the plan (or the rally) stale.
+
+        A covering unit's quiz row is read whatever its role, as freshness
+        (:func:`chapters_are_fresh`) checks it: a unit typed "quiz" that holds
+        a case study (a ``case_checkpoint``, #2163) and also has a quiz row
+        would otherwise make the chapters it covers stale after every run.
+        Only generating a quiz and telling the rally depend on the role.
         """
         pinned_lessons = pins.get("lessons") or {}
         pinned_quizzes = pins.get("quizzes") or {}
+        covering = set(run.covering.values())
         for unit in units:
             if unit.role == "lesson":
                 row = await _pick_row(session, run, unit.module_unit_id, "lesson", pinned_lessons)
@@ -1173,7 +1195,7 @@ class ModuleStoryService:
                         [unit.unit_number], {unit.unit_number: "no lesson row"}
                     )
                 run.lesson_rows[unit.module_unit_id] = row
-            elif unit.role == "quiz_checkpoint":
+            elif unit.role == "quiz_checkpoint" or unit.module_unit_id in covering:
                 row = await _pick_row(session, run, unit.module_unit_id, "quiz", pinned_quizzes)
                 if row is not None:
                     run.quiz_rows[unit.module_unit_id] = row
@@ -1237,6 +1259,7 @@ class ModuleStoryService:
             [run.lesson_rows[u.module_unit_id].content or {} for u in lessons],
             stems,
             bible.content,
+            country=run.country,
         )
         return PlanRequest(
             module_id=run.module_id,
@@ -1363,19 +1386,21 @@ class ModuleStoryService:
         row: StoryCourseRecord | None,
         system_prompt: str,
     ) -> dict[str, Any] | None:
-        """A chapter's practice pack: cached in its row when its inputs match, else made."""
+        """A chapter's practice pack: kept (chapter row or plan) when its inputs match, else made."""
         chapter = self._chapter_ctx(run, ctx, unit)
         inputs = self._pack_inputs(run, chapter)
-        cached = (row.source_rows or {}).get("pack") if row is not None else None
-        if (
-            not run.force
-            and isinstance(cached, dict)
-            and cached.get("inputs") == inputs
-            and isinstance(cached.get("spine"), dict)
-        ):
-            return {"inputs": inputs, "spine": cached["spine"]}
+        key = str(unit.module_unit_id)
+        if not run.force:
+            kept = _fitting_pack(
+                (row.source_rows or {}).get("pack") if row is not None else None,
+                run.packs_kept.get(key),
+                inputs=inputs,
+            )
+            if kept is not None:
+                return kept
         try:
             async with run.semaphore:
+                run.packs_started.add(unit.unit_number)
                 with ai_usage_context(
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
                 ):
@@ -1387,7 +1412,9 @@ class ModuleStoryService:
             logger.warning("Module story pack failed", unit=unit.unit_number, error=str(exc)[:300])
             return None
         run.count("packs", result.model_calls)
-        return {"inputs": inputs, "spine": result.pack}
+        made = {"inputs": inputs, "spine": result.pack}
+        await _keep_pack(run, key, made)
+        return made
 
     async def _rally_pack(
         self, run: _Run, ctx: ModuleStoryContext, rally_unit: StoryUnit, system_prompt: str
@@ -1395,6 +1422,7 @@ class ModuleStoryService:
         rally_ctx = self._rally_ctx(run, ctx, rally_unit, from_plan=True)
         try:
             async with run.semaphore:
+                run.packs_started.add("rally")
                 with ai_usage_context(
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
                 ):
@@ -1407,7 +1435,9 @@ class ModuleStoryService:
             run.failures[rally_unit.unit_number] = f"{type(exc).__name__}: {exc}"[:300]
             return None
         run.count("packs", result.model_calls)
-        return {"inputs": self._rally_pack_inputs(run), "spine": result.pack}
+        made = {"inputs": self._rally_pack_inputs(run), "spine": result.pack}
+        await _keep_pack(run, "rally", made)
+        return made
 
     # -- 3. the chapters, in order ---------------------------------------------------
 
@@ -1967,6 +1997,54 @@ def _system_prompt(
         course_title=in_target(course.title_en, course.title_fr) if course else None,
         module_title=module_title[language],
     )
+
+
+def _fitting_pack(*kept: Any, inputs: str | None) -> dict[str, Any] | None:
+    """The first kept pack made from exactly ``inputs``, as ``{"inputs", "spine"}``."""
+    for pack in kept:
+        if (
+            inputs is not None
+            and isinstance(pack, dict)
+            and pack.get("inputs") == inputs
+            and isinstance(pack.get("spine"), dict)
+        ):
+            return {"inputs": inputs, "spine": pack["spine"]}
+    return None
+
+
+async def _keep_pack(run: _Run, key: str, pack: dict[str, Any]) -> None:
+    """Keep a pack with the plan as soon as it is made; a failure to keep it is logged."""
+    try:
+        async with run.session_factory() as session:
+            await save_pack(session, run.module_id, run.language, key, pack)
+    except SoftTimeLimitExceeded:
+        raise
+    except Exception as exc:
+        logger.warning("Module story pack not kept", key=key, error=str(exc)[:300])
+
+
+async def _settle_packs(run: _Run, tasks: dict[str, asyncio.Task[Any]], *, abort: bool) -> None:
+    """End the pack tasks when the chapters are done or the run stops.
+
+    A pack still waiting for its turn is cancelled: nothing was paid. On a
+    clean stop (a deadline, a failed chapter) a pack whose call has started is
+    paid for: it is let finish, within the time left, and kept
+    (:func:`_keep_pack`), so the next run never pays for it again. ``abort``
+    (a time limit, a cancellation, a bug) cancels everything.
+    """
+    waiting: list[asyncio.Task[Any]] = []
+    for key, task in tasks.items():
+        if task.done():
+            continue
+        if abort or key not in run.packs_started:
+            task.cancel()
+        else:
+            waiting.append(task)
+    if waiting:
+        _done, pending = await asyncio.wait(waiting, timeout=run.time_left())
+        for task in pending:
+            task.cancel()
+    await asyncio.gather(*tasks.values(), return_exceptions=True)
 
 
 async def _pick_row(

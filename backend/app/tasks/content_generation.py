@@ -1,6 +1,9 @@
 """Celery tasks for AI content generation."""
 
+import contextlib
+import hashlib
 import uuid
+from collections.abc import AsyncIterator
 
 import structlog
 from celery import Task
@@ -28,7 +31,10 @@ POLL_HARD_LIMIT = 320
 #: itself again (at most MODULE_STORY_MAX_CONTINUATIONS times). Chapters are
 #: cached one by one, so nothing is paid twice. HARD + 60 (the API's dedup
 #: TTL, 2520 s) stays under the Redis broker's default 3600 s visibility
-#: timeout (acks_late).
+#: timeout (acks_late) — but that timeout also counts the wait in a worker's
+#: prefetch buffer, so a long-queued run can be delivered again with the same
+#: id: the run's PostgreSQL advisory lock (_module_story_lock) turns the
+#: second copy away before it pays for anything.
 MODULE_STORY_SOFT_LIMIT = 2400
 MODULE_STORY_HARD_LIMIT = 2460
 #: The run's own deadline comes this long before the soft limit.
@@ -45,6 +51,20 @@ MODULE_STORY_DISPATCH_TTL_S = MODULE_STORY_HARD_LIMIT + 60
 #: plus the setup and merge sessions, which are never open during the fan-out.
 MODULE_STORY_POOL_SIZE = 8
 MODULE_STORY_MAX_OVERFLOW = 2
+
+#: First key of the module story run locks (two int4 keys: namespace, then
+#: module and language). PostgreSQL keeps two-key advisory locks apart from
+#: single-bigint ones, so these never meet the bible's or the plan's locks
+#: (one bigint each), nor story art's (namespace 0x2675).
+MODULE_STORY_LOCK_NAMESPACE = 0x2680
+
+#: What a run turned away by the lock reports: another copy is telling it.
+MODULE_STORY_SKIPPED = {
+    "status": "skipped",
+    "reason": "module_story_in_progress",
+    "content_id": None,
+    "is_valid": False,
+}
 
 #: How long the module story task waits, before disposing of its engine, for
 #: the session closes a soft time limit left running (well inside the 60 s
@@ -552,6 +572,42 @@ def _release_story_dispatch(dedup_key: str | None, task_id: str | None) -> None:
         logger.warning("Story dispatch key not released", key=dedup_key, error=str(exc))
 
 
+def module_story_lock_key(module_id: str, language: str) -> tuple[int, int]:
+    """The run lock's key: ``(namespace, signed int4 of the module and language)``."""
+    digest = hashlib.sha256(f"module_story:{module_id}:{language}".encode()).digest()
+    return MODULE_STORY_LOCK_NAMESPACE, int.from_bytes(digest[:4], "big", signed=True)
+
+
+@contextlib.asynccontextmanager
+async def _module_story_lock(engine, module_id: str, language: str) -> AsyncIterator[bool]:
+    """Hold the (module, language) PostgreSQL advisory lock for a run; yield whether taken.
+
+    ``pg_try_advisory_lock`` on a connection of its own, kept for the whole
+    run in autocommit (no transaction stays open), then unlocked. The lock is
+    the database's, so it holds whatever Redis says: a broker redelivery of
+    the same task id (``acks_late``, a message unacked past the visibility
+    timeout while it waited in a prefetch buffer), which the dedup key naming
+    that id lets through, finds it taken. A connection that dies frees it,
+    and the task's engine is disposed after every run.
+    """
+    import sqlalchemy as sa
+
+    namespace, key = module_story_lock_key(module_id, language)
+    async with engine.connect() as connection:
+        connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
+        taken = bool(
+            (
+                await connection.execute(sa.select(sa.func.pg_try_advisory_lock(namespace, key)))
+            ).scalar()
+        )
+        try:
+            yield taken
+        finally:
+            if taken:
+                with contextlib.suppress(Exception):
+                    await connection.execute(sa.select(sa.func.pg_advisory_unlock(namespace, key)))
+
+
 def _continue_module_story(
     module_id: str,
     language: str,
@@ -563,46 +619,62 @@ def _continue_module_story(
 ) -> str | None:
     """Dispatch the next part of a module story run; hand it the dedup key.
 
-    The new task id is written to the API's dedup key (compare-and-set from
-    this task's id), so a learner's next GET joins the continuation instead of
-    starting another run. ``None`` when the dispatch failed.
+    The new task's id is made first, so the task is marked as dispatched and
+    vouched for (``content_task:{id}``, ``content_task_owner:{id}``, as the
+    API does for the first task) before it is queued: a learner who joins it
+    while it waits in the queue sees it pending, never ``task_lost``. Then the
+    id is written to the API's dedup key (compare-and-set from this task's
+    id), so a learner's next GET joins the continuation instead of starting
+    another run. ``None`` when the dispatch failed.
     """
+    from app.api.v1._task_status import dispatch_markers
+
+    next_id = str(uuid.uuid4())
+    client = None
     try:
-        result = generate_module_story_task.apply_async(
-            kwargs={
-                "module_id": module_id,
-                "language": language,
-                "country": country,
-                "level": level,
-                "force_regenerate": False,
-                "dedup_key": dedup_key,
-                "continuation": continuation,
-            }
-        )
+        import redis
+
+        from app.infrastructure.config.settings import settings
+
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        for key, ttl, value in dispatch_markers(next_id, dedup_key, MODULE_STORY_DISPATCH_TTL_S):
+            client.setex(key, ttl, value)
     except Exception as exc:
-        logger.error("Module story continuation not dispatched", error=str(exc)[:300])
-        return None
-    if dedup_key and task_id:
+        logger.warning("Continuation not marked as dispatched", task_id=next_id, error=str(exc))
+    try:
         try:
-            import redis
-
-            from app.infrastructure.config.settings import settings
-
-            client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+            generate_module_story_task.apply_async(
+                kwargs={
+                    "module_id": module_id,
+                    "language": language,
+                    "country": country,
+                    "level": level,
+                    "force_regenerate": False,
+                    "dedup_key": dedup_key,
+                    "continuation": continuation,
+                },
+                task_id=next_id,
+            )
+        except Exception as exc:
+            logger.error("Module story continuation not dispatched", error=str(exc)[:300])
+            return None
+        if dedup_key and task_id and client is not None:
             try:
                 client.eval(
                     _HAND_OVER_SCRIPT,
                     1,
                     dedup_key,
                     task_id,
-                    result.id,
+                    next_id,
                     MODULE_STORY_DISPATCH_TTL_S,
                 )
-            finally:
+            except Exception as exc:
+                logger.warning("Story dispatch key not handed over", key=dedup_key, error=str(exc))
+        return next_id
+    finally:
+        if client is not None:
+            with contextlib.suppress(Exception):
                 client.close()
-        except Exception as exc:
-            logger.warning("Story dispatch key not handed over", key=dedup_key, error=str(exc))
-    return str(result.id)
 
 
 #: Give the dedup key to the continuation: when it still names this task, or
@@ -662,8 +734,11 @@ def generate_module_story_task(
     (their sessions roll back) and the task reports ``time_limit_exceeded``.
 
     ``dedup_key`` is the API's Redis key for this (module, language); it is
-    released when the task ends, however it ends. Never retried
-    (``autoretry_for`` is unset): a retry would pay for the chapters again.
+    released when the task ends, however it ends — except by a copy turned
+    away by the run lock (:func:`_module_story_lock`, a broker redelivery of
+    the same id while it runs), which reports ``{"status": "skipped"}`` and
+    leaves the key to the running copy. Never retried (``autoretry_for`` is
+    unset): a retry would pay for the chapters again.
     """
     import asyncio
     import time
@@ -703,36 +778,47 @@ def generate_module_story_task(
         )
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
-            claude = ClaudeService()
-            # Shared by every chapter: both hold configuration only, and the
-            # embedding client is safe to use concurrently on one loop.
-            retriever = SemanticRetriever(
-                EmbeddingService(api_key=settings.openai_api_key, model=settings.embedding_model)
-            )
-            from app.infrastructure.storage.s3 import S3StorageService
+            async with _module_story_lock(engine, module_id, language) as taken:
+                if not taken:
+                    logger.warning(
+                        "Module story run skipped: another run holds the module's lock",
+                        module_id=module_id,
+                        language=language,
+                        task_id=self.request.id,
+                    )
+                    return dict(MODULE_STORY_SKIPPED)
+                claude = ClaudeService()
+                # Shared by every chapter: both hold configuration only, and the
+                # embedding client is safe to use concurrently on one loop.
+                retriever = SemanticRetriever(
+                    EmbeddingService(
+                        api_key=settings.openai_api_key, model=settings.embedding_model
+                    )
+                )
+                from app.infrastructure.storage.s3 import S3StorageService
 
-            service = ModuleStoryService(
-                claude,
-                LessonGenerationService(claude, retriever),
-                QuizService(claude, retriever),
-                # #2681: a figure whose binary is gone is never offered.
-                figure_storage=S3StorageService(),
-            )
-            record = await service.get_or_generate_module_story(
-                uuid.UUID(module_id),
-                language,
-                session_factory,
-                level=level,
-                country=country,
-                # A continuation never forces: the chapters already told are kept.
-                force_regenerate=force_regenerate and continuation == 0,
-                deadline=deadline,
-            )
-            return {
-                "status": "complete",
-                "content_id": str(record.id),
-                "is_valid": bool(record.is_valid),
-            }
+                service = ModuleStoryService(
+                    claude,
+                    LessonGenerationService(claude, retriever),
+                    QuizService(claude, retriever),
+                    # #2681: a figure whose binary is gone is never offered.
+                    figure_storage=S3StorageService(),
+                )
+                record = await service.get_or_generate_module_story(
+                    uuid.UUID(module_id),
+                    language,
+                    session_factory,
+                    level=level,
+                    country=country,
+                    # A continuation never forces: the chapters already told are kept.
+                    force_regenerate=force_regenerate and continuation == 0,
+                    deadline=deadline,
+                )
+                return {
+                    "status": "complete",
+                    "content_id": str(record.id),
+                    "is_valid": bool(record.is_valid),
+                }
         finally:
             # A chapter session's close can outlive its chapter on a soft
             # time limit (see _await_other_tasks): let it finish first.
@@ -740,9 +826,13 @@ def generate_module_story_task(
             await engine.dispose()
 
     failed: dict = {"status": "failed", "content_id": None, "is_valid": False}
+    release_key = True
     try:
         _hold_story_dispatch(dedup_key, self.request.id, MODULE_STORY_DISPATCH_TTL_S)
         result = asyncio.run(_run())
+        if result == MODULE_STORY_SKIPPED:
+            # The running copy may have this very id: leave its key alone.
+            release_key = False
         logger.info(
             "Async module story generation completed",
             module_id=module_id,
@@ -809,7 +899,8 @@ def generate_module_story_task(
         )
         return {**failed, "error": str(exc)}
     finally:
-        _release_story_dispatch(dedup_key, self.request.id)
+        if release_key:
+            _release_story_dispatch(dedup_key, self.request.id)
 
 
 @celery_app.task(

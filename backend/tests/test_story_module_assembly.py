@@ -1044,3 +1044,63 @@ def test_a_run_too_long_in_a_chapter_is_capped_with_its_points(fixture, language
     covers = {c["covers"]["unit_number"]: c["covers"] for c in doc["chapters"]}
     assert covers["1.2"]["max_points"] == second["checks"]["max_points"] - 2
     assert sum(c["max_points"] for c in covers.values()) == report.checks.max_points
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_copy_whose_lead_in_separates_two_runs_is_kept(fixture, language):
+    """Dropping the copy would drop its lead-in too and join q4 q5 | q6 x1 (#2687 review)."""
+    sources = chapter_sources(fixture, language)
+    first = next(s.doc for s in sources if s.unit.unit_number == "1.1")
+    second = next(s.doc for s in sources if s.unit.unit_number == "1.2")
+    copied = copy.deepcopy(next(q for q in first["questions"] if q["id"] == "q2"))
+    copied["id"] = "q99"
+    second["questions"].append(copied)
+    second["misconceptions"] += [
+        m
+        for m in first["misconceptions"]
+        if m["id"] in {c.get("misconception") for c in copied["choices"]}
+        and m["id"] not in {x["id"] for x in second["misconceptions"]}
+    ]
+    second["checks"]["max_points"] += 2
+    lead = _say(second, "Your turn, {child}: which one?", "À toi, {child} : lequel ?")
+    lead.pop("props", None)
+    _asks_only_in_scene_two(
+        second,
+        [
+            {"type": "ask", "ref": "q4"},
+            {"type": "ask", "ref": "q5"},
+            lead,
+            {"type": "ask", "ref": "q99"},
+            {"type": "ask", "ref": "q6"},
+            {"type": "ask", "ref": "x1"},
+        ],
+    )
+    assert repair.publishable(
+        validate_story_course(StoryCourse.model_validate(second), generated=True), second
+    ).ok
+
+    doc = assemble_module_story(module_ctx(fixture, language), sources, rally(fixture, language))
+
+    ids = {q["id"] for q in doc["questions"]}
+    assert "u1_2-q99" in ids and "u1_2-x1" in ids  # no question lost to a joined run
+    report = validate_module_story(doc)
+    assert report.ok, [e.model_dump() for e in report.errors]
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_held_prop_shown_later_without_its_holder_goes_to_the_ground(fixture, language):
+    """Chapter 1.1 holds the mimosa (family); chapter 1.2 shows it with no family on stage."""
+    sources = chapter_sources(fixture, language)
+    first = next(s.doc for s in sources if s.unit.unit_number == "1.1")
+    mimosa = next(p for p in first["props"] if p["id"] == "mimosa")
+    mimosa.update(at="held", holder="family", size="s")
+    assert validate_story_course(StoryCourse.model_validate(first), generated=True).ok
+
+    doc = assemble_module_story(module_ctx(fixture, language), sources, rally(fixture, language))
+
+    report = validate_module_story(doc)
+    assert report.ok, [e.model_dump() for e in report.errors]
+    props = {p["id"]: p for p in doc["props"]}
+    assert props["mimosa"]["at"] == "ground" and "holder" not in props["mimosa"]
+    # A prop whose holder is on stage wherever it is shown stays in hand.
+    assert props["fan"]["at"] == "held" and props["fan"]["holder"] == "hero"

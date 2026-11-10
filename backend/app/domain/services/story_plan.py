@@ -845,6 +845,29 @@ def _one_game(plan: dict[str, Any], request: PlanRequest, gaps: list[str]) -> No
         gaps.append(f"{richest['unit']}: given the game")
 
 
+def _code_made_chapters(
+    request: PlanRequest, previous: dict[str, Any], units: set[str]
+) -> tuple[dict[str, Any], list[str]]:
+    """``previous`` with only ``units`` rebuilt in code (an incremental re-plan that failed).
+
+    Every other entry, the global block included, is kept byte for byte, so no
+    other chapter goes stale. A rebuilt chapter gets one beat per idea and keeps
+    the questions it had, spread over its beats.
+    """
+    plan, gaps = normalise_plan({}, request, previous=previous, rewritten=units)
+    old = {c.get("unit"): c for c in previous.get("chapters") or []}
+    for chapter in plan["chapters"]:
+        if chapter["unit"] not in units:
+            continue
+        refs = entry_refs(old.get(chapter["unit"]))
+        for index, ref in enumerate(refs):
+            beat = chapter["beats"][index % len(chapter["beats"])] if chapter["beats"] else None
+            if beat is not None and len(beat["questions"]) < MAX_REFS_PER_BEAT:
+                beat["questions"].append(ref)
+    gaps.append(f"chapters {', '.join(sorted(units))} made in code")
+    return plan, gaps
+
+
 def default_plan(request: PlanRequest) -> dict[str, Any]:
     """A plan made in code when no answer could be used (``model`` DEFAULTED).
 
@@ -915,19 +938,71 @@ async def find_plan(
 async def find_plan_digests(
     session: AsyncSession, module_id: uuid.UUID, language: str
 ) -> tuple[str, str, dict[str, Any]] | None:
-    """``(digest, global_digest, content)`` of the stored plan, for freshness."""
+    """``(digest, global_digest, content)`` of the stored plan, for freshness.
+
+    ``None`` — nothing is fresh — for a plan of another version, and for a
+    plan made in code that still waits for its one retry (:data:`DEFAULTED`),
+    as :func:`story_bible.find_bible_digest` does for the bible. A plan kept
+    after its retry (:data:`DEFAULTED_KEPT`) is current.
+    """
     from app.domain.models.story_module_plan import StoryModulePlan
 
     row = (
         await session.execute(
             select(
-                StoryModulePlan.digest, StoryModulePlan.global_digest, StoryModulePlan.content
+                StoryModulePlan.digest,
+                StoryModulePlan.global_digest,
+                StoryModulePlan.content,
+                StoryModulePlan.model,
+                StoryModulePlan.version,
             ).where(StoryModulePlan.module_id == module_id, StoryModulePlan.language == language)
         )
     ).first()
-    if row is None:
+    if row is None or row.model == DEFAULTED or row.version != repair.PLAN_VERSION:
         return None
     return row.digest, row.global_digest, row.content
+
+
+async def save_pack(
+    session: AsyncSession, module_id: uuid.UUID, language: str, key: str, pack: dict[str, Any]
+) -> None:
+    """Keep a practice pack the moment it is made: ``content["packs"][key]``.
+
+    ``key`` is a lesson unit id or ``"rally"``; ``pack`` is ``{"inputs",
+    "spine"}``. One atomic JSONB update, so packs finishing together never
+    overwrite each other. A deadline stop or a failed chapter then never pays
+    for a pack again (its ``inputs`` tell whether it still fits).
+    """
+    from sqlalchemy import text as sql
+
+    payload = json.dumps(pack, ensure_ascii=False)
+    await session.execute(
+        sql(
+            "UPDATE story_module_plans SET content = jsonb_set("
+            " content, '{packs}',"
+            " COALESCE(content->'packs', '{}'::jsonb)"
+            " || jsonb_build_object(CAST(:key AS text), CAST(:pack AS jsonb)))"
+            " WHERE module_id = :module_id AND language = :language"
+        ),
+        {"key": key, "pack": payload, "module_id": module_id, "language": language},
+    )
+    await session.commit()
+
+
+async def stored_packs(
+    session: AsyncSession, module_id: uuid.UUID, language: str
+) -> dict[str, Any]:
+    """The packs kept with the plan (see :func:`save_pack`)."""
+    from app.domain.models.story_module_plan import StoryModulePlan
+
+    value = (
+        await session.execute(
+            select(StoryModulePlan.content["packs"]).where(
+                StoryModulePlan.module_id == module_id, StoryModulePlan.language == language
+            )
+        )
+    ).scalar_one_or_none()
+    return value if isinstance(value, dict) else {}
 
 
 def _lock_key(module_id: uuid.UUID, language: str) -> int:
@@ -990,21 +1065,24 @@ class StoryPlanService:
             return plan
 
         previous = _from_row(row) if row is not None else None
+        content = row.content if row is not None and isinstance(row.content, dict) else {}
+        #: Chapters an incremental re-plan could not rewrite: retried once.
+        retry_units = {str(u) for u in content.get("retry_units") or []}
         changed: set[str] = set()
         if (
             previous is not None
             and not force
-            and not previous.defaulted
+            and (not previous.defaulted or retry_units)
             and row.version == repair.PLAN_VERSION
         ):
-            old = (row.content or {}).get("inputs") or {}
+            old = content.get("inputs") or {}
             if old.get("global") == parts["global"] and previous.plan.get("chapters"):
                 lessons = old.get("lessons") or {}
                 changed = {
                     lesson.unit_number
                     for lesson in request.lessons
                     if lessons.get(str(lesson.unit_id)) != parts["lessons"][str(lesson.unit_id)]
-                }
+                } | (retry_units & set(request.units))
         incremental = bool(changed) and len(changed) < len(request.lessons)
         made, model, calls = await self._make(
             request,
@@ -1012,13 +1090,22 @@ class StoryPlanService:
             previous=previous.plan if incremental and previous else None,
             rewritten=changed if incremental else None,
         )
+        retry: list[str] = []
         if model is None:
-            # Unusable twice: a plan made in code, retried once next time.
+            # Unusable twice: made in code, retried once next time, then kept.
             model = DEFAULTED_KEPT if row is not None and row.model == DEFAULTED else DEFAULTED
-            made, gaps = default_plan(request), ["plan made in code"]
+            if incremental and previous is not None:
+                # Never throw a good plan away: only the changed chapters are
+                # made in code; every other entry stays byte for byte.
+                made, gaps = _code_made_chapters(request, previous.plan, changed)
+                retry = sorted(changed) if model == DEFAULTED else []
+            else:
+                made, gaps = default_plan(request), ["plan made in code"]
         else:
             made, gaps = made
-        stored = await self._store(session, row, request, made, gaps, parts, model)
+        stored = await self._store(
+            session, row, request, made, gaps, parts, model, retry_units=retry
+        )
         stored.calls = calls
         logger.info(
             "Story episode plan made",
@@ -1084,6 +1171,10 @@ class StoryPlanService:
                 feedback = ([], None)
                 continue
             except Exception as exc:
+                if best is not None:
+                    # The repair could not be made: keep the paid first answer.
+                    logger.warning("Story plan repair failed; first answer kept", error=str(exc))
+                    break
                 raise PlanCallImpossible(f"{type(exc).__name__}: {exc}"[:300]) from exc
             if not isinstance(raw, dict) or raw.get("raw_response"):
                 feedback = ([], None)
@@ -1119,9 +1210,12 @@ class StoryPlanService:
         gaps: list[str],
         parts: dict[str, Any],
         model: str,
+        *,
+        retry_units: list[str] | None = None,
     ) -> EpisodePlan:
         from app.domain.models.story_module_plan import StoryModulePlan
 
+        before = row.content if row is not None and isinstance(row.content, dict) else {}
         content = {
             "plan": plan,
             "inputs": parts,
@@ -1130,7 +1224,11 @@ class StoryPlanService:
             # What each chapter must have been told from: freshness compares
             # these without reading the quizzes again.
             "beats": beat_digests(plan, request),
+            # Packs already paid for: their inputs say whether they still fit.
+            "packs": dict(before.get("packs") or {}),
         }
+        if retry_units:
+            content["retry_units"] = list(retry_units)
         values = {
             "version": repair.PLAN_VERSION,
             "inputs": sha(parts),

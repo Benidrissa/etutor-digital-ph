@@ -21,7 +21,11 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from app.ai.prompts.lesson import _apply_settings_template
+from app.ai.prompts.lesson import (
+    COUNTRY_NAMES_EN,
+    COUNTRY_NAMES_FR,
+    _apply_settings_template,
+)
 from app.api.v1.schemas.story_course import DRAWN_VISUALS, MOODS, ValidationIssue
 from app.domain.services.story_repair import (
     ARC_CLOSES,
@@ -733,6 +737,59 @@ _STOPWORDS = frozenset(
     ]
 )
 _CAPITALISED_RE = re.compile(r"(?<![\w'’-])([A-ZÀ-ÖØ-Þ][\wÀ-ÖØ-öø-ÿ'’-]{2,})")
+_WORDS_RE = re.compile(r"[\wÀ-ÿ'-]+")
+
+#: Weekdays and months, in English and French: a story's clock, never a name.
+_CALENDAR = frozenset(
+    [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "lundi",
+        "mardi",
+        "mercredi",
+        "jeudi",
+        "vendredi",
+        "samedi",
+        "dimanche",
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+        "janvier",
+        "fevrier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "aout",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "decembre",
+        "décembre",
+    ]
+)
+
+#: The lesson fields the fact sheet keeps (what the story must use) and those
+#: that are no text.
+_FACT_FIELDS = ("concepts", "key_points")
+_NOT_TEXT = ("source_image_refs",)
 
 
 def _texts_of(value: Any) -> list[str]:
@@ -745,28 +802,49 @@ def _texts_of(value: Any) -> list[str]:
     return []
 
 
+def _words(value: Any) -> set[str]:
+    return {w.casefold() for text in _texts_of(value) for w in _WORDS_RE.findall(text)}
+
+
+def country_names(code: str | None) -> list[str]:
+    """A country's name in English and French, from its code (or the name itself)."""
+    value = str(code or "").strip()
+    names = [COUNTRY_NAMES_EN.get(value.upper()), COUNTRY_NAMES_FR.get(value.upper())]
+    return [n for n in names if n] or ([value] if len(value) > 3 else [])
+
+
 def build_name_blocklist(
-    lessons: list[dict[str, Any]], stems: list[str], bible: dict[str, Any] | None
+    lessons: list[dict[str, Any]],
+    stems: list[str],
+    bible: dict[str, Any] | None,
+    *,
+    country: str | None = None,
 ) -> list[str]:
     """Names of the lessons' own examples: capitalised words and pairs used mid-sentence.
 
-    The whole lesson is read (introduction and field example included) and
-    the quiz stems. Bible names, place-title words and bible fact words, words
-    that only ever start a sentence, acronyms and a stoplist are left out.
+    Read from what the fact sheet leaves out — the introduction, the field
+    example, the synthesis, the sources — and from the quiz stems. Never
+    blocked: a word of the fact sheet (IDEAS and KEY FACTS: the story must
+    use them), a word of the bible (its country, cast, places, facts and
+    missions), the name of a country of the region in either language (the
+    course's own ``country`` and the bible's among them), a weekday or a
+    month, a word that only ever starts a sentence, an acronym and a stoplist.
     """
     bible = bible or {}
-    allowed: set[str] = set()
-    for member in bible.get("cast") or []:
-        for key in ("name", "default_name"):
-            allowed |= {w.casefold() for w in re.findall(r"[\wÀ-ÿ'-]+", str(member.get(key) or ""))}
-    for place in bible.get("places") or []:
-        for text in _texts_of(place.get("title")):
-            allowed |= {w.casefold() for w in re.findall(r"[\wÀ-ÿ'-]+", text)}
-    for fact in bible.get("facts") or []:
-        for text in _texts_of({"en": fact.get("en"), "fr": fact.get("fr")}):
-            allowed |= {w.casefold() for w in re.findall(r"[\wÀ-ÿ'-]+", text)}
+    allowed: set[str] = set(_CALENDAR) | _words(bible)
+    for lesson in lessons:
+        allowed |= _words([lesson.get(key) for key in _FACT_FIELDS])
+    for code in (country, bible.get("country")):
+        allowed |= _words(country_names(code))
+    allowed |= _words([*COUNTRY_NAMES_EN.values(), *COUNTRY_NAMES_FR.values()])
     counts: dict[str, int] = {}
-    texts = [t for lesson in lessons for t in _texts_of(lesson)] + list(stems)
+    texts = [
+        t
+        for lesson in lessons
+        for key, value in lesson.items()
+        if key not in _FACT_FIELDS and key not in _NOT_TEXT
+        for t in _texts_of(value)
+    ] + list(stems)
     for text in texts:
         for sentence in re.split(
             r"(?<=[.!?…:;])\s+|\n+", clean_text(text) if "\n" not in text else text
@@ -932,6 +1010,16 @@ def _callbacks_line(ctx: LessonStoryContext) -> str:
     return " ".join(parts)
 
 
+def _closes_the_episode(ctx: LessonStoryContext) -> bool:
+    """The last lesson chapter of a module without a rally: it resolves the episode."""
+    return (
+        not ctx.is_rally
+        and ctx.plan_entry is not None
+        and not (ctx.plan or {}).get("rally")
+        and ctx.chapter_index >= ctx.chapter_count
+    )
+
+
 def _this_chapter_block(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
     entry = ctx.plan_entry or {}
     lines = ["=== THIS CHAPTER ==="]
@@ -946,6 +1034,13 @@ def _this_chapter_block(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
         lines.append(_beat_line(ctx, number, beat))
     lines.append(f"TURN: {clean_text(entry.get('turn'))}")
     lines.append(f"ENDS ON: {clean_text(entry.get('ends_on'))}")
+    if _closes_the_episode(ctx):
+        lines.append(
+            "THE LAST CHAPTER: this module has no rally, so this chapter is the climax. The"
+            " TURN beats the episode's obstacle for good and the WANT is won on stage;"
+            " {child}'s flaw meets its last test; every prop planted earlier is paid off."
+            " ENDS ON is the episode's warm last image, a callback to the running gag."
+        )
     callbacks = _callbacks_line(ctx)
     if callbacks:
         lines.append(callbacks)
@@ -1146,7 +1241,7 @@ _PROPS_RULES = """THE PROPS — the cartoon SHOWS what its characters talk about
   - "size": "s" (fits in a hand), "m" (up to a child's height) or "l" (taller than a person, only with "at": "back").
 - A scene lists in "props" the props present there, at most 5, and only things that belong at its place: no mango tree in the classroom unless a line brings one in.
 - A "say", "narrate" or "concept" step that names or handles a prop lists its id in "props" (at most 2): the prop pops up and bounces while the line plays. A line about the snail without "props": ["snail"] shows nothing.
-- Right after the line that first points at an educational prop, close up on it: {"type": "show", "prop": "snail"}. One close-up per prop, at most 2 per scene, never on a sticker.
+- Right after the line that first points at an educational prop, close up on it: {"type": "show", "prop": "snail"}. One close-up per prop, at most 2 per scene, never on a sticker. Name a prop for the first time before a question's lead-in, never in the lead-in itself nor in the chapter's last line: a close-up never comes between a lead-in and its "ask", nor after the last line.
 - Reuse the ids of PROPS ALREADY IN THE STORY for the same thing; never declare them again. At most 12 new props in this chapter, and every prop you declare is named by a line."""
 
 _RALLY_PROPS_RULE = (
@@ -1160,11 +1255,11 @@ _STORY_EXAMPLE = """{
  "scenes": [
   {"place": "a place id", "cast": ["hero", "friend", "family"], "props": ["snail", "basket"],
    "steps": [
-    {"type": "narrate", "en": "a vivid storyteller line", "fr": "...", "props": ["basket"]},
+    {"type": "narrate", "en": "a vivid storyteller line", "fr": "...", "props": ["basket"]},__FIGURE__
     {"type": "say", "who": "friend", "mood": "surprised", "en": "the words only", "fr": "...", "props": ["snail"]},
     {"type": "show", "prop": "snail"},
     {"type": "say", "who": "hero", "mood": "think", "en": "...", "fr": "..."},
-    {"type": "say", "who": "family", "mood": "talk", "en": "a question back, not an explanation", "fr": "..."},__FIGURE__
+    {"type": "say", "who": "family", "mood": "talk", "en": "a question back, not an explanation", "fr": "..."},
     {"type": "say", "who": "hero", "mood": "surprised", "en": "the discovery, in the hero's words", "fr": "..."},
     {"type": "concept", "teaches": __TEACHES__, "title": {"en": "__CARD__", "fr": "..."}, "en": ["the proper word for it", "the rule the scene did not say"], "fr": ["...", "..."]},
     {"type": "say", "who": "friend", "mood": "talk", "en": "lead-in: the characters need {child} to decide", "fr": "..."},
@@ -1250,7 +1345,13 @@ def _story_output(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
             " least 3 between two teaching moments (a card with its questions, a figure, the"
             " game, the paper task). At least 3 steps in 5 are story lines.\n"
             "- The first scene continues WHERE THE LAST CHAPTER STOPPED (chapter 1: OPENS"
-            ' ON). The last step is a "say" or "narrate" line that lands ENDS ON.\n'
+            ' ON). The last step is a "say" or "narrate" line that lands ENDS ON'
+            + (
+                ": this is the last chapter of the episode, so ENDS ON is its warm last"
+                " image, never a cliffhanger.\n"
+                if _closes_the_episode(ctx)
+                else ".\n"
+            )
         )
     game_rule = (
         '- {"type": "game"}: once, where the plot turns into a challenge.'
@@ -1262,7 +1363,13 @@ def _story_output(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
         'Return ONE JSON object with exactly these keys. Every {"en": ..., "fr": ...} object'
         ' has English in "en" and French in "fr".\n'
         f"{example}\n"
-        "(The example scene has 6 story lines to 1 card and 1 question.)\n\n"
+        "(The example scene has 6 story lines to 1 card and 1 question"
+        + (
+            "; its figure comes early, 4 story lines before the card."
+            if ctx.figure_refs() and not ctx.is_rally
+            else "."
+        )
+        + ")\n\n"
         "THE SCREENPLAY:\n"
         f"{scene_rules}"
         f'- "say": "who" is a cast id; "mood" is one of {moods}. The line is ONLY the words'
@@ -1271,6 +1378,8 @@ def _story_output(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
         '- "narrate": the storyteller, in the present tense and the third person.\n'
         f"{show_rule}\n"
         f"{game_rule}\n"
+        '- Margo speaks only in a scene whose "cast" lists "margo": 2 or 3 characters with'
+        " her, the hero among them. She never joins a scene of 3 others.\n"
         '- {"type": "photo", "ref": "E1"}: once, when a character hands over the paper task.'
         " Neither the game nor the paper task is among the last 3 steps.\n"
         "- No line said in an earlier chapter comes back, except a catchphrase marked"

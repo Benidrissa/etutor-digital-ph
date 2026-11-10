@@ -994,7 +994,16 @@ class StoryFromLessonService:
                     else build_pack_repair_message(message, issues, previous, number, budget)
                 )
                 calls += 1
-                answer = await self._call_model(system_prompt, prompt)
+                try:
+                    answer = await self._call_model(system_prompt, prompt)
+                except SoftTimeLimitExceeded:
+                    raise
+                except Exception as exc:
+                    if best is None:
+                        raise
+                    # A repair the provider could not answer: the paid pack read stays.
+                    logger.warning("Story pack repair failed; best pack kept", error=str(exc))
+                    break
                 if answer is None:
                     issues, previous = [], None
                     continue

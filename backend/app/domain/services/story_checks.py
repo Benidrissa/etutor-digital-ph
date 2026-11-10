@@ -188,12 +188,15 @@ def check_story(
         )
 
     # -- questions: set up, followed, never given away ----------------------
+    # A close-up is seen through: the player may drop it (no picture), and it
+    # is part of the story, not what sets a question up or what ends a chapter.
+    plain = [f for f in flat if not _is_closeup(f.step)] or flat
     lead_ins_missing = reactions_missing = 0
-    for first, last in _runs(flat):
-        asks = [flat[i] for i in range(first, last + 1) if flat[i].type == "ask"]
+    for first, last in _runs(plain):
+        asks = [plain[i] for i in range(first, last + 1) if plain[i].type == "ask"]
         refs = ", ".join(str(a.step.get("ref")) for a in asks)
         before = (
-            flat[first - 1] if first > 0 and flat[first - 1].scene == flat[first].scene else None
+            plain[first - 1] if first > 0 and plain[first - 1].scene == plain[first].scene else None
         )
         if before is None or before.type != "say":
             lead_ins_missing += 1
@@ -218,8 +221,8 @@ def check_story(
                             f" «{answer}»; set the problem up without it",
                         )
                         break
-        after = flat[last + 1] if last + 1 < len(flat) else None
-        if after is None or after.scene != flat[last].scene or after.type not in LINE_TYPES:
+        after = plain[last + 1] if last + 1 < len(plain) else None
+        if after is None or after.scene != plain[last].scene or after.type not in LINE_TYPES:
             reactions_missing += 1
             issue(
                 "ask_not_followed",
@@ -257,17 +260,19 @@ def check_story(
         )
 
     # -- the ending ----------------------------------------------------------
-    if flat[-1].type not in LINE_TYPES:
+    if plain[-1].type not in LINE_TYPES:
         issue(
             "ending_not_story",
-            flat[-1].path,
-            f'the chapter ends on a {flat[-1].type}. End on a "say" or "narrate" line'
+            plain[-1].path,
+            f'the chapter ends on a {plain[-1].type}. End on a "say" or "narrate" line'
             " that lands " + ("LAST IMAGE" if ctx.is_rally else "ENDS ON"),
         )
 
     # -- what no line may say -------------------------------------------------
+    # A name as the lesson wrote it (capitalised), in a story line: a card may
+    # name a thing the lesson capitalised, and "le soleil" is not "Soleil".
     blocked = [
-        (name, re.compile(rf"(?<!\w){re.escape(fold(name))}(?!\w)"))
+        (name, re.compile(rf"(?<![\w'’-]){re.escape(name)}(?![\w'’-])"))
         for name in ctx.blocklist
         if len(name) >= 3
     ]
@@ -296,9 +301,9 @@ def check_story(
                         " the story",
                     )
                     break
-        texts = _texts(step)
-        for name, pattern in blocked:
-            if any(pattern.search(fold(t)) for t in texts):
+        texts = [str(step.get(lang) or "") for lang in ("en", "fr")]
+        for name, pattern in blocked if item.type in LINE_TYPES else []:
+            if any(pattern.search(t) for t in texts):
                 names_leaked += 1
                 issue(
                     "name_from_lesson",

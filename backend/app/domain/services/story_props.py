@@ -95,6 +95,10 @@ _ARTICLES = (
 )
 #: A French noun's complement ("le panier de Grand-mère" → "panier").
 _FR_COMPLEMENT_RE = re.compile(r"\s+(?:de|d'|d’|du|des|à|au|aux)\b.*$")
+#: French elision, opened so "l'arbre" and "d'oignon" match word by word.
+_ELISION_RE = re.compile(r"\b([ldjmnst]|qu)'")
+#: What follows a French head that has a complement of its own ("graine de haricot").
+_FR_OWN_COMPLEMENT = r"(?!\s+(?:de|du|des|d)\s)"
 
 
 def fold(text: Any) -> str:
@@ -132,27 +136,62 @@ def head_phrase(label: str, lang: str) -> str:
     return " ".join(value.split())
 
 
-def _phrase_re(phrase: str) -> re.Pattern[str] | None:
+def full_phrase(label: str) -> str:
+    """The whole label a line may name: no article, its complement kept, elision opened.
+
+    ``"la graine de néré"`` → ``"graine de nere"``; ``"des cellules d'oignon"``
+    → ``"cellules d oignon"``.
+    """
+    value = _ELISION_RE.sub(r"\1 ", _strip_article(label))
+    value = re.sub(r"[^\w\s'-]", " ", value)
+    return " ".join(value.split())
+
+
+def _phrase_re(phrase: str, *, own_complement: bool = False) -> re.Pattern[str] | None:
     words = [w for w in phrase.split() if w]
     if not words or len("".join(words)) < 3:
         return None
-    # Each word may take a plural s or x ("cailloux", "leaves" is not handled).
-    body = r"\s+".join(re.escape(w) + r"(?:s|x|es)?" for w in words)
-    return re.compile(rf"(?<![\w]){body}(?![\w])")
+    # Each word may take a plural s or x ("cailloux", "leaves" is not handled);
+    # a French "de" is any of its forms ("les graines du néré").
+    body = r"\s+".join(
+        r"(?:de|du|des|d)" if w in ("de", "du", "des", "d") else re.escape(w) + r"(?:s|x|es)?"
+        for w in words
+    )
+    tail = _FR_OWN_COMPLEMENT if own_complement else ""
+    return re.compile(rf"(?<![\w]){body}(?![\w]){tail}")
 
 
-def names_prop(text: Any, prop: dict[str, Any], lang: str) -> bool:
-    """Whether ``text`` (in ``lang``) names the prop, by the head of its label."""
+def names_prop(
+    text: Any,
+    prop: dict[str, Any],
+    lang: str,
+    *,
+    shared_heads: frozenset[str] | set[str] = frozenset(),
+    names: frozenset[str] | set[str] = frozenset(),
+) -> bool:
+    """Whether ``text`` (in ``lang``) names the prop.
+
+    By its whole label first ("graine de néré", French elision opened), then
+    by the label's head alone ("graine") — only when no other prop of the
+    chapter has that head (``shared_heads``), and in French only when the
+    head carries no complement of its own in the line ("la graine de haricot"
+    names another thing). A phrase that is a cast member's name (``names``,
+    folded) never matches: "Pierre, viens !" is not "une pierre".
+    """
     label = (prop.get("label") or {}).get(lang)
     if not isinstance(label, str):
         return False
-    pattern = _phrase_re(head_phrase(label, lang))
-    if pattern is None:
+    haystack = _ELISION_RE.sub(r"\1 ", fold(text))
+    full = full_phrase(label)
+    if full and full not in names:
+        pattern = _phrase_re(full)
+        if pattern is not None and pattern.search(haystack):
+            return True
+    head = head_phrase(label, lang)
+    if not head or head == full or head in shared_heads or head in names:
         return False
-    haystack = fold(text)
-    # French elision: "l'arbre" names "arbre".
-    haystack = re.sub(r"\b([ldjmnst]|qu)'", r"\1 ", haystack)
-    return bool(pattern.search(haystack))
+    pattern = _phrase_re(head, own_complement=lang == "fr")
+    return bool(pattern is not None and pattern.search(haystack))
 
 
 def default_size(at: str) -> str:
@@ -227,10 +266,13 @@ class PropBook:
         figures: list[dict[str, Any]],
         cast_ids: list[str],
         issue: Any,
+        cast_names: list[str] | None = None,
     ) -> None:
         self.issue = issue
         self.figures = figures
         self.cast_ids = set(cast_ids)
+        #: The cast's ids and names, folded: never taken for a prop's name.
+        self.cast_names = frozenset(fold(n) for n in [*cast_ids, *(cast_names or [])] if n)
         #: Every usable prop by id; ``origin`` says where a known one came from.
         self.props: dict[str, dict[str, Any]] = {}
         self.known_ids: set[str] = set()
@@ -458,7 +500,22 @@ class PropBook:
                 ):
                     yield scene, step
 
+    def _shared_heads(self) -> dict[str, frozenset[str]]:
+        """Per language, the label heads two props or more share: never matched alone."""
+        out: dict[str, frozenset[str]] = {}
+        for lang in ("en", "fr"):
+            seen: set[str] = set()
+            shared: set[str] = set()
+            for prop in self.props.values():
+                label = (prop.get("label") or {}).get(lang)
+                head = head_phrase(label, lang) if isinstance(label, str) else ""
+                if head:
+                    (shared if head in seen else seen).add(head)
+            out[lang] = frozenset(shared)
+        return out
+
     def _match_lines(self, scenes: list[dict[str, Any]]) -> None:
+        shared = self._shared_heads()
         for _scene, step in self._lines(scenes):
             refs = list(step.get("props") or [])
             for pid, prop in self.props.items():
@@ -466,7 +523,13 @@ class PropBook:
                     continue
                 text = {lang: step.get(lang) for lang in ("en", "fr")}
                 if any(
-                    names_prop(" ".join(t) if isinstance(t, list) else t, prop, lang)
+                    names_prop(
+                        " ".join(t) if isinstance(t, list) else t,
+                        prop,
+                        lang,
+                        shared_heads=shared[lang],
+                        names=self.cast_names,
+                    )
                     for lang, t in text.items()
                 ):
                     if len(refs) >= MAX_PROPS_PER_LINE:
@@ -567,7 +630,14 @@ class PropBook:
             scene.pop("props", None)
 
     def _closeups(self, scenes: list[dict[str, Any]]) -> None:
-        """Close-ups: one per educational prop, after its first mention, at most 2 a scene."""
+        """Close-ups: one per educational prop, after its first mention, at most 2 a scene.
+
+        A close-up the model put before any line names its prop, as a third
+        one in a scene, between a question and its lead-in or reaction, or
+        after the chapter's last line, is moved once every scene is read — so
+        the step it becomes is never taken for a second close-up of that prop —
+        to a place :meth:`_insert_closeup` allows.
+        """
         first_line: dict[str, tuple[int, int]] = {}
         for s_index, scene in enumerate(scenes):
             for index, step in enumerate(scene["steps"]):
@@ -575,10 +645,12 @@ class PropBook:
                     for pid in step.get("props") or []:
                         first_line.setdefault(pid, (s_index, index))
         shown: set[str] = set()
+        moved: list[dict[str, Any]] = []
         for s_index, scene in enumerate(scenes):
             kept: list[dict[str, Any]] = []
-            moved: list[dict[str, Any]] = []
-            for index, step in enumerate(scene["steps"]):
+            here = 0
+            steps = scene["steps"]
+            for index, step in enumerate(steps):
                 if step.get("visual") != "prop":
                     kept.append(step)
                     continue
@@ -600,14 +672,42 @@ class PropBook:
                     )
                     moved.append(step)
                     continue
+                before = steps[index - 1] if index > 0 else None
+                after = steps[index + 1] if index + 1 < len(steps) else None
+                if (
+                    _asks_or_sets_up(before)
+                    or _asks_or_sets_up(after)
+                    or (after is None and s_index == len(scenes) - 1)
+                ):
+                    self.issue(
+                        "closeup_invalid",
+                        where,
+                        f"the close-up of {pid!r} sits between a question and its lines, or"
+                        " after the last line: moved",
+                    )
+                    moved.append(step)
+                    continue
+                if here >= MAX_CLOSEUPS_PER_SCENE:
+                    self.issue(
+                        "closeup_invalid",
+                        where,
+                        f"a scene shows {MAX_CLOSEUPS_PER_SCENE} close-ups at most: the close-up"
+                        f" of {pid!r} is moved to another line naming it",
+                    )
+                    moved.append(step)
+                    continue
+                here += 1
                 shown.add(pid)
                 kept.append(step)
             scene["steps"] = kept
-            for step in moved:
-                pid = step["params"]["prop"]
-                if pid not in shown and pid in first_line:
-                    self._insert_closeup(scenes, pid, first_line, step)
-                    shown.add(pid)
+        for step in moved:
+            pid = step["params"]["prop"]
+            if (
+                pid not in shown
+                and pid in first_line
+                and self._insert_closeup(scenes, pid, first_line, step)
+            ):
+                shown.add(pid)
         for pid, prop in self.props.items():
             if prop.get("educational") and pid in first_line and pid not in shown:
                 if self._insert_closeup(scenes, pid, first_line, None):
@@ -626,19 +726,27 @@ class PropBook:
         first_line: dict[str, tuple[int, int]],
         step: dict[str, Any] | None,
     ) -> bool:
+        """Put a close-up after a line naming ``pid``, where it breaks nothing.
+
+        Never between a lead-in and its question, nor between a question and
+        its reaction (:func:`_closeup_slot`); never after the chapter's last
+        line, which lands the hook; at most :data:`MAX_CLOSEUPS_PER_SCENE` a
+        scene. ``False`` when no line naming the prop has such a place.
+        """
         closeup = step or {"type": "show", "visual": "prop", "params": {"prop": pid}}
         closeup = {k: v for k, v in closeup.items() if k != "_src"}
         start_scene, _start = first_line[pid]
         for s_index in range(start_scene, len(scenes)):
             scene = scenes[s_index]
-            if sum(1 for s in scene["steps"] if s.get("visual") == "prop") >= (
-                MAX_CLOSEUPS_PER_SCENE
-            ):
+            steps = scene["steps"]
+            if sum(1 for s in steps if s.get("visual") == "prop") >= MAX_CLOSEUPS_PER_SCENE:
                 continue
-            for index, line in enumerate(scene["steps"]):
+            for index, line in enumerate(steps):
                 if line.get("type") in LINE_TYPES and pid in (line.get("props") or []):
-                    scene["steps"].insert(index + 1, closeup)
-                    return True
+                    position = _closeup_slot(steps, index + 1, last=s_index == len(scenes) - 1)
+                    if position is not None:
+                        steps.insert(position, closeup)
+                        return True
         return False
 
     def _used(self, scenes: list[dict[str, Any]]) -> set[str]:
@@ -674,6 +782,32 @@ class PropBook:
                     )
                     prop["at"] = "ground"
                     prop.pop("holder", None)
+
+
+def _asks_or_sets_up(step: dict[str, Any] | None) -> bool:
+    """A question, or the situation card that belongs to it."""
+    return step is not None and (
+        step.get("type") == "ask"
+        or (step.get("type") == "concept" and str(step.get("id", "")).startswith("situation-"))
+    )
+
+
+def _closeup_slot(steps: list[dict[str, Any]], start: int, *, last: bool) -> int | None:
+    """The first position from ``start`` where a close-up breaks nothing, if any.
+
+    Not right before a question (between its lead-in and the ask), not right
+    after one (before its reaction), and — in the last scene — not after the
+    last step: the chapter ends on its hook line.
+    """
+    for position in range(max(start, 1), len(steps) + 1):
+        before = steps[position - 1]
+        after = steps[position] if position < len(steps) else None
+        if _asks_or_sets_up(before) or _asks_or_sets_up(after):
+            continue
+        if after is None and last:
+            continue
+        return position
+    return None
 
 
 def figure_of(ref: dict[str, Any]) -> dict[str, Any]:

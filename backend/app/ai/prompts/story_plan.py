@@ -178,7 +178,8 @@ def build_plan_user_message(request: PlanRequest) -> str:
         " own chapter.",
         '- "discovery" at most 90 characters; "title" and "card_title" at most 40;'
         " catchphrases at most 50.",
-        '- "place": a place id of the bible. "cast": 2 or 3 cast ids, "hero" always among them.',
+        '- "place": a place id of the bible. "cast": 2 or 3 cast ids, "hero" always among them.'
+        ' Margo speaks only in a beat whose "cast" lists "margo" (2 or 3 ids with her).',
         '- "questions": refs from the list above. At most 2 per beat and 4 per lesson'
         " chapter, never one ref in two lesson chapters. A question goes only to a chapter"
         " of a lesson its quiz covers; a question from a lesson's own quiz goes only to that"
@@ -197,14 +198,26 @@ def build_plan_user_message(request: PlanRequest) -> str:
         ' off later ("paid_off": a later unit or "rally"); "query" is 2 to 5 English words a'
         ' picture search needs; "kind" is "real" or "sticker".',
     ]
+    last = request.lessons[-1].unit_number if request.lessons else first
     if request.has_rally:
         rules.append(
             '- The rally\'s "steps" use a discovery from every lesson chapter; "payoffs" name'
             " props planted earlier."
         )
-    output = _OUTPUT.replace("__RALLY__", _RALLY if request.has_rally else "").replace(
-        "__FIRST__", first
-    )
+    else:
+        rules.append(
+            f"- This module has no rally: chapter {last} is the climax. Its turn beats the"
+            " episode's obstacle for good and wins the want on stage; {child}'s flaw meets"
+            f' its last test; every prop is paid off by then ("paid_off": at the latest'
+            f' "{last}"). Its "ends_on" is a warm last image, a callback to the running gag:'
+            " never a cliffhanger. Every other chapter ends unresolved."
+        )
+    output = _OUTPUT.replace("__RALLY__", _RALLY if request.has_rally else "")
+    if not request.has_rally:
+        output = output.replace('"paid_off": "rally"', '"paid_off": "__LAST__"').replace(
+            "is past by the rally", "is past by the last chapter"
+        )
+    output = output.replace("__FIRST__", first).replace("__LAST__", last)
     return "\n\n".join(
         [
             request_line,

@@ -7,6 +7,7 @@ API's dedup key is checked against a real Redis when one is reachable.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -104,6 +105,19 @@ class FakeModuleStoryService:
         return outcome
 
 
+class FakeLock:
+    """Stands in for the run's advisory lock; ``taken`` says whether it is free."""
+
+    def __init__(self) -> None:
+        self.taken = True
+        self.calls: list[tuple[Any, str, str]] = []
+
+    @contextlib.asynccontextmanager
+    async def __call__(self, engine, module_id: str, language: str):
+        self.calls.append((engine, module_id, language))
+        yield self.taken
+
+
 @pytest.fixture
 def wiring():
     """Every collaborator the task builds, replaced; yields what the test inspects."""
@@ -112,6 +126,7 @@ def wiring():
     FakeModuleStoryService.during = None
     engine = MagicMock()
     engine.dispose = AsyncMock()
+    lock = FakeLock()
     with (
         patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine) as create,
         patch("app.ai.claude_service.ClaudeService") as claude,
@@ -125,6 +140,7 @@ def wiring():
         ),
         patch.object(content_generation, "_release_story_dispatch") as release,
         patch.object(content_generation, "_hold_story_dispatch") as hold,
+        patch.object(content_generation, "_module_story_lock", lock),
     ):
         yield SimpleNamespace(
             create=create,
@@ -136,6 +152,7 @@ def wiring():
             quizzes=quizzes,
             release=release,
             hold=hold,
+            lock=lock,
         )
 
 
@@ -181,6 +198,33 @@ def test_a_complete_run_builds_the_services_and_reports_the_story(wiring):
     # The key is armed again as the task starts, then released as it ends.
     wiring.hold.assert_called_once_with(key, TASK_ID, MODULE_STORY_HARD_LIMIT + 60)
     wiring.release.assert_called_once_with(key, TASK_ID)
+    # The run holds the (module, language) lock on the task's own engine.
+    assert wiring.lock.calls == [(wiring.engine, str(MODULE_ID), "fr")]
+
+
+def test_a_copy_the_run_lock_turns_away_pays_nothing_and_keeps_the_key(wiring):
+    """A broker redelivery of the same id while the first copy runs: skipped."""
+    wiring.lock.taken = False
+    result = run_task(str(MODULE_ID), "fr", dedup_key="k")
+    assert result == content_generation.MODULE_STORY_SKIPPED
+    assert result["status"] == "skipped" and result["content_id"] is None
+    assert FakeModuleStoryService.instances == []  # nothing built, nothing paid
+    wiring.claude.assert_not_called()
+    wiring.release.assert_not_called()  # the running copy may have this very id
+    wiring.engine.dispose.assert_awaited_once()
+
+
+def test_the_run_lock_has_its_own_key_space():
+    from app.domain.services import story_bible, story_plan
+    from app.tasks.story_art import STORY_ART_LOCK_NAMESPACE
+
+    namespace, key = content_generation.module_story_lock_key(str(MODULE_ID), "fr")
+    assert namespace == content_generation.MODULE_STORY_LOCK_NAMESPACE != STORY_ART_LOCK_NAMESPACE
+    assert -(2**31) <= key < 2**31
+    assert key != content_generation.module_story_lock_key(str(MODULE_ID), "en")[1]
+    # The bible's and the plan's locks are single bigints: another key space.
+    assert isinstance(story_bible._lock_key(MODULE_ID), int)
+    assert isinstance(story_plan._lock_key(MODULE_ID, "fr"), int)
 
 
 def test_an_invalid_story_still_completes(wiring):
@@ -207,28 +251,86 @@ def test_a_run_that_reaches_its_deadline_continues_in_a_new_task(wiring):
     from app.domain.services.story_module_service import StoryDeadlineReached
 
     FakeModuleStoryService.outcome = StoryDeadlineReached(["1.1", "1.2"])
+    events: list[str] = []
     with (
         patch.object(
-            generate_module_story_task, "apply_async", return_value=SimpleNamespace(id="next-1")
+            generate_module_story_task,
+            "apply_async",
+            side_effect=lambda **_kw: events.append("dispatch"),
         ) as dispatch,
         patch("redis.Redis.from_url") as redis_client,
     ):
+        redis_client.return_value.setex.side_effect = lambda key, *_a: events.append(key)
         result = run_task(str(MODULE_ID), "fr", country="SN", force_regenerate=True, dedup_key="k")
+    next_id = result["continued_by"]
+    assert uuid.UUID(next_id)  # made by the task, before the dispatch
     assert result == {
         "status": "complete",
         "content_id": None,
         "is_valid": False,
-        "continued_by": "next-1",
+        "continued_by": next_id,
         "told": ["1.1", "1.2"],
     }
+    assert dispatch.call_args.kwargs["task_id"] == next_id
     kwargs = dispatch.call_args.kwargs["kwargs"]
     assert kwargs["continuation"] == 1 and kwargs["dedup_key"] == "k"
     assert kwargs["force_regenerate"] is False  # never pays twice for what was told
     assert (kwargs["module_id"], kwargs["country"]) == (str(MODULE_ID), "SN")
+    # Marked and vouched for before it is queued, as the API does for the first
+    # task: a learner who joins it while it waits sees it pending, not lost.
+    setex = {c.args[0]: c.args[1:] for c in redis_client.return_value.setex.call_args_list}
+    assert setex[f"content_task_owner:{next_id}"] == (MODULE_STORY_HARD_LIMIT + 60, "k")
+    assert f"content_task:{next_id}" in setex
+    assert events == [f"content_task:{next_id}", f"content_task_owner:{next_id}", "dispatch"]
     # The dedup key is handed to the continuation, so a learner's GET joins it.
     script, _n, key, holder, new, ttl = redis_client.return_value.eval.call_args.args
-    assert (key, holder, new, ttl) == ("k", TASK_ID, "next-1", MODULE_STORY_HARD_LIMIT + 60)
+    assert (key, holder, new, ttl) == ("k", TASK_ID, next_id, MODULE_STORY_HARD_LIMIT + 60)
     wiring.release.assert_called_once_with("k", TASK_ID)
+
+
+def test_a_queued_continuation_is_pending_for_the_status_endpoint(wiring):
+    """Against a real Redis: the continuation is vouched for while the key names it."""
+    import asyncio
+
+    from app.api.v1 import content as content_api
+    from app.domain.services.story_module_service import StoryDeadlineReached
+
+    client = _redis_or_skip()
+    key = story_dispatch_key(MODULE_ID, "fr")
+    FakeModuleStoryService.outcome = StoryDeadlineReached(["1.1"])
+    wiring.hold.side_effect = _REAL_HOLD
+    wiring.release.side_effect = _REAL_RELEASE
+    next_id = None
+    try:
+        client.set(key, TASK_ID, ex=60)
+        with patch.object(generate_module_story_task, "apply_async"):
+            result = run_task(str(MODULE_ID), "fr", dedup_key=key)
+        next_id = result["continued_by"]
+        assert client.get(key) == next_id  # handed over, not released
+        assert client.get(f"content_task_owner:{next_id}") == key
+        assert client.get(f"content_task:{next_id}")
+
+        async def status() -> dict:
+            from app.infrastructure.cache.redis import redis_client
+
+            try:
+                with patch.object(
+                    content_api, "AsyncResult", return_value=SimpleNamespace(state="PENDING")
+                ):
+                    response = await content_api.get_generation_status(next_id)
+                import json
+
+                return json.loads(response.body)
+            finally:
+                with contextlib.suppress(Exception):
+                    await redis_client.aclose()
+
+        assert asyncio.run(status()) == {"status": "pending"}
+    finally:
+        client.delete(key)
+        if next_id:
+            client.delete(f"content_task_owner:{next_id}", f"content_task:{next_id}")
+        client.close()
 
 
 def test_a_continuation_never_forces_and_the_last_one_stops(wiring):
@@ -240,7 +342,10 @@ def test_a_continuation_never_forces_and_the_last_one_stops(wiring):
     assert service.calls[0]["force_regenerate"] is False
 
     FakeModuleStoryService.outcome = StoryDeadlineReached(["1.3"])
-    with patch.object(generate_module_story_task, "apply_async") as dispatch:
+    with (
+        patch.object(generate_module_story_task, "apply_async") as dispatch,
+        patch("redis.Redis.from_url"),
+    ):
         result = run_task(str(MODULE_ID), "fr", continuation=2)
     dispatch.assert_not_called()
     assert result["status"] == "failed" and result["error"] == "time_limit_exceeded"
@@ -448,9 +553,13 @@ def test_end_to_end_a_time_limit_then_a_complete_run(monkeypatch):
                 "content_id": str(record.id),
                 "is_valid": True,
             }
-            # The plan was kept from the first run: only packs and stories now.
-            assert model.count("plan") == 0
-            assert [u for k, u in model.calls if k == "story"] == ["1.1", "1.2", "1.3", "rally"]
+            # The plan and every pack were kept from the first run: only the stories now.
+            assert model.calls == [
+                ("story", "1.1"),
+                ("story", "1.2"),
+                ("story", "1.3"),
+                ("story", "rally"),
+            ]
             assert record.status == "published"
             assert client.get(key) is None
         finally:
