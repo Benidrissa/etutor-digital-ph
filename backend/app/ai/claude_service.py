@@ -1,5 +1,6 @@
 """Claude API service for content generation."""
 
+import copy
 import json
 import re
 from collections.abc import AsyncGenerator
@@ -31,6 +32,38 @@ _CONTENT_TYPE_FEATURES = {
 
 def _feature_for_content_type(content_type: str) -> str:
     return _CONTENT_TYPE_FEATURES.get(content_type, content_type)
+
+
+#: How much of a truncated answer is logged, from its start and from its end.
+TRUNCATED_LOG_CHARS = 500
+
+
+class TruncatedResponse(ValueError):
+    """An answer cut at ``max_tokens`` (#2702): a failure of the call, never repaired as is.
+
+    A ``ValueError`` so callers that treat an unreadable answer as one keep
+    working; ``output_tokens``, ``length`` and the answer's ``head`` and
+    ``tail`` say what the model was doing when it was cut.
+    """
+
+    def __init__(
+        self,
+        content_type: str,
+        *,
+        output_tokens: int | None,
+        length: int,
+        head: str = "",
+        tail: str = "",
+    ) -> None:
+        super().__init__(
+            f"Response truncated (stop_reason=max_tokens) for {content_type}:"
+            f" {output_tokens} output tokens, {length} characters."
+        )
+        self.content_type = content_type
+        self.output_tokens = output_tokens
+        self.length = length
+        self.head = head
+        self.tail = tail
 
 
 @dataclass
@@ -82,6 +115,22 @@ class ClaudeService:
             temperature if temperature is not None else _cache.get("ai-temperature-content", 0.7)
         )
         self._model = model or _cache.get("ai-model-content", "claude-sonnet-4-6")
+        #: An answer cut at ``max_tokens`` raises :class:`TruncatedResponse`
+        #: even when it parses (#2702: the story generator's calls).
+        self._fail_on_truncation = False
+
+    def with_max_tokens(self, max_tokens: int) -> "ClaudeService":
+        """This client for one kind of call: at most ``max_tokens``, a cut answer a failure.
+
+        The content model's own ceiling (``ai-max-tokens-content``, 64,000 by
+        default) is for long lessons and syllabi; a story call is a few
+        thousand tokens, and a runaway at 64,000 costs a dollar and twenty
+        minutes (#2702). Never above the configured ceiling.
+        """
+        bounded = copy.copy(self)
+        bounded._max_tokens = min(int(max_tokens), int(self._max_tokens))
+        bounded._fail_on_truncation = True
+        return bounded
 
     def _provider(self) -> LLMProvider:
         """Resolve the provider for the configured content model."""
@@ -227,13 +276,28 @@ class ClaudeService:
             if not content_text:
                 raise ValueError("Empty response from LLM provider")
 
+            output_tokens = (result.usage or {}).get("output_tokens")
             is_truncated = result.stop_reason == "max_tokens"
             if is_truncated:
+                # What the model was writing when it was cut (#2702).
                 logger.warning(
                     "LLM response truncated at max_tokens",
                     content_type=content_type,
-                    usage_output=result.usage.get("output_tokens"),
+                    model=self._model,
+                    max_tokens=self._max_tokens,
+                    usage_output=output_tokens,
+                    output_chars=len(content_text),
+                    head=content_text[:TRUNCATED_LOG_CHARS],
+                    tail=content_text[-TRUNCATED_LOG_CHARS:],
                 )
+                if self._fail_on_truncation:
+                    raise TruncatedResponse(
+                        content_type,
+                        output_tokens=output_tokens,
+                        length=len(content_text),
+                        head=content_text[:TRUNCATED_LOG_CHARS],
+                        tail=content_text[-TRUNCATED_LOG_CHARS:],
+                    )
 
             last_content_text = content_text
 
@@ -249,9 +313,12 @@ class ClaudeService:
                         content_type=content_type,
                         error=last_error,
                     )
-                    raise ValueError(
-                        f"Response truncated (stop_reason=max_tokens) "
-                        f"for {content_type}. JSON is incomplete."
+                    raise TruncatedResponse(
+                        content_type,
+                        output_tokens=output_tokens,
+                        length=len(content_text),
+                        head=content_text[:TRUNCATED_LOG_CHARS],
+                        tail=content_text[-TRUNCATED_LOG_CHARS:],
                     )
 
                 if attempt < max_retries:
@@ -287,6 +354,9 @@ class ClaudeService:
                 "Successfully generated structured content",
                 content_type=content_type,
                 response_length=len(content_text),
+                output_tokens=output_tokens,
+                stop_reason=result.stop_reason,
+                max_tokens=self._max_tokens,
                 attempt=attempt + 1,
             )
             return parsed_content

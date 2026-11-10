@@ -833,13 +833,35 @@ class StoryBibleService:
         with ai_usage_context(
             FEATURE_STORY_GENERATION, course_id=getattr(course, "id", None), only_if_unset=True
         ):
+            from app.domain.services.story_calls import (
+                StoryCallTimeout,
+                TruncatedResponse,
+                concise,
+                structured_call,
+            )
+
+            message = user
             for attempt in range(self.MAX_CALLS):
                 try:
-                    raw = await self.claude_service.generate_structured_content(
-                        system, user, "story", max_retries=0
-                    )
+                    raw = await structured_call(self.claude_service, system, message, kind="bible")
                 except SoftTimeLimitExceeded:
                     raise
+                except StoryCallTimeout as exc:
+                    if exc.at_deadline:
+                        raise
+                    # Past its cap with time left: an outage, nothing stored.
+                    raise StoryProviderUnavailable(
+                        f"The bible call ran past its cap for course {course.id}"
+                    ) from exc
+                except TruncatedResponse as exc:
+                    # Asked again once, concise (#2702); never at a bigger budget.
+                    logger.warning(
+                        "Story bible answer cut at max_tokens",
+                        attempt=attempt + 1,
+                        output_tokens=exc.output_tokens,
+                    )
+                    message = concise(user)
+                    continue
                 except ValueError as exc:
                     logger.warning(
                         "Story bible answer unusable", attempt=attempt + 1, error=str(exc)

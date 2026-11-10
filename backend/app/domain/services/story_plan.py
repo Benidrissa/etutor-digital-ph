@@ -1258,22 +1258,55 @@ class StoryPlanService:
         message = build_plan_user_message(request)
         if previous is not None and rewritten:
             message += "\n\n" + build_incremental_block(previous, sorted(rewritten))
+        from app.domain.services.story_calls import (
+            StoryCallTimeout,
+            TruncatedResponse,
+            concise,
+            plan_max_tokens,
+            structured_call,
+        )
+
+        max_tokens = plan_max_tokens(len(request.lessons))
+
         calls = 0
         feedback: tuple[list[ValidationIssue], dict[str, Any] | None] | None = None
         best: Any = None
+        truncated = False
         for attempt in range(MAX_CALLS):
-            prompt = (
-                message
-                if attempt == 0 or feedback is None
-                else build_plan_repair_message(message, *feedback)
-            )
+            if truncated:
+                # The one retry of an answer cut at max_tokens (#2702).
+                prompt = concise(message)
+            else:
+                prompt = (
+                    message
+                    if attempt == 0 or feedback is None
+                    else build_plan_repair_message(message, *feedback)
+                )
             calls += 1
             try:
-                raw = await self.claude_service.generate_structured_content(
-                    system_prompt, prompt, "story", max_retries=0
+                raw = await structured_call(
+                    self.claude_service, system_prompt, prompt, kind="plan", max_tokens=max_tokens
                 )
             except SoftTimeLimitExceeded:
                 raise
+            except StoryCallTimeout as exc:
+                if exc.at_deadline:
+                    raise
+                # Past its cap with time left: like a provider error.
+                if best is not None:
+                    break
+                raise PlanCallImpossible(str(exc)[:300]) from exc
+            except TruncatedResponse as exc:
+                logger.warning(
+                    "Story plan answer cut at max_tokens",
+                    attempt=attempt + 1,
+                    output_tokens=exc.output_tokens,
+                )
+                if truncated:
+                    break  # cut twice: made in code (or the first answer kept)
+                truncated = True
+                feedback = ([], None)
+                continue
             except ValueError as exc:
                 logger.warning("Story plan answer unreadable", attempt=attempt + 1, error=str(exc))
                 feedback = ([], None)

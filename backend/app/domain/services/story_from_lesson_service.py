@@ -895,18 +895,29 @@ class StoryFromLessonService:
 
     # -- the model ---------------------------------------------------------
 
-    async def _call_model(self, system_prompt: str, user_message: str) -> dict[str, Any] | None:
+    async def _call_model(
+        self, system_prompt: str, user_message: str, *, kind: str = "story"
+    ) -> dict[str, Any] | None:
         """One spine call — exactly one paid provider call; ``None`` when unreadable.
 
         ``max_retries=0`` turns off the service's own strict-JSON retry: an
         unreadable answer is an attempt of the repair loop, which re-asks with
         its own notice. Left on, every attempt could pay twice, and the task's
         time limit (sized for 1 + :data:`MAX_REPAIR_CALLS` calls) would not hold.
+
+        #2702: the call writes at most the ``max_tokens`` of its ``kind`` and
+        runs under its timeout (:func:`story_calls.structured_call`). An answer
+        cut at that limit raises :class:`TruncatedResponse` — never a repair at
+        the same budget — and a timeout :class:`StoryCallTimeout`.
         """
+        from app.domain.services.story_calls import TruncatedResponse, structured_call
+
         try:
-            spine = await self.claude_service.generate_structured_content(
-                system_prompt, user_message, "story", max_retries=0
+            spine = await structured_call(
+                self.claude_service, system_prompt, user_message, kind=kind
             )
+        except TruncatedResponse:
+            raise
         except ValueError as exc:
             # generate_structured_content raises ValueError for a truncated,
             # unparseable answer; it is worth a repair call, not a crash.
@@ -962,6 +973,7 @@ class StoryFromLessonService:
             repair_message=build_story_repair_message,
             merge=merge,
             max_repair_calls=max_repair_calls,
+            kind="rally" if ctx.is_rally else "story",
         )
 
     async def generate_pack(
@@ -979,6 +991,7 @@ class StoryFromLessonService:
         and all: what still fails is settled or salvaged with the story.
         """
         from app.ai.prompts.story_from_lesson import build_pack_message, build_pack_repair_message
+        from app.domain.services.story_calls import StoryCallTimeout, TruncatedResponse, concise
 
         message = build_pack_message(ctx)
         budget = 1 + max_repair_calls
@@ -986,18 +999,34 @@ class StoryFromLessonService:
         issues: list[ValidationIssue] = []
         previous: dict[str, Any] | None = None
         calls = 0
+        truncated = 0
+        concise_next = False
         with ai_usage_context(FEATURE_STORY_GENERATION, only_if_unset=True):
             for number in range(budget):
-                prompt = (
-                    message
-                    if number == 0
-                    else build_pack_repair_message(message, issues, previous, number, budget)
-                )
+                if concise_next:
+                    # The one retry of an answer cut at max_tokens (#2702): the
+                    # same request, concise — never a repair of the cut answer.
+                    prompt, concise_next = concise(message), False
+                else:
+                    prompt = (
+                        message
+                        if number == 0
+                        else build_pack_repair_message(message, issues, previous, number, budget)
+                    )
                 calls += 1
                 try:
-                    answer = await self._call_model(system_prompt, prompt)
-                except SoftTimeLimitExceeded:
+                    answer = await self._call_model(system_prompt, prompt, kind="pack")
+                except (SoftTimeLimitExceeded, StoryCallTimeout):
                     raise
+                except TruncatedResponse:
+                    truncated += 1
+                    if truncated == 1:
+                        concise_next = True
+                        continue
+                    # Cut twice: no more calls at this budget (#2702).
+                    if best is None:
+                        raise
+                    break
                 except Exception as exc:
                     if best is None:
                         raise
@@ -1032,6 +1061,7 @@ class StoryFromLessonService:
         repair_message: Any = None,
         merge: Any = None,
         max_repair_calls: int | None = None,
+        kind: str = "story",
     ) -> StoryGeneration:
         """Spine call → deterministic build → validate → bounded repair → salvage.
 
@@ -1057,16 +1087,39 @@ class StoryFromLessonService:
         feedback_spine: dict[str, Any] | None = None
         issues: list[ValidationIssue] = []
         calls = 0
+        truncated = 0
+
+        from app.domain.services.story_calls import TruncatedResponse, concise
 
         with ai_usage_context(FEATURE_STORY_GENERATION, only_if_unset=True):
             for number in range(budget):
-                message = (
-                    user_message
-                    if number == 0
-                    else repair_message(user_message, issues, feedback_spine, number, budget)
-                )
+                if truncated == 1:
+                    # The one retry of an answer cut at max_tokens (#2702): the
+                    # same request, concise — never a repair of the cut answer.
+                    message = concise(user_message)
+                else:
+                    message = (
+                        user_message
+                        if number == 0
+                        else repair_message(user_message, issues, feedback_spine, number, budget)
+                    )
                 calls += 1
-                answer = await self._call_model(system_prompt, message)
+                try:
+                    answer = await self._call_model(system_prompt, message, kind=kind)
+                except TruncatedResponse as exc:
+                    truncated += 1
+                    logger.warning(
+                        "Story answer cut at max_tokens",
+                        slug=ctx.slug,
+                        attempt=number + 1,
+                        output_tokens=exc.output_tokens,
+                        length=exc.length,
+                    )
+                    if truncated == 1:
+                        continue
+                    break  # cut twice: this chapter's calls end here
+                if truncated == 1:
+                    truncated = 2  # the retry was read: no second concise retry
                 # The model's own JSON goes back in a repair; the builder reads
                 # it merged into the spine (v4: around the practice pack).
                 spine = merge(answer) if merge is not None and answer is not None else answer
@@ -1259,6 +1312,26 @@ class StoryFromLessonService:
             dropped=dict(dropped),
             spine=spine,
         )
+
+    def timed_out(self, ctx: repair.LessonStoryContext, exc: Any) -> StoryGeneration:
+        """The draft stored when a call ran past its kind's cap (#2702); never served.
+
+        Stored like a chapter that could not be made valid: its failure
+        counter goes up, so after ``CHAPTER_FAILURE_CAP`` runs it stops paying.
+        """
+        generation = self._unbuildable(ctx)
+        issue = ValidationIssue(
+            severity="error",
+            code="story_call_timeout",
+            path="",
+            message=f"the {getattr(exc, 'kind', 'story')} call ran past its"
+            f" {getattr(exc, 'timeout', 0):.0f} s",
+        )
+        report = ValidationReport(ok=False, errors=[issue])
+        report = report.model_copy(
+            update={"checks": report.checks.model_copy(update={"errors": 1})}
+        )
+        return StoryGeneration(doc=generation.doc, report=report, model_calls=1)
 
     def _unbuildable(self, ctx: repair.LessonStoryContext) -> StoryGeneration:
         """The draft stored when no attempt could be built; it is never served.

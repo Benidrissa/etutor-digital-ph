@@ -729,8 +729,10 @@ async def judge_stems(
     service: Any, candidates: Sequence[StemCandidate], language: str
 ) -> dict[str, bool]:
     """One call of the judge for all ``candidates``; raises when the provider fails."""
-    raw = await service.generate_structured_content(
-        JUDGE_SYSTEM_PROMPT, build_judge_message(candidates, language), "story", max_retries=0
+    from app.domain.services.story_calls import structured_call
+
+    raw = await structured_call(
+        service, JUDGE_SYSTEM_PROMPT, build_judge_message(candidates, language), kind="judge"
     )
     if isinstance(raw, dict):
         raw.pop("__complete", None)
