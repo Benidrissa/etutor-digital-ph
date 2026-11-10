@@ -174,23 +174,40 @@ _UNIT_WORDS = {
     ),
 }
 #: Words that change what is asked, compared word for word (« le plus grand »
-#: is not « le plus petit »): a negation, an exception or a restriction, a
-#: quantifier, a comparison, true or false.
-_GUARD_WORDS = {
+#: is not « le plus petit »). Those that reverse or narrow the question — a
+#: negation, an exception, a restriction, true or false — may not sit in a
+#: lead-in either (« Mamie ne sait pas. »), unless the original's own context
+#: has them; quantifiers, comparisons and opposites only count in the question.
+_BLOCKING_WORDS = {
     "en": _wordset(
         "not never no none nothing nobody neither nor cannot except excluding besides"
-        " only solely without non all every each always both any most least more less"
-        " fewer best worst main mainly first last than true false wrong correct incorrect"
-        " untrue"
+        " only solely without non true false wrong correct incorrect untrue"
     ),
     "fr": _wordset(
         "pas jamais aucun aucune rien ni personne sauf excepte hormis seul seule seuls"
-        " seules seulement uniquement sans non tous toutes tout chaque toujours meilleur"
-        " meilleure pire principal principale principalement premier premiere dernier"
-        " derniere vrai vraie faux fausse correct correcte incorrect incorrecte erronee"
+        " seules seulement uniquement sans non vrai vraie faux fausse correct correcte"
+        " incorrect incorrecte erronee"
     ),
 }
-#: Phrases that restrict or except, as one guard each.
+_QUESTION_WORDS = {
+    "en": _wordset(
+        "all every each always both any most least more less fewer best worst main mainly"
+        " first last than"
+        # Opposites: a rewrite keeps the original's side of each pair.
+        " max min maximum minimum greater higher lower increase increases increased"
+        " decrease decreases decreased before after above below inside outside gain gains"
+        " lose loses"
+    ),
+    "fr": _wordset(
+        "tous toutes tout chaque toujours meilleur meilleure pire principal principale"
+        " principalement premier premiere dernier derniere"
+        " maximum minimum maximal minimal superieur superieure superieurs superieures"
+        " inferieur inferieure inferieurs inferieures augmente augmentent diminue"
+        " diminuent avant apres au-dessus au-dessous dessus dessous"
+    ),
+}
+_GUARD_WORDS = {lang: _BLOCKING_WORDS[lang] | _QUESTION_WORDS[lang] for lang in ("en", "fr")}
+#: Phrases that restrict or except, as one guard each (all of them blocking).
 _GUARD_PHRASES = {
     "en": (
         ("other than", re.compile(r"\bother than\b")),
@@ -225,6 +242,12 @@ _STARTERS = _wordset(
     " regarde regardez ecoute ecoutez imagine imaginez pense pensez compte comptez choisis"
     " choisissez dis dites aide aidez attends attendez viens venez vois voyez voici voila"
     " devine devinez essaie trouve trouvez souviens rappelle"
+    # Adverbs and prepositions that open a sentence ("After school,", « Soudain, »).
+    " after before suddenly under in on at during while later soon meanwhile finally"
+    " first next outside inside behind near above below tonight tomorrow yesterday"
+    " every once one two back up down over through from into at last again still"
+    " dans sous sur soudain apres avant pendant plus tard bientot dehors dedans"
+    " derriere pres ce matin soir demain hier au aux chez vers puis tout a"
 )
 _WORD_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 _CAPITALISED_RE = re.compile(r"(?<![\w'’-])([A-ZÀ-ÖØ-Þ][\wÀ-ÖØ-öø-ÿ'’-]{2,})")
@@ -242,7 +265,7 @@ def _plain(text: Any) -> str:
     """Lower case, no accents, straight apostrophes."""
     value = unicodedata.normalize("NFKD", str(text or "")).casefold()
     value = "".join(c for c in value if not unicodedata.combining(c))
-    return value.replace("’", "'")
+    return value.replace("’", "'").replace("œ", "oe").replace("æ", "ae")
 
 
 def _tokens(text: Any) -> list[str]:
@@ -306,6 +329,12 @@ def _guards(text: str, lang: str) -> set[str]:
     return found
 
 
+def _blocking(guards: set[str], lang: str) -> set[str]:
+    """The guards that reverse or narrow a question: a negation, an exception…"""
+    phrases = {name for name, _pattern in _GUARD_PHRASES[lang]}
+    return {g for g in guards if g in _BLOCKING_WORDS[lang] or g in phrases}
+
+
 def _question_part(text: str) -> tuple[str, str]:
     """``(lead-in, question sentence)``: the last sentence that asks, and the rest."""
     sentences = [s for s in _SENTENCE_RE.split(text.strip()) if s]
@@ -316,8 +345,57 @@ def _question_part(text: str) -> tuple[str, str]:
     return lead, sentences[index]
 
 
-def _names_option(option: str, text: str) -> bool:
-    return bool(option) and repair._leaks(option, text)
+#: Words an option's content never counts: articles, determiners, possessives.
+_FUNCTION_WORDS = _wordset(
+    "the a an some any of to and or its his her their my your our it they them this that"
+    " these those le la les l un une des du de d mon ma mes ton ta tes son sa ses notre"
+    " votre nos vos leur leurs ce cet cette ces et ou en au aux a il elle ils elles on se s"
+)
+#: Verbs that carry no content: left out of the correct answer's words.
+_AUXILIARIES = _wordset(
+    "is are was were be been being has have had do does did can could will would shall"
+    " should may might must est sont etait etaient sera seront etre ont avait avaient"
+    " avoir peut peuvent doit doivent"
+)
+
+
+def _content(text: Any, *, auxiliaries: bool = True) -> list[str]:
+    """The content words of ``text`` in order, plurals folded ("The snails" → ["snail"]).
+
+    Placeholders are left out first, so « Rien » is never found in "{friend}".
+    """
+    plain = _PLACEHOLDER_RE.sub(" ", str(text or ""))
+    skip = _FUNCTION_WORDS if auxiliaries else _FUNCTION_WORDS | _AUXILIARIES
+    return [_root(w) for w in _tokens(plain) if w not in skip]
+
+
+def _names_answer(answer: str, rewrite: str, original: str = "") -> bool:
+    """The rewrite says every content word of the correct ``answer``; the original does not.
+
+    "{friend} feels her heart thumping" names "The heart"; "Two snails crawl
+    by" names "A snail" (articles, possessives and plurals aside).
+    """
+    words = set(_content(answer, auxiliaries=False))
+    if not words:
+        return False
+    return words <= set(_content(rewrite)) and not words <= set(_content(original))
+
+
+def _names_option(option: str, rewrite: str, original: str = "") -> bool:
+    """The rewrite says ``option``'s words, in order, and the original does not.
+
+    Word by word, never a substring: « Eau » is not in « seau », "Air" not in
+    "chair", « Rien » not in "{friend}"; "the grey stone" is not "It is grey".
+    """
+    words = _content(option)
+    if not words:
+        return False
+
+    def says(text: str) -> bool:
+        tokens = _content(text)
+        return any(tokens[i : i + len(words)] == words for i in range(len(tokens)))
+
+    return says(rewrite) and not says(original)
 
 
 @dataclass
@@ -345,14 +423,22 @@ def stem_problems(
     Per language: both written, short enough to be the question, still a
     question, only ``{child}``/``{friend}``; the same numbers (digits, number
     words, multipliers) and units (symbols, unit words); the question sentence
-    has exactly the guard words of the original (negations, exceptions,
-    restrictions, quantifiers, comparisons, true/false — compared word for
-    word) and the lead-in has none; the original's words shared with its
-    options are kept; no option the original does not name (nor the correct
-    answer's number spelled out); no name or place the course does not have:
-    a capitalised word, even one that starts a sentence, must be in the
-    original, ``allowed`` (the bible, the cast, the country) or be a common
-    sentence opener; no name of the lesson's blocklist (any case, any accents).
+    has exactly the guard words of the original's question sentence
+    (negations, exceptions, restrictions, quantifiers, comparisons, opposites,
+    true/false — word for word), or the whole rewrite those of the whole
+    original when its context is folded into one question; a lead-in reverses
+    or narrows nothing the original's context does not; the original's words
+    shared with its options are kept; no option whose content words the
+    original does not say (nor the correct answer's number spelled out); no
+    name or place the course does not have: a capitalised word must be in the
+    original, ``allowed`` (the bible, the cast, the country), or — starting a
+    sentence — a common opener or a word the other language does not
+    capitalise (a name is not translated); no name of the lesson's blocklist
+    (any case, any accents).
+
+    These checks compare each language with its own original. A home-language
+    rewrite that asks something else entirely, with the same numbers and
+    guard words, is left to the judge, which reads both languages.
     """
     problems: list[str] = []
     allowed_words = {w for a in allowed for w in _words(a)}
@@ -375,14 +461,22 @@ def stem_problems(
         if _units(original, lang) != _units(rewrite, lang):
             problems.append(f"{lang}: the units changed")
         lead, question = _question_part(rewrite)
-        if _guards(lead, lang):
+        context, asked = _question_part(original)
+        # A lead-in may only reverse or narrow what the original's context does.
+        extra = _blocking(_guards(lead, lang), lang) - _blocking(_guards(context, lang), lang)
+        if extra:
             problems.append(
                 f"{lang}: the lead-in has a word that changes the question"
-                f" ({', '.join(sorted(_guards(lead, lang)))})"
+                f" ({', '.join(sorted(extra))})"
             )
-        if _guards(original, lang) != _guards(question, lang):
+        # The question asks what the original's question asks — or, when the
+        # original's context is folded into one question, the whole says the same.
+        if _guards(asked, lang) != _guards(question, lang) and _guards(original, lang) != _guards(
+            rewrite, lang
+        ):
             problems.append(
-                f"{lang}: a negation, exception, restriction, quantifier or comparison changed"
+                f"{lang}: a negation, exception, restriction, quantifier, comparison or"
+                " opposite changed"
             )
         options = candidate.options.get(lang) or []
         option_words = {_root(w) for o in options for w in _words(o)}
@@ -394,10 +488,9 @@ def stem_problems(
         missing = key_terms - {_root(w) for w in _words(rewrite)}
         if missing:
             problems.append(f"{lang}: key terms left out: {', '.join(sorted(missing))}")
-        if any(
-            _names_option(option, rewrite) and not _names_option(option, original)
-            for option_lang in LANGS
-            for option in candidate.options.get(option_lang) or []
+        answer = options[candidate.correct_index] if candidate.correct_index < len(options) else ""
+        if _names_answer(answer, rewrite, original) or any(
+            _names_option(option, rewrite, original) for option in options
         ):
             problems.append(f"{lang}: the rewrite names an option")
         correct = (candidate.options.get(lang) or [""] * 99)[candidate.correct_index]
@@ -405,11 +498,17 @@ def stem_problems(
         if spelled and set(spelled) & (set(_tokens(rewrite)) - set(_tokens(original))):
             problems.append(f"{lang}: the rewrite spells out the correct answer")
         known = _words(original) | allowed_words | _words(candidate.original.get(_other(lang)))
+        # A name is not translated: a word that starts a sentence is one only
+        # when the other language's rewrite writes it capitalised too.
+        other = " ".join(str(candidate.rewrite.get(_other(lang)) or "").split())
+        other_names = {
+            w for m in _CAPITALISED_RE.finditer(other) for w in _words(_possessive(m.group(1)))
+        }
         for sentence in _SENTENCE_RE.split(_PLACEHOLDER_RE.sub("X", rewrite)):
             for match in _CAPITALISED_RE.finditer(sentence):
-                words = _words(match.group(1))
+                words = _words(_possessive(match.group(1)))
                 starts = not sentence[: match.start(1)].strip(' «"“(-—–')
-                if words <= known or (starts and words <= _STARTERS):
+                if words <= known or (starts and (words <= _STARTERS or not words <= other_names)):
                     continue
                 problems.append(f"{lang}: a name or place the course does not have")
                 break
@@ -417,6 +516,11 @@ def stem_problems(
         if any(re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", plain) for name in blocked):
             problems.append(f"{lang}: a name from the lesson's own examples")
     return problems
+
+
+def _possessive(word: str) -> str:
+    """A name without its possessive: "Awa's" → "Awa"."""
+    return re.sub(r"['’]s$", "", word)
 
 
 def _other(lang: str) -> str:

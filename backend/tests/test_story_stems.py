@@ -364,7 +364,7 @@ def _check(original, rewrite, options, correct=0, **kwargs) -> list[str]:
                 "fr": "Mamie frotte son bras. Quel est le plus petit organe du corps humain ?",
             },
             ORGANS,
-            "comparison changed",
+            "comparison or opposite changed",
         ),
         (  # « le plus » is not « le moins ».
             {
@@ -376,7 +376,7 @@ def _check(original, rewrite, options, correct=0, **kwargs) -> list[str]:
                 "fr": "{friend} bâille. Quel organe utilise le moins d'énergie ?",
             },
             ORGANS,
-            "comparison changed",
+            "comparison or opposite changed",
         ),
         (  # A guard word in the lead-in is a rejection.
             {
@@ -639,3 +639,394 @@ def test_fidelity_follows_the_approved_stems_never_a_document_key():
     repair.enforce_quiz_fidelity(doc, plain_ctx)
     assert question["prompt"]["en"] == quiz("q3")["question"]["en"]
     assert "original_stem" not in question
+
+
+# --------------------------------------------------------------------------
+# The re-review of #2701: leaks, opposites, and no over-rejection
+# --------------------------------------------------------------------------
+
+HEART = {
+    "en": ["The heart", "The liver", "The skin", "The lungs"],
+    "fr": ["Le cœur", "Le foie", "La peau", "Les poumons"],
+}
+PUMPS = {"en": "Which organ pumps blood?", "fr": "Quel organe pompe le sang ?"}
+ALIVE_Q = {"en": "Which of these is alive?", "fr": "Lequel de ces éléments est vivant ?"}
+
+
+@pytest.mark.parametrize(
+    ("original", "rewrite", "options", "correct"),
+    [
+        (  # The answer's noun with a possessive.
+            PUMPS,
+            {
+                "en": "{friend} feels her heart thumping. Which organ pumps blood?",
+                "fr": "{friend} sent son cœur battre. Quel organe pompe le sang ?",
+            },
+            HEART,
+            0,
+        ),
+        (  # The answer's noun in the plural.
+            ALIVE_Q,
+            {
+                "en": "{friend} sees snails on the bench. Which of these is alive?",
+                "fr": "{friend} voit des escargots sur le banc. Lequel de ces éléments est vivant ?",
+            },
+            ALIVE,
+            1,
+        ),
+        (
+            ALIVE_Q,
+            {
+                "en": "Snails crawl on the bench. Which of these is alive?",
+                "fr": "Des escargots rampent sur le banc. Lequel de ces éléments est vivant ?",
+            },
+            ALIVE,
+            1,
+        ),
+    ],
+)
+def test_a_rewrite_that_says_the_answers_noun_is_refused(original, rewrite, options, correct):
+    assert any("names an option" in p for p in _check(original, rewrite, options, correct))
+
+
+EGGS = {"en": ["1", "2", "5", "10"], "fr": ["1", "2", "5", "10"]}
+SIZES = {
+    "en": ["The cell", "The atom", "The molecule", "The organ"],
+    "fr": ["La cellule", "L'atome", "La molécule", "L'organe"],
+}
+TEMP = {
+    "en": ["It speeds up", "It slows down", "It stops", "It stays the same"],
+    "fr": ["Elle accélère", "Elle ralentit", "Elle s'arrête", "Elle reste pareille"],
+}
+
+
+@pytest.mark.parametrize(
+    ("original", "rewrite", "options"),
+    [
+        (
+            {"en": "Which animal has the most legs?", "fr": "Quel animal a le plus de pattes ?"},
+            {
+                "en": "{friend} counts. Which animal has the fewest legs?",
+                "fr": "{friend} compte. Quel animal a le plus de pattes ?",
+            },
+            ALIVE,
+        ),
+        (
+            {
+                "en": "How many eggs does a hen lay per day at most?",
+                "fr": "Combien d'œufs une poule pond-elle au maximum par jour ?",
+            },
+            {
+                "en": "Mamie lifts the basket. How many eggs does a hen lay per day at most?",
+                "fr": "Mamie soulève le panier. Combien d'œufs une poule pond-elle au minimum par jour ?",
+            },
+            EGGS,
+        ),
+        (
+            {
+                "en": "What is the maximum number of eggs a hen lays per day?",
+                "fr": "Quel est le nombre maximum d'œufs pondus par jour ?",
+            },
+            {
+                "en": "Mamie lifts the basket. What is the minimum number of eggs a hen lays per day?",
+                "fr": "Mamie soulève le panier. Quel est le nombre maximum d'œufs pondus par jour ?",
+            },
+            EGGS,
+        ),
+        (
+            {
+                "en": "Which is bigger than a molecule?",
+                "fr": "Lequel est plus grand qu'une molécule ?",
+            },
+            {
+                "en": "{friend} squints. Which is smaller than a molecule?",
+                "fr": "{friend} plisse les yeux. Lequel est plus grand qu'une molécule ?",
+            },
+            SIZES,
+        ),
+        (
+            {
+                "en": "Which is larger than a molecule?",
+                "fr": "Lequel a une taille supérieure à une molécule ?",
+            },
+            {
+                "en": "{friend} squints. Which is larger than a molecule?",
+                "fr": "{friend} plisse les yeux. Lequel a une taille inférieure à une molécule ?",
+            },
+            SIZES,
+        ),
+        (
+            {
+                "en": "What happens to a lizard's heartbeat when the temperature increases?",
+                "fr": "Que devient le cœur du lézard quand la température augmente ?",
+            },
+            {
+                "en": "The sun goes down. What happens to a lizard's heartbeat when the temperature decreases?",
+                "fr": "Le soleil se couche. Que devient le cœur du lézard quand la température diminue ?",
+            },
+            TEMP,
+        ),
+        (
+            {"en": "What must you do before eating?", "fr": "Que dois-tu faire avant de manger ?"},
+            {
+                "en": "Mamie sets the table. What must you do after eating?",
+                "fr": "Mamie met la table. Que dois-tu faire après avoir mangé ?",
+            },
+            {
+                "en": ["Wash your hands", "Sleep", "Run", "Sing"],
+                "fr": ["Te laver les mains", "Dormir", "Courir", "Chanter"],
+            },
+        ),
+    ],
+)
+def test_a_rewrite_that_flips_an_opposite_is_refused(original, rewrite, options):
+    found = _check(original, rewrite, options)
+    assert any("opposite changed" in p for p in found), found
+
+
+def _faithful(o_en, o_fr, r_en, r_fr, opts_en, opts_fr, correct=0):
+    return StemCandidate(
+        ref="q",
+        original={"en": o_en, "fr": o_fr},
+        rewrite={"en": r_en, "fr": r_fr},
+        options={"en": opts_en, "fr": opts_fr},
+        correct_index=correct,
+    )
+
+
+#: Faithful rewrites (the reviewer's over-rejection set): all but one pass.
+FAITHFUL = [
+    _faithful(
+        "Which of these is a characteristic of all living things?",
+        "Laquelle de ces caractéristiques est commune à tous les êtres vivants ?",
+        "{friend} lines up the jars. Which of these is a characteristic of all living things?",
+        "{friend} aligne les bocaux. Laquelle de ces caractéristiques est commune à tous les êtres vivants ?",
+        ["They grow", "They are green", "They move fast", "They are big"],
+        ["Ils grandissent", "Ils sont verts", "Ils bougent vite", "Ils sont grands"],
+    ),
+    _faithful(
+        "What do plants need to make their own food?",
+        "De quoi les plantes ont-elles besoin pour fabriquer leur nourriture ?",
+        "Mariam waters the beans by the window. What do plants need to make their own food?",
+        "Mariam arrose les haricots près de la fenêtre. De quoi les plantes ont-elles besoin pour fabriquer leur nourriture ?",
+        ["Sunlight, water and air", "Only soil", "Sugar", "Darkness"],
+        ["Lumière, eau et air", "Seulement de la terre", "Du sucre", "L'obscurité"],
+    ),
+    _faithful(
+        "Which part of the cell controls its activities?",
+        "Quelle partie de la cellule contrôle ses activités ?",
+        "Kaboré points at the drawing on the board. Which part of the cell controls its activities?",
+        "Kaboré montre le dessin au tableau. Quelle partie de la cellule contrôle ses activités ?",
+        ["The nucleus", "The membrane", "The cytoplasm", "The wall"],
+        ["Le noyau", "La membrane", "Le cytoplasme", "La paroi"],
+    ),
+    _faithful(
+        "How many legs does an insect have?",
+        "Combien de pattes a un insecte ?",
+        "{friend} watches an ant on the bench. How many legs does an insect have?",
+        "{friend} observe une fourmi sur le banc. Combien de pattes a un insecte ?",
+        ["4", "6", "8", "10"],
+        ["4", "6", "8", "10"],
+        1,
+    ),
+    _faithful(
+        "What is the main mode of transmission of cholera?",
+        "Quel est le principal mode de transmission du choléra ?",
+        "Kaboré looks at the village well. What is the main mode of transmission of cholera?",
+        "Kaboré regarde le puits du village. Quel est le principal mode de transmission du choléra ?",
+        ["Contaminated water", "Mosquito bites", "The air", "Shaking hands"],
+        ["L'eau contaminée", "Les piqûres de moustique", "L'air", "Se serrer la main"],
+    ),
+    _faithful(
+        "Which vaccine is given at birth?",
+        "Quel vaccin est donné à la naissance ?",
+        "Mariam holds the newborn baby. Which vaccine is given at birth?",
+        "Mariam tient le nouveau-né. Quel vaccin est donné à la naissance ?",
+        ["BCG", "Measles", "Yellow fever", "Tetanus"],
+        ["BCG", "Rougeole", "Fièvre jaune", "Tétanos"],
+    ),
+    _faithful(
+        "What is the first thing to do when a child has diarrhoea?",
+        "Quelle est la première chose à faire quand un enfant a la diarrhée ?",
+        "Awa's little brother was sick all night. What is the first thing to do when a child has diarrhoea?",
+        "Le petit frère d'Awa a été malade toute la nuit. Quelle est la première chose à faire quand un enfant a la diarrhée ?",
+        ["Give oral rehydration salts", "Stop all drinks", "Give sweets", "Wait"],
+        ["Donner des sels de réhydratation", "Arrêter de boire", "Donner des bonbons", "Attendre"],
+    ),
+    _faithful(
+        "Which of these is NOT a sign of dehydration?",
+        "Lequel de ces signes n'est PAS un signe de déshydratation ?",
+        "{friend} looks at the baby's lips. Which of these is NOT a sign of dehydration?",
+        "{friend} regarde les lèvres du bébé. Lequel de ces signes n'est PAS un signe de déshydratation ?",
+        ["Rosy cheeks", "Dry mouth", "Sunken eyes", "Few tears"],
+        ["Des joues roses", "La bouche sèche", "Les yeux enfoncés", "Peu de larmes"],
+    ),
+    _faithful(
+        "Which organ lets us breathe?",
+        "Quel organe permet de respirer ?",
+        "Awa breathes hard after the race. Which organ lets us breathe?",
+        "Awa souffle très fort après la course. Quel organe permet de respirer ?",
+        ["The lungs", "The heart", "The stomach", "The liver"],
+        ["Les poumons", "Le cœur", "L'estomac", "Le foie"],
+    ),
+    _faithful(
+        "Which of these animals is a vertebrate?",
+        "Lequel de ces animaux est un vertébré ?",
+        "{friend} points at the school yard. Which of these animals is a vertebrate?",
+        "{friend} montre la cour de l'école. Lequel de ces animaux est un vertébré ?",
+        ["The lizard", "The snail", "The ant", "The worm"],
+        ["Le lézard", "L'escargot", "La fourmi", "Le ver"],
+    ),
+    _faithful(
+        "Which food group gives us the most energy?",
+        "Quel groupe d'aliments nous donne le plus d'énergie ?",
+        "Mariam cooks rice and beans. Which food group gives us the most energy?",
+        "Mariam cuisine du riz et des haricots. Quel groupe d'aliments nous donne le plus d'énergie ?",
+        ["Carbohydrates", "Vitamins", "Minerals", "Water"],
+        ["Les glucides", "Les vitamines", "Les minéraux", "L'eau"],
+    ),
+    _faithful(
+        "How long should you wash your hands?",
+        "Combien de temps faut-il se laver les mains ?",
+        "Kaboré turns on the tap. How long should you wash your hands?",
+        "Kaboré ouvre le robinet. Combien de temps faut-il se laver les mains ?",
+        ["20 seconds", "2 seconds", "5 minutes", "1 hour"],
+        ["20 secondes", "2 secondes", "5 minutes", "1 heure"],
+    ),
+    _faithful(
+        "Which of these diseases is spread by mosquitoes?",
+        "Laquelle de ces maladies est transmise par les moustiques ?",
+        "Night falls and the mosquitoes come out. Which of these diseases is spread by mosquitoes?",
+        "La nuit tombe et les moustiques sortent. Laquelle de ces maladies est transmise par les moustiques ?",
+        ["Malaria", "Cholera", "Measles", "Tuberculosis"],
+        ["Le paludisme", "Le choléra", "La rougeole", "La tuberculose"],
+    ),
+    _faithful(
+        "What does a seed need to germinate?",
+        "De quoi une graine a-t-elle besoin pour germer ?",
+        "After school, {friend} plants a bean. What does a seed need to germinate?",
+        "Dans la cour, {friend} plante un haricot. De quoi une graine a-t-elle besoin pour germer ?",
+        ["Water and warmth", "Darkness only", "Salt", "Nothing"],
+        ["De l'eau et de la chaleur", "Seulement l'obscurité", "Du sel", "Rien"],
+    ),
+    _faithful(
+        "Why do we sweat?",
+        "Pourquoi transpirons-nous ?",
+        "Suddenly, {friend} wipes her forehead. Why do we sweat?",
+        "Soudain, {friend} s'essuie le front. Pourquoi transpirons-nous ?",
+        ["To cool the body", "To grow", "To sleep", "To eat"],
+        ["Pour refroidir le corps", "Pour grandir", "Pour dormir", "Pour manger"],
+    ),
+    _faithful(
+        "Which part of the plant takes in water?",
+        "Quelle partie de la plante absorbe l'eau ?",
+        "Under the mango tree, Kaboré digs a little. Which part of the plant takes in water?",
+        "Sous le manguier, Kaboré creuse un peu. Quelle partie de la plante absorbe l'eau ?",
+        ["The roots", "The leaves", "The flowers", "The fruit"],
+        ["Les racines", "Les feuilles", "Les fleurs", "Le fruit"],
+    ),
+    _faithful(
+        "Which of these is a renewable resource?",
+        "Laquelle de ces ressources est renouvelable ?",
+        "Mariam looks at the sun on the roof. Which of these is a renewable resource?",
+        "Mariam regarde le soleil sur le toit. Laquelle de ces ressources est renouvelable ?",
+        ["Solar energy", "Oil", "Coal", "Gas"],
+        ["L'énergie solaire", "Le pétrole", "Le charbon", "Le gaz"],
+    ),
+    _faithful(
+        "Why do we boil drinking water?",
+        "Pourquoi fait-on bouillir l'eau de boisson ?",
+        "Mariam puts the pot on the fire. Why do we boil drinking water?",
+        "Mariam met la marmite sur le feu. Pourquoi fait-on bouillir l'eau de boisson ?",
+        ["To kill germs", "To make it sweet", "To cool it", "To colour it"],
+        ["Pour tuer les microbes", "Pour la sucrer", "Pour la refroidir", "Pour la colorer"],
+    ),
+    _faithful(
+        "Which organ filters the blood?",
+        "Quel organe filtre le sang ?",
+        "Kaboré draws one more organ on the board. Which organ filters the blood?",
+        "Kaboré dessine un organe de plus au tableau. Quel organe filtre le sang ?",
+        ["The kidneys", "The heart", "The lungs", "The brain"],
+        ["Les reins", "Le cœur", "Les poumons", "Le cerveau"],
+    ),
+]
+CAST = ["Kaboré", "Awa", "Mariam", "Margo", "Burkina Faso", "Ouagadougou"]
+
+
+@pytest.mark.parametrize("candidate", FAITHFUL, ids=[c.rewrite["en"][:30] for c in FAITHFUL])
+def test_a_faithful_rewrite_is_not_refused(candidate):
+    assert stem_problems(candidate, allowed=CAST) == []
+
+
+def test_a_lead_in_negation_the_original_does_not_have_is_still_refused():
+    lead = _faithful(
+        "What is the role of red blood cells?",
+        "Quel est le rôle des globules rouges ?",
+        "{friend} is not sure. What is the role of red blood cells?",
+        "{friend} n'est pas sûre. Quel est le rôle des globules rouges ?",
+        ["To carry oxygen", "To fight germs", "To clot blood", "To digest food"],
+        ["Transporter l'oxygène", "Combattre les microbes", "Coaguler le sang", "Digérer"],
+    )
+    assert any("lead-in" in p for p in stem_problems(lead, allowed=CAST))
+
+
+@pytest.mark.parametrize(
+    ("rewrite_en", "rewrite_fr"),
+    [
+        (  # The scenario kept in the lead-in: its negation is the original's.
+            "Mariam's son is 3 years old. He has had diarrhoea for 3 days and is not drinking well. What should be done first?",
+            "Le fils de Mariam a 3 ans. Il a la diarrhée depuis 3 jours et ne boit pas bien. Que faut-il faire en premier ?",
+        ),
+        (  # The scenario folded into one question.
+            "What should be done first for Mariam's son, 3 years old, who has had diarrhoea for 3 days and is not drinking well?",
+            "Que faut-il faire en premier pour le fils de Mariam, 3 ans, qui a la diarrhée depuis 3 jours et ne boit pas bien ?",
+        ),
+    ],
+)
+def test_a_faithful_scenario_stem_passes(rewrite_en, rewrite_fr):
+    scenario = _faithful(
+        "A 3-year-old child has had diarrhoea for 3 days and is not drinking well. What should be done first?",
+        "Un enfant de 3 ans a la diarrhée depuis 3 jours et ne boit pas bien. Que faut-il faire en premier ?",
+        rewrite_en,
+        rewrite_fr,
+        ["Give oral rehydration salts", "Give antibiotics", "Stop breastfeeding", "Wait and see"],
+        [
+            "Donner des sels de réhydratation orale",
+            "Donner des antibiotiques",
+            "Arrêter l'allaitement",
+            "Attendre",
+        ],
+    )
+    assert stem_problems(scenario, allowed=CAST) == []
+
+
+def test_short_options_are_matched_by_word_never_inside_another():
+    from app.domain.services.story_stems import _names_option
+
+    assert not _names_option("Rien", "{friend} plante un haricot.")
+    assert not _names_option("Eau", "Mamie remplit le seau.")
+    assert not _names_option("Air", "{friend} sits on the chair.")
+    assert not _names_option("It is grey", "Grandma holds up the grey stone.")
+    assert _names_option("The liver", "Forget the liver and the skin.")
+    assert _names_option("Le foie", "Ni le foie ni la peau.", "Quel organe pompe le sang ?")
+
+
+def test_a_name_starting_a_sentence_is_a_name_only_if_the_other_language_keeps_it():
+    moussa = _faithful(
+        PUMPS["en"],
+        PUMPS["fr"],
+        "Moussa taps his chest. Which organ pumps blood?",
+        "Moussa tape sa poitrine. Quel organe pompe le sang ?",
+        HEART["en"],
+        HEART["fr"],
+    )
+    assert any("name or place" in p for p in stem_problems(moussa, allowed=CAST))
+    night = _faithful(
+        PUMPS["en"],
+        PUMPS["fr"],
+        "Night falls on the village. Which organ pumps blood?",
+        "La nuit tombe sur le village. Quel organe pompe le sang ?",
+        HEART["en"],
+        HEART["fr"],
+    )
+    assert stem_problems(night, allowed=CAST) == []
