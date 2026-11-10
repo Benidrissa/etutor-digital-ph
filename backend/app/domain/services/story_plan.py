@@ -35,6 +35,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -59,6 +60,9 @@ MAX_CALLS = 2
 
 MAX_BEATS = 4
 MAX_REFS_PER_BEAT = 2
+#: A plan made in code whose retry found the provider down is current for
+#: this long (its story is served), then retried again.
+OUTAGE_BACKOFF_S = 3600
 MAX_REFS_PER_CHAPTER = 4
 MAX_RALLY_REFS = 6
 MIN_RALLY_REFS = 3
@@ -262,10 +266,19 @@ class EpisodePlan:
     pins: dict[str, Any] = field(default_factory=dict)
     #: Model calls this run spent on it.
     calls: int = 0
+    #: The chapters made in code inside a model's plan (an incremental re-plan
+    #: that failed); ``None`` when the whole plan was made in code.
+    code_made: frozenset[str] | None = None
 
     @property
     def defaulted(self) -> bool:
         return bool(self.model) and str(self.model).startswith(DEFAULTED)
+
+    def made_in_code(self, unit: str | None) -> bool:
+        """Whether chapter ``unit`` (``None``: the rally) was made in code."""
+        if not self.defaulted:
+            return False
+        return self.code_made is None or (unit is not None and unit in self.code_made)
 
     def chapter(self, unit: str) -> dict[str, Any] | None:
         return next((c for c in self.plan.get("chapters") or [] if c.get("unit") == unit), None)
@@ -852,14 +865,19 @@ def _code_made_chapters(
 
     Every other entry, the global block included, is kept byte for byte, so no
     other chapter goes stale. A rebuilt chapter gets one beat per idea and keeps
-    the questions it had, spread over its beats.
+    the questions it had, dealt over its beats in the candidates' order — so
+    rebuilding a rebuilt chapter gives it back unchanged (its beat digest, and
+    its story, stay).
     """
     plan, gaps = normalise_plan({}, request, previous=previous, rewritten=units)
     old = {c.get("unit"): c for c in previous.get("chapters") or []}
+    order = {c.ref: index for index, c in enumerate(request.candidates)}
     for chapter in plan["chapters"]:
         if chapter["unit"] not in units:
             continue
-        refs = entry_refs(old.get(chapter["unit"]))
+        refs = sorted(
+            entry_refs(old.get(chapter["unit"])), key=lambda ref: (order.get(ref, len(order)), ref)
+        )
         for index, ref in enumerate(refs):
             beat = chapter["beats"][index % len(chapter["beats"])] if chapter["beats"] else None
             if beat is not None and len(beat["questions"]) < MAX_REFS_PER_BEAT:
@@ -942,7 +960,9 @@ async def find_plan_digests(
 
     ``None`` — nothing is fresh — for a plan of another version, and for a
     plan made in code that still waits for its one retry (:data:`DEFAULTED`),
-    as :func:`story_bible.find_bible_digest` does for the bible. A plan kept
+    as :func:`story_bible.find_bible_digest` does for the bible — unless that
+    retry found the provider down a moment ago (:func:`waiting_out_outage`):
+    then the story told from it is served until the backoff ends. A plan kept
     after its retry (:data:`DEFAULTED_KEPT`) is current.
     """
     from app.domain.models.story_module_plan import StoryModulePlan
@@ -958,9 +978,21 @@ async def find_plan_digests(
             ).where(StoryModulePlan.module_id == module_id, StoryModulePlan.language == language)
         )
     ).first()
-    if row is None or row.model == DEFAULTED or row.version != repair.PLAN_VERSION:
+    if row is None or row.version != repair.PLAN_VERSION:
+        return None
+    if row.model == DEFAULTED and not waiting_out_outage(row.content):
         return None
     return row.digest, row.global_digest, row.content
+
+
+def waiting_out_outage(content: Any, now: datetime | None = None) -> bool:
+    """A plan made in code whose retry found the provider down, still in its backoff."""
+    value = content.get("retry_after") if isinstance(content, dict) else None
+    try:
+        until = datetime.fromisoformat(str(value)) if value else None
+    except ValueError:
+        return False
+    return until is not None and (now or datetime.now(UTC)) < until
 
 
 async def save_pack(
@@ -1005,6 +1037,14 @@ async def stored_packs(
     return value if isinstance(value, dict) else {}
 
 
+async def _note_outage(session: AsyncSession, row: Any) -> None:
+    """Start the backoff of a plan made in code whose retry found the provider down."""
+    content = dict(row.content) if isinstance(row.content, dict) else {}
+    content["retry_after"] = (datetime.now(UTC) + timedelta(seconds=OUTAGE_BACKOFF_S)).isoformat()
+    row.content = content
+    await session.commit()
+
+
 def _lock_key(module_id: uuid.UUID, language: str) -> int:
     digest = hashlib.sha256(f"story-plan:{module_id}:{language}".encode()).digest()
     return int.from_bytes(digest[:8], "big", signed=True)
@@ -1029,7 +1069,13 @@ def _from_row(row: Any) -> EpisodePlan:
         model=row.model,
         gaps=list(content.get("gaps") or []),
         pins=dict(content.get("pins") or {}),
+        code_made=_code_made_of(content),
     )
+
+
+def _code_made_of(content: dict[str, Any]) -> frozenset[str] | None:
+    units = content.get("code_made_units")
+    return frozenset(str(u) for u in units) if isinstance(units, list) else None
 
 
 class StoryPlanService:
@@ -1066,45 +1112,90 @@ class StoryPlanService:
 
         previous = _from_row(row) if row is not None else None
         content = row.content if row is not None and isinstance(row.content, dict) else {}
+        units = set(request.units)
         #: Chapters an incremental re-plan could not rewrite: retried once.
-        retry_units = {str(u) for u in content.get("retry_units") or []}
-        changed: set[str] = set()
-        if (
+        retry_units = {str(u) for u in content.get("retry_units") or []} & units
+        #: Chapters made in code inside a model's plan (None: all of it). A
+        #: row stored before code_made_units existed names them as retry_units.
+        code_made = previous.code_made if previous is not None else None
+        if code_made is None and retry_units and previous is not None and previous.defaulted:
+            code_made = frozenset(retry_units)
+        # A plan the model made (some chapters perhaps made in code) is kept
+        # whenever the global inputs still match: only chapters are re-planned.
+        good = previous is not None and (not previous.defaulted or code_made is not None)
+        same_global = (
             previous is not None
-            and not force
-            and (not previous.defaulted or retry_units)
             and row.version == repair.PLAN_VERSION
-        ):
-            old = content.get("inputs") or {}
-            if old.get("global") == parts["global"] and previous.plan.get("chapters"):
-                lessons = old.get("lessons") or {}
-                changed = {
-                    lesson.unit_number
-                    for lesson in request.lessons
-                    if lessons.get(str(lesson.unit_id)) != parts["lessons"][str(lesson.unit_id)]
-                } | (retry_units & set(request.units))
-        incremental = bool(changed) and len(changed) < len(request.lessons)
-        made, model, calls = await self._make(
-            request,
-            system_prompt=system_prompt,
-            previous=previous.plan if incremental and previous else None,
-            rewritten=changed if incremental else None,
+            and (content.get("inputs") or {}).get("global") == parts["global"]
+            and bool(previous.plan.get("chapters"))
         )
+        changed: set[str] = set()
+        if same_global and not force and (good or retry_units):
+            lessons = (content.get("inputs") or {}).get("lessons") or {}
+            changed = {
+                lesson.unit_number
+                for lesson in request.lessons
+                if lessons.get(str(lesson.unit_id)) != parts["lessons"][str(lesson.unit_id)]
+            } | retry_units
+            if changed:
+                # A chapter made in code gets its next chance with the next edit.
+                changed |= (code_made or frozenset()) & units
+        incremental = bool(changed) and len(changed) < len(request.lessons)
+        try:
+            made, model, calls = await self._make(
+                request,
+                system_prompt=system_prompt,
+                previous=previous.plan if incremental and previous else None,
+                rewritten=changed if incremental else None,
+            )
+        except PlanCallImpossible:
+            if (
+                previous is None
+                or force
+                or row.model != DEFAULTED
+                or row.inputs != inputs
+                or row.version != repair.PLAN_VERSION
+            ):
+                raise
+            # The one retry of a plan made in code found the provider down:
+            # the plan still fits its inputs, so it is used (and its story
+            # served) until the backoff ends; it stays DEFAULTED.
+            await _note_outage(session, row)
+            logger.warning(
+                "Story plan retry: provider down; the plan made in code is used meanwhile",
+                module_id=str(request.module_id),
+                language=request.language,
+            )
+            previous.calls = 1
+            return previous
         retry: list[str] = []
+        made_in_code: set[str] | None = None
         if model is None:
             # Unusable twice: made in code, retried once next time, then kept.
             model = DEFAULTED_KEPT if row is not None and row.model == DEFAULTED else DEFAULTED
-            if incremental and previous is not None:
-                # Never throw a good plan away: only the changed chapters are
-                # made in code; every other entry stays byte for byte.
-                made, gaps = _code_made_chapters(request, previous.plan, changed)
-                retry = sorted(changed) if model == DEFAULTED else []
+            if same_global and good and previous is not None:
+                # Never throw a good plan away: only the chapters to re-plan
+                # are made in code; every other entry stays byte for byte.
+                rebuilt = changed if incremental else units
+                made, gaps = _code_made_chapters(request, previous.plan, rebuilt)
+                made_in_code = set(code_made or ()) | rebuilt
+                retry = sorted(rebuilt) if model == DEFAULTED else []
             else:
                 made, gaps = default_plan(request), ["plan made in code"]
         else:
             made, gaps = made
+            if code_made and incremental:
+                made_in_code = (set(code_made) - changed) or None
         stored = await self._store(
-            session, row, request, made, gaps, parts, model, retry_units=retry
+            session,
+            row,
+            request,
+            made,
+            gaps,
+            parts,
+            model,
+            retry_units=retry,
+            code_made_units=sorted(made_in_code) if made_in_code is not None else None,
         )
         stored.calls = calls
         logger.info(
@@ -1122,7 +1213,7 @@ class StoryPlanService:
     def _reusable(row: Any, inputs: str, force: bool) -> EpisodePlan | None:
         if row is None or force or row.version != repair.PLAN_VERSION:
             return None
-        if row.model == DEFAULTED:
+        if row.model == DEFAULTED and not waiting_out_outage(row.content):
             return None  # its one retry
         if row.inputs != inputs:
             return None
@@ -1212,6 +1303,7 @@ class StoryPlanService:
         model: str,
         *,
         retry_units: list[str] | None = None,
+        code_made_units: list[str] | None = None,
     ) -> EpisodePlan:
         from app.domain.models.story_module_plan import StoryModulePlan
 
@@ -1229,6 +1321,8 @@ class StoryPlanService:
         }
         if retry_units:
             content["retry_units"] = list(retry_units)
+        if code_made_units is not None:
+            content["code_made_units"] = list(code_made_units)
         values = {
             "version": repair.PLAN_VERSION,
             "inputs": sha(parts),
@@ -1266,4 +1360,5 @@ class StoryPlanService:
             model=model,
             gaps=gaps,
             pins=dict(request.pins),
+            code_made=_code_made_of(content),
         )

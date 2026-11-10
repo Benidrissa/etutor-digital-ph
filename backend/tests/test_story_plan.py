@@ -39,6 +39,7 @@ from app.domain.services.story_plan import (
     sha,
     stored_packs,
     validate_plan,
+    waiting_out_outage,
 )
 from tests._story_db import create_tables, scratch_database, story_tables
 from tests.test_story_screenplay_module import make_run, plan_answer
@@ -570,6 +571,133 @@ def test_a_module_without_a_rally_resolves_on_its_last_chapter():
     assert "never a cliffhanger" in message and '"paid_off": "1.3"' in message
     assert '"paid_off": "rally"' not in message and '"rally": {' not in message
     assert "is past by the last chapter" in message
+
+
+def _with_merged_ideas(req, index: int = 1):
+    """Lesson ``index`` with its first two ideas merged: fewer beats than questions."""
+    lesson = req.lessons[index]
+    ideas = list(lesson.sheet.ideas)
+    ideas = [f"{ideas[0]} {ideas[1]}", *ideas[2:]]
+    req.lessons[index] = replace(
+        lesson,
+        sheet=build_fact_sheet({"concepts": ideas, "key_points": list(lesson.sheet.key_facts)}),
+    )
+
+
+async def test_a_chapter_made_in_code_is_made_the_same_way_again(maker):
+    """More questions than beats: the kept rebuild deals them as the first one did."""
+    req = await seeded_request(maker)
+    bad = ValueError("truncated")
+    model = FakeModel({**answer(), "__complete": True}, bad, bad, bad, bad)
+    service = StoryPlanService(model)
+    async with maker() as session:
+        await service.get_or_create(session, req, system_prompt="s")
+    _with_merged_ideas(req)
+    async with maker() as session:
+        made = await service.get_or_create(session, req, system_prompt="s")
+    chapter = made.chapter("1.2")
+    assert len(entry_refs(chapter)) > len(chapter["beats"])
+    async with maker() as session:
+        kept = await service.get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 5 and (await stored(maker, req)).model == DEFAULTED_KEPT
+    assert kept.digest == made.digest and kept.chapter("1.2") == chapter
+    assert kept.beat_digest("1.2", req) == made.beat_digest("1.2", req)
+
+
+async def test_the_next_edit_after_a_kept_chapter_is_still_incremental(maker):
+    """A plan the model made, one chapter made in code: an edit never re-plans it all."""
+    req = await seeded_request(maker)
+    good = {**answer(), "__complete": True}
+    bad = ValueError("truncated")
+    model = FakeModel(good, bad, bad, bad, bad, bad, bad, good)
+    service = StoryPlanService(model)
+    async with maker() as session:
+        first = await service.get_or_create(session, req, system_prompt="s")
+    _with_changed_sheet(req)
+    for _ in range(2):  # made in code, then kept after its retry
+        async with maker() as session:
+            await service.get_or_create(session, req, system_prompt="s")
+    row = await stored(maker, req)
+    assert row.model == DEFAULTED_KEPT and row.content["code_made_units"] == ["1.2"]
+    # Lesson 1.3 changes; the re-plan is unusable again: 1.1 and the episode stay.
+    _with_changed_sheet(req, 2)
+    async with maker() as session:
+        again = await service.get_or_create(session, req, system_prompt="s")
+    assert "Rewrite ONLY the entry of chapter 1.2, 1.3" in model.messages[5]
+    assert again.global_digest == first.global_digest
+    assert again.chapter("1.1") == first.chapter("1.1") and again.rally == first.rally
+    row = await stored(maker, req)
+    assert row.model == DEFAULTED and row.content["code_made_units"] == ["1.2", "1.3"]
+    assert row.content["retry_units"] == ["1.2", "1.3"]
+    # Its retry is answered: the model rewrites both chapters; nothing else moves.
+    async with maker() as session:
+        mended = await service.get_or_create(session, req, system_prompt="s")
+    assert "Rewrite ONLY the entry of chapter 1.2, 1.3" in model.messages[7]
+    assert mended.global_digest == first.global_digest and not mended.defaulted
+    row = await stored(maker, req)
+    assert "code_made_units" not in row.content and "retry_units" not in row.content
+
+
+async def test_a_row_without_code_made_units_still_keeps_its_good_plan(maker):
+    """A row stored before code_made_units existed: its retry_units name them."""
+    req = await seeded_request(maker)
+    bad = ValueError("truncated")
+    model = FakeModel({**answer(), "__complete": True}, bad)
+    service = StoryPlanService(model)
+    async with maker() as session:
+        first = await service.get_or_create(session, req, system_prompt="s")
+    _with_changed_sheet(req)
+    async with maker() as session:
+        await service.get_or_create(session, req, system_prompt="s")
+    async with maker() as session:
+        row = await find_plan_row(session, req)
+        content = dict(row.content)
+        content.pop("code_made_units")
+        row.content = content
+        await session.commit()
+    _with_changed_sheet(req, 2)
+    async with maker() as session:
+        again = await service.get_or_create(session, req, system_prompt="s")
+    assert again.global_digest == first.global_digest
+    assert again.chapter("1.1") == first.chapter("1.1")
+
+
+async def find_plan_row(session, req) -> StoryModulePlan:
+    return (
+        await session.execute(
+            sa.select(StoryModulePlan).where(StoryModulePlan.module_id == req.module_id)
+        )
+    ).scalar_one()
+
+
+async def test_a_provider_outage_on_the_retry_serves_the_plan_made_in_code(maker):
+    req = await seeded_request(maker)
+    bad = ValueError("truncated")
+    model = FakeModel(bad, bad, RuntimeError("529 overloaded"))
+    service = StoryPlanService(model)
+    async with maker() as session:
+        made = await service.get_or_create(session, req, system_prompt="s")
+        assert await find_plan_digests(session, req.module_id, req.language) is None
+    async with maker() as session:
+        during = await service.get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 3 and during.digest == made.digest and during.calls == 1
+    row = await stored(maker, req)
+    assert row.model == DEFAULTED and waiting_out_outage(row.content)
+    async with maker() as session:
+        # Current during the backoff: served, and not asked again.
+        assert await find_plan_digests(session, req.module_id, req.language) is not None
+        await service.get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 3
+    # After the backoff the retry is due again.
+    from datetime import UTC, datetime, timedelta
+
+    later = datetime.now(UTC) + timedelta(hours=2)
+    assert not waiting_out_outage(row.content, now=later)
+    async with maker() as session:
+        row = await find_plan_row(session, req)
+        row.content = {**row.content, "retry_after": "2000-01-01T00:00:00+00:00"}
+        await session.commit()
+        assert await find_plan_digests(session, req.module_id, req.language) is None
 
 
 def test_candidates_keep_their_content_key():

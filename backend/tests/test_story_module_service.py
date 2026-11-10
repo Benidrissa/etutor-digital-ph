@@ -637,6 +637,46 @@ async def test_a_failed_incremental_re_plan_re_tells_only_the_changed_chapter(se
     assert await fresh(sessions, seed_)
 
 
+async def test_a_kept_chapter_made_in_code_costs_only_its_plan_calls(sessions):
+    """More questions than beats in the chapter made in code: open 2 pays 2 plan calls."""
+    seed_, model = await told(sessions)
+
+    def merge(content):
+        concepts = content["concepts"]
+        content["concepts"] = [f"{concepts[0]} {concepts[1]}", *concepts[2:]]
+
+    await edit_lesson(sessions, seed_, "1.2", merge)
+    model.unreadable.add(("plan", ""))
+    await run(service_for(model), sessions, seed_)
+    model.calls.clear()
+    await run(service_for(model), sessions, seed_)  # the retry, unusable again
+    assert model.calls == [("plan", ""), ("plan", "")]
+    assert (await plan_row(sessions, seed_)).model == DEFAULTED_KEPT
+    assert await fresh(sessions, seed_)
+
+
+async def test_a_provider_outage_never_withholds_the_story_of_a_plan_made_in_code(sessions):
+    seed_, model = await told(sessions)
+    await set_plan_model(sessions, seed_, DEFAULTED)
+    assert not await fresh(sessions, seed_)
+    model.broken[("plan", "")] = RuntimeError("529 overloaded")
+    record = await run(service_for(model), sessions, seed_)
+    # One failed (unpaid) plan call; the story is served from the plan it has.
+    assert model.calls == [("plan", "")] and record.is_valid
+    assert await fresh(sessions, seed_)
+    row = await plan_row(sessions, seed_)
+    assert row.model == DEFAULTED and row.content.get("retry_after")
+    # After the backoff the retry is due again.
+    async with sessions.maker() as session:
+        await session.execute(
+            sa.update(StoryModulePlan)
+            .where(StoryModulePlan.module_id == seed_.module_id)
+            .values(content={**row.content, "retry_after": "2000-01-01T00:00:00+00:00"})
+        )
+        await session.commit()
+    assert not await fresh(sessions, seed_)
+
+
 # --------------------------------------------------------------------------
 # Freshness
 # --------------------------------------------------------------------------

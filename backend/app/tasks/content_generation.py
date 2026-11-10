@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 
 import structlog
 from celery import Task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import Ignore, SoftTimeLimitExceeded
 
 from app.ai.usage_context import set_ai_context
 from app.tasks.celery_app import celery_app
@@ -58,7 +58,15 @@ MODULE_STORY_MAX_OVERFLOW = 2
 #: (one bigint each), nor story art's (namespace 0x2675).
 MODULE_STORY_LOCK_NAMESPACE = 0x2680
 
-#: What a run turned away by the lock reports: another copy is telling it.
+
+def module_story_run_key(module_id: str, language: str) -> str:
+    """Redis key naming the task id of the run that holds the module's lock."""
+    return f"module_story_run:{module_id}:{language}"
+
+
+#: What a run turned away by the lock reports when the running copy has
+#: another task id (the dedup key is handed to that id). A copy with the
+#: running copy's own id stores nothing (``Ignore``): that id stays STARTED.
 MODULE_STORY_SKIPPED = {
     "status": "skipped",
     "reason": "module_story_in_progress",
@@ -608,6 +616,53 @@ async def _module_story_lock(engine, module_id: str, language: str) -> AsyncIter
                     await connection.execute(sa.select(sa.func.pg_advisory_unlock(namespace, key)))
 
 
+def _run_holder(key: str, task_id: str | None, *, release: bool = False) -> str | None:
+    """Record (or, with ``release``, clear) the run holding the lock; best effort.
+
+    Recording returns ``None``. Without ``task_id`` it reads the holder's id.
+    """
+    try:
+        import redis
+
+        from app.domain.services.story_from_lesson_service import RELEASE_IF_OWNER_SCRIPT
+        from app.infrastructure.config.settings import settings
+
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            if task_id is None:
+                return client.get(key)
+            if release:
+                client.eval(RELEASE_IF_OWNER_SCRIPT, 1, key, task_id)
+            else:
+                client.set(key, task_id, ex=MODULE_STORY_DISPATCH_TTL_S)
+            return None
+        finally:
+            client.close()
+    except Exception as exc:
+        logger.warning("Module story run holder not recorded", key=key, error=str(exc))
+        return None
+
+
+def _hand_key_to(dedup_key: str | None, task_id: str | None, holder: str) -> None:
+    """Give the dedup key from this task to the run that holds the lock (best effort)."""
+    if not dedup_key or not task_id:
+        return
+    try:
+        import redis
+
+        from app.infrastructure.config.settings import settings
+
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            client.eval(
+                _HAND_OVER_SCRIPT, 1, dedup_key, task_id, holder, MODULE_STORY_DISPATCH_TTL_S
+            )
+        finally:
+            client.close()
+    except Exception as exc:
+        logger.warning("Story dispatch key not handed to the run", key=dedup_key, error=str(exc))
+
+
 def _continue_module_story(
     module_id: str,
     language: str,
@@ -787,6 +842,7 @@ def generate_module_story_task(
                         task_id=self.request.id,
                     )
                     return dict(MODULE_STORY_SKIPPED)
+                _run_holder(run_key, self.request.id)
                 claude = ClaudeService()
                 # Shared by every chapter: both hold configuration only, and the
                 # embedding client is safe to use concurrently on one loop.
@@ -826,13 +882,22 @@ def generate_module_story_task(
             await engine.dispose()
 
     failed: dict = {"status": "failed", "content_id": None, "is_valid": False}
+    run_key = module_story_run_key(module_id, language)
     release_key = True
     try:
         _hold_story_dispatch(dedup_key, self.request.id, MODULE_STORY_DISPATCH_TTL_S)
         result = asyncio.run(_run())
         if result == MODULE_STORY_SKIPPED:
-            # The running copy may have this very id: leave its key alone.
+            # Another copy is telling this story: its key is left alone.
             release_key = False
+            holder = _run_holder(run_key, None)
+            if holder is None or holder == self.request.id:
+                # A redelivery of the running task's own id: store nothing, so
+                # that id stays STARTED and learners keep joining it.
+                raise Ignore()
+            # Another id runs it: learners join that one.
+            _hand_key_to(dedup_key, self.request.id, holder)
+            return {**MODULE_STORY_SKIPPED, "running": holder}
         logger.info(
             "Async module story generation completed",
             module_id=module_id,
@@ -889,6 +954,8 @@ def generate_module_story_task(
             task_id=self.request.id,
         )
         return {**failed, "error": "chapter_generation_failed", "failed_units": exc.failed_units}
+    except Ignore:
+        raise
     except Exception as exc:
         logger.error(
             "Async module story generation failed",
@@ -901,6 +968,7 @@ def generate_module_story_task(
     finally:
         if release_key:
             _release_story_dispatch(dedup_key, self.request.id)
+            _run_holder(run_key, self.request.id, release=True)
 
 
 @celery_app.task(

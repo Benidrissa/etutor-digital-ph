@@ -24,6 +24,7 @@ checked; the paths are those of the model's JSON (``scenes[i].steps[j]``).
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -64,6 +65,12 @@ _TEXTBOOK_TITLE_RE = re.compile(
     r"^(?:signe|niveau|concept|id[ée]e cl[ée]|key idea|level|sign)\s*\d", re.IGNORECASE
 )
 _WORD_RE = re.compile(r"[a-z0-9]{4,}")
+
+
+def unaccented(text: Any) -> str:
+    """``text`` without accents, its case kept, with straight apostrophes."""
+    value = unicodedata.normalize("NFKD", str(text or ""))
+    return "".join(c for c in value if not unicodedata.combining(c)).replace("’", "'")
 
 
 def content_words(text: Any) -> set[str]:
@@ -270,9 +277,11 @@ def check_story(
 
     # -- what no line may say -------------------------------------------------
     # A name as the lesson wrote it (capitalised), in a story line: a card may
-    # name a thing the lesson capitalised, and "le soleil" is not "Soleil".
+    # name a thing the lesson capitalised, and "le soleil" is not "Soleil". An
+    # apostrophe is a boundary ("d'Aminata", "Aminata's"), and accents are
+    # left out on both sides ("Bouake" is "Bouaké").
     blocked = [
-        (name, re.compile(rf"(?<![\w'’-]){re.escape(name)}(?![\w'’-])"))
+        (name, re.compile(rf"(?<![\w-]){re.escape(unaccented(name))}(?![\w-])"))
         for name in ctx.blocklist
         if len(name) >= 3
     ]
@@ -301,7 +310,7 @@ def check_story(
                         " the story",
                     )
                     break
-        texts = [str(step.get(lang) or "") for lang in ("en", "fr")]
+        texts = [unaccented(step.get(lang)) for lang in ("en", "fr")]
         for name, pattern in blocked if item.type in LINE_TYPES else []:
             if any(pattern.search(t) for t in texts):
                 names_leaked += 1
