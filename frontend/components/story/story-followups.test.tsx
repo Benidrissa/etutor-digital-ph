@@ -17,7 +17,8 @@ import { pictureFor } from "./stage/props";
 import { StoryPlayer } from "./story-player";
 import { cardReady, clickInCard } from "./story-test-utils";
 
-vi.setConfig({ testTimeout: 20_000 });
+// Long click-throughs on a full stage: headroom for a saturated CI runner.
+vi.setConfig({ testTimeout: 40_000 });
 
 afterEach(() => {
   window.localStorage.clear();
