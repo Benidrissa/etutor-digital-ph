@@ -95,6 +95,7 @@ from app.domain.services.story_bible import (
     find_bible_digest,
     mission_for,
 )
+from app.domain.services.story_calls import StoryCallTimeout, run_deadline
 from app.domain.services.story_from_lesson_service import (
     MAX_REPAIR_CALLS,
     ModuleStoryBinding,
@@ -813,6 +814,52 @@ class ModuleStoryService:
     ) -> StoryCourseRecord:
         """Return the module story: planned, its stale chapters told in order, joined.
 
+        Every model call of the run is bounded (#2702): its kind's
+        ``max_tokens`` and a timeout of ``min(its cap, the deadline − a
+        margin)`` (:mod:`story_calls`). A call that runs past it stops the run
+        cleanly — packs and finished chapters are kept — as
+        :class:`StoryDeadlineReached`, so the task dispatches its continuation
+        instead of ending on its soft time limit with nothing stored.
+        """
+        told: list[str] = []
+        with run_deadline(deadline, clock):
+            try:
+                return await self._generate_module_story(
+                    module_id,
+                    language,
+                    session_factory,
+                    level=level,
+                    country=country,
+                    force_regenerate=force_regenerate,
+                    deadline=deadline,
+                    clock=clock,
+                    told=told,
+                )
+            except StoryCallTimeout as exc:
+                logger.warning(
+                    "Module story stopped: a model call ran past its time",
+                    module_id=str(module_id),
+                    language=language,
+                    kind=exc.kind,
+                    told=told,
+                )
+                raise StoryDeadlineReached(list(told)) from exc
+
+    async def _generate_module_story(
+        self,
+        module_id: uuid.UUID,
+        language: str,
+        session_factory: Callable[[], Any],
+        *,
+        level: int,
+        country: str,
+        force_regenerate: bool,
+        deadline: float | None,
+        clock: Callable[[], float],
+        told: list[str],
+    ) -> StoryCourseRecord:
+        """Return the module story: planned, its stale chapters told in order, joined.
+
         ``session_factory()`` must give a new ``AsyncSession`` (an async
         context manager) per call. ``level`` and ``country`` only choose which
         missing lesson or quiz is generated and which cached row a module
@@ -889,6 +936,7 @@ class ModuleStoryService:
             deadline=deadline,
             clock=clock,
             bible=bible,
+            told=told,
         )
         logger.info(
             "Module story: prep",
@@ -1013,7 +1061,7 @@ class ModuleStoryService:
                     system_prompt=story_prompt,
                 )
             abort = False
-        except (StoryDeadlineReached, ChapterGenerationFailed):
+        except (StoryDeadlineReached, ChapterGenerationFailed, StoryCallTimeout):
             abort = False  # a clean stop: the packs in flight are paid, keep them
             raise
         finally:
@@ -1415,7 +1463,7 @@ class ModuleStoryService:
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
                 ):
                     result = await self.chapters.generate_pack(chapter, system_prompt=system_prompt)
-        except SoftTimeLimitExceeded:
+        except (SoftTimeLimitExceeded, StoryCallTimeout):
             raise
         except Exception as exc:
             run.failures[unit.unit_number] = f"{type(exc).__name__}: {exc}"[:300]
@@ -1439,7 +1487,7 @@ class ModuleStoryService:
                     result = await self.chapters.generate_pack(
                         rally_ctx, system_prompt=system_prompt
                     )
-        except SoftTimeLimitExceeded:
+        except (SoftTimeLimitExceeded, StoryCallTimeout):
             raise
         except Exception as exc:
             run.failures[rally_unit.unit_number] = f"{type(exc).__name__}: {exc}"[:300]
@@ -1524,7 +1572,7 @@ class ModuleStoryService:
                     generation = await self.chapters.generate_story(
                         chapter, pack["spine"], system_prompt=system_prompt
                     )
-            except SoftTimeLimitExceeded:
+            except (SoftTimeLimitExceeded, StoryCallTimeout):
                 raise
             except Exception as exc:
                 run.failures[unit.unit_number] = f"{type(exc).__name__}: {exc}"[:300]
@@ -1820,7 +1868,7 @@ class ModuleStoryService:
                     system_prompt=system_prompt,
                     max_repair_calls=RALLY_REPAIR_CALLS,
                 )
-        except SoftTimeLimitExceeded:
+        except (SoftTimeLimitExceeded, StoryCallTimeout):
             raise
         except Exception as exc:
             number = rally_unit.unit_number

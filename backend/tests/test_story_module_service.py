@@ -835,6 +835,76 @@ async def test_a_judge_outage_never_blocks_a_chapter_and_is_asked_again_later(se
 
 
 # --------------------------------------------------------------------------
+# #2702: every call bounded — a slow call hands over, a runaway never loops
+# --------------------------------------------------------------------------
+
+
+class SlowStoryModel(FakeModel):
+    """Story 1.2 takes far longer than its call may run."""
+
+    async def generate_structured_content(self, system, user, content_type, max_retries=1):
+        if FakeModel.kind_of(user) == ("story", "1.2"):
+            self.calls.append(("story", "1.2"))
+            await asyncio.sleep(30)
+        return await super().generate_structured_content(system, user, content_type, max_retries)
+
+
+async def test_a_call_past_its_time_hands_over_with_what_is_done_kept(sessions, monkeypatch):
+    from app.domain.services import story_calls
+
+    monkeypatch.setitem(story_calls.CALL_CAPS, "story", 0.5)
+    seed_ = await seed(sessions)
+    slow = SlowStoryModel()
+    with pytest.raises(StoryDeadlineReached) as stopped:
+        await run(service_for(slow), sessions, seed_)
+    # A clean stop (the task continues), never the soft time limit.
+    assert stopped.value.told == ["1.1"]
+    assert set(await chapter_rows(sessions, seed_)) == {"1.1"}  # the chapter told is kept
+    async with sessions.maker() as session:
+        assert await find_module_story(session, seed_.module_id, LANGUAGE) is None
+    # The continuation: the plan and every pack were kept; only the stories.
+    model = FakeModel()
+    record = await run(service_for(model), sessions, seed_)
+    assert record.is_valid
+    assert model.calls == [("story", "1.2"), ("story", "1.3"), ("story", "rally")]
+
+
+class RunawayModel(FakeModel):
+    """Story 1.2 is cut at max_tokens on every call."""
+
+    async def generate_structured_content(self, system, user, content_type, max_retries=1):
+        from app.ai.claude_service import TruncatedResponse
+
+        if FakeModel.kind_of(user) == ("story", "1.2"):
+            self.calls.append(("story", "1.2"))
+            self.messages.setdefault(("story", "1.2"), []).append(user)
+            raise TruncatedResponse("story", output_tokens=12_000, length=40_000)
+        return await super().generate_structured_content(system, user, content_type, max_retries)
+
+
+async def test_a_runaway_chapter_costs_two_calls_a_run_and_never_loops(sessions):
+    from app.domain.services.story_calls import CONCISE_NOTICE
+
+    seed_ = await seed(sessions)
+    model = RunawayModel()
+    with pytest.raises(ChapterGenerationFailed) as failed:
+        await run(service_for(model), sessions, seed_)
+    assert failed.value.failed_units == ["1.2"]
+    # The first call and one concise retry; never a repair of the cut answer.
+    assert model.count("story", "1.2") == 2
+    retry = model.messages[("story", "1.2")][1]
+    assert retry.startswith(CONCISE_NOTICE) and "=== REPAIR" not in retry
+    # The next run tries once more (2 calls); then the chapter is kept as a
+    # draft (the failure cap): no paid loop.
+    await run(service_for(model), sessions, seed_)
+    assert model.count("story", "1.2") == 4
+    model.calls.clear()
+    await run(service_for(model), sessions, seed_)
+    assert model.calls == []
+    assert await fresh(sessions, seed_)
+
+
+# --------------------------------------------------------------------------
 # Freshness
 # --------------------------------------------------------------------------
 
