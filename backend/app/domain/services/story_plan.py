@@ -60,6 +60,9 @@ MAX_CALLS = 2
 
 MAX_BEATS = 4
 MAX_REFS_PER_BEAT = 2
+#: Plan issues code settles (a long prop label is shortened): never worth a
+#: repair call on their own, listed only when the plan is repaired anyway.
+QUIET_PLAN_CODES = frozenset({"plan_prop_label_long"})
 #: A plan made in code whose retry found the provider down is current for
 #: this long (its story is served), then retried again.
 OUTAGE_BACKOFF_S = 3600
@@ -1290,7 +1293,8 @@ class StoryPlanService:
                 break
             issues = validate_plan(raw, request)
             best = raw
-            if not issues:
+            if not [i for i in issues if i.code not in QUIET_PLAN_CODES]:
+                # Nothing worth a repair call: code settles a quiet issue.
                 break
             feedback = (issues, raw)
             logger.info("Story plan sent back for repair", codes=sorted({i.code for i in issues}))

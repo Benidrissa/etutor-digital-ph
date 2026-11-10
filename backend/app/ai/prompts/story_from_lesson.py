@@ -27,6 +27,7 @@ from app.ai.prompts.lesson import (
     _apply_settings_template,
 )
 from app.api.v1.schemas.story_course import DRAWN_VISUALS, MOODS, ValidationIssue
+from app.domain.services.story_props import short_label
 from app.domain.services.story_repair import (
     ARC_CLOSES,
     ARC_CONTINUES,
@@ -927,7 +928,8 @@ def _plan_props_line(plan: dict[str, Any], lang: str) -> list[str]:
     rows = []
     for prop in plan.get("props") or []:
         if isinstance(prop, dict) and prop.get("id"):
-            label = _t(prop.get("label") or prop, lang)
+            # A plan stored before #2697 may hold a label cut with "…".
+            label = short_label(_t(prop.get("label") or prop, lang))
             rows.append(
                 f"{prop['id']} — {label} (planted in {prop.get('planted') or '?'}, paid off in"
                 f" {prop.get('paid_off') or 'the rally'})"

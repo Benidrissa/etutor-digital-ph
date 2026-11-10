@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import copy
 import re
+import unicodedata
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -1785,30 +1786,80 @@ def _story_line(
     return step
 
 
-#: The first sentence of a line, and what follows it.
-_FIRST_SENTENCE_RE = re.compile(r"^(.+?[.!?…])(?:\s+(.*))?$", re.DOTALL)
+def _wordset(words: str) -> frozenset[str]:
+    """The words of a space-separated list."""
+    return frozenset(words.split())
+
+
+#: Where a sentence may end: ".", "!", "?" or "…" followed by a capital, a
+#: placeholder or a quote, or by nothing — "fig. 3" never ends one.
+_SENTENCE_END_RE = re.compile(r"[.!?…](?=\s+[A-ZÀ-ÖØ-Þ{«\"“¿¡]|\s*$)")
+#: Abbreviations a sentence never ends on ("M. Kaboré", "Dr. Diallo").
+_ABBREVIATIONS = frozenset({"m", "mme", "mlle", "mr", "mrs", "ms", "dr", "st", "fig", "p", "no"})
+
+
+def _first_sentence(text: str) -> tuple[str, str]:
+    """``(first sentence, the rest)`` of ``text``; the whole text when it has one sentence."""
+    for match in _SENTENCE_END_RE.finditer(text):
+        before = re.findall(r"[\w]+$", text[: match.start()])
+        if match.group(0) == "." and before and before[0].casefold() in _ABBREVIATIONS:
+            continue
+        return text[: match.end()].strip(), text[match.end() :].strip()
+    return text.strip(), ""
+
+
+#: The word after the speaker's name that makes the line speech, not a stage
+#: direction: an intent, a saying, a feeling, a state ("Mamie va te montrer",
+#: "Kaboré dit que…", "Kofi is tired").
+_NOT_AN_ACTION = _wordset(
+    "va vais vas allons allez vont veut veux voudrait voudrais peut peux doit dois"
+    " dit dis demande demandes repond reponds explique pense crois croit sait sais"
+    " aime adore deteste prefere est es suis a as ai etait sera serait n ne"
+    " will would wants want can could must should says say asks ask answers tells"
+    " explains thinks believes knows loves likes hates prefers is am was has had"
+    " does doesn did didn isn wasn hasn won"
+)
+#: Words of a first sentence that speak to someone: it is speech.
+_ADDRESSING = _wordset("te tu toi t vous ton ta tes votre vos you your yours yourself")
 
 
 def _own_action(text: str, names: Sequence[str]) -> tuple[str, str] | None:
     """``(stage direction, the rest)`` when ``text`` opens on its speaker doing something.
 
     "{friend} lève la carte. Quel est l'ordre ?" → ("{friend} lève la carte.",
-    "Quel est l'ordre ?"): the line starts with one of the speaker's own
-    ``names`` followed by a verb (a lower-case word), up to the end of that
-    sentence. "Kofi !" or "{friend}, regarde" is not one.
+    "Quel est l'ordre ?"). Only a clear stage direction: one of the speaker's
+    own ``names``, then an action (a lower-case verb that is not an intent, a
+    saying, a feeling or a state), a sentence ending on a period, followed by
+    the spoken words or by nothing. Speech about oneself stays speech: "Mamie
+    va te montrer…", "Kaboré dit que…", a first sentence that speaks to someone
+    or names another character ("…, {child} : …"), or one that ends on "!"/"?".
     """
     stripped = text.strip()
     for name in names:
         if not stripped.startswith(name):
             continue
         after = stripped[len(name) :]
-        if not re.match(r"\s+[a-zà-öø-ÿ]", after):
+        verb = re.match(r"\s+([a-zà-öø-ÿ][\wà-öø-ÿ'’-]*)", after)
+        if verb is None:
             continue
-        match = _FIRST_SENTENCE_RE.match(stripped)
-        if match is None:
-            return stripped, ""
-        return match.group(1).strip(), (match.group(2) or "").strip()
+        word = re.split(r"['’]", fold_word(verb.group(1)))[0]
+        if word in _NOT_AN_ACTION:
+            return None
+        first, rest = _first_sentence(stripped)
+        if not first.endswith("."):
+            return None
+        others = [p for p in re.findall(r"\{[a-z]+\}", first) if p != name]
+        words = set(re.findall(r"[a-z]+", fold_word(first)))
+        if others or words & _ADDRESSING:
+            return None
+        return first, rest.strip()
     return None
+
+
+def fold_word(text: str) -> str:
+    """Lower case, no accents, straight apostrophes (how the split reads a word)."""
+    value = unicodedata.normalize("NFKD", text).casefold()
+    return "".join(c for c in value if not unicodedata.combining(c)).replace("’", "'")
 
 
 def _split_self_narration(
@@ -1817,9 +1868,11 @@ def _split_self_narration(
     """A say line that narrates its own speaker's action, as a narrate step and the words.
 
     The stage direction becomes a ``narrate`` step before the ``say`` step,
-    which keeps only what is said. When it is the whole line, the line is a
-    narrate step. When only one language narrates, its stage direction is
-    left out of that language (the other never had it).
+    which keeps only what is said. When it is the whole line, the line becomes
+    a narrate step — kept as the say it was when it turns out to be a
+    question's lead-in (see :meth:`_ScreenplayBuilder.scene`). When only one
+    language narrates, its stage direction is left out of that language (the
+    other never had it). Reported under a quiet code: never a repair call.
     """
     found = {lang: _own_action(str(step.get(lang) or ""), names) for lang in LANGS}
     if not any(found.values()):
@@ -1834,17 +1887,18 @@ def _split_self_narration(
         "type": "narrate",
         **{k: v for k, v in step.items() if k in ("props", "_src")},
     }
+    whole = {**narrate, **{lang: step[lang] for lang in LANGS}, "_was_say": step}
     if all(found.values()):
         rests = {lang: found[lang][1] for lang in LANGS}
         if all(rests.values()):
             said = {**step, **rests}
             said.pop("props", None)
             return [{**narrate, **{lang: found[lang][0] for lang in LANGS}}, said]
-        return [{**narrate, **{lang: step[lang] for lang in LANGS}}]
+        return [whole]
     lang = next(lang for lang in LANGS if found[lang])
     rest = found[lang][1]
     if not rest:
-        return [{**narrate, **{lang: step[lang] for lang in LANGS}}]
+        return [whole]
     return [{**step, lang: rest}]
 
 
@@ -2043,6 +2097,18 @@ class _ScreenplayBuilder:
                 steps.extend(built)
         if not steps:
             return None
+        for index, step in enumerate(steps):
+            said = step.pop("_was_say", None)
+            if said is None:
+                continue
+            after = steps[index + 1] if index + 1 < len(steps) else None
+            if after is not None and (
+                after.get("type") == "ask" or str(after.get("id", "")).startswith("situation-")
+            ):
+                # A stage direction that is a question's lead-in stays the say
+                # it was: as a narrate step it would leave the question with no
+                # lead-in, a repair call (#2697 review).
+                steps[index] = said
         for step in steps:
             if step["type"] == "say" and step["who"] not in on_stage:
                 on_stage.append(step["who"])

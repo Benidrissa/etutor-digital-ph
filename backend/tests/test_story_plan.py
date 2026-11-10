@@ -711,6 +711,27 @@ def test_a_long_plan_prop_label_is_a_plan_issue_and_is_cut_without_an_ellipsis()
     assert "plan_prop_label_long" not in plan_codes(answer())
 
 
+async def test_a_long_prop_label_alone_never_costs_a_plan_repair(maker):
+    req = await seeded_request(maker)
+    long = answer()
+    long["props"][0]["fr"] = "le panier de Mamie avec tous les trésors du marché"
+    model = FakeModel({**long, "__complete": True})
+    async with maker() as session:
+        plan = await StoryPlanService(model).get_or_create(session, req, system_prompt="s")
+    assert len(model.messages) == 1  # settled in code, no repair call
+    assert plan.plan["props"][0]["fr"] == "le panier de Mamie"
+    # With an issue worth a repair, the label is listed in that repair too.
+    both = copy.deepcopy(long)
+    both["chapters"][0]["beats"][0]["place"] = "mars"
+    model = FakeModel(both, both)
+    req2 = await seeded_request(maker)
+    async with maker() as session:
+        await StoryPlanService(model).get_or_create(session, req2, system_prompt="s")
+    assert len(model.messages) == 2
+    assert "[plan_prop_label_long]" in model.messages[1]
+    assert "[plan_unknown_place]" in model.messages[1]
+
+
 def test_the_plan_message_asks_for_short_prop_labels():
     message = build_plan_user_message(request("fr"))
     assert "a short noun with its article" in message and "never a description" in message

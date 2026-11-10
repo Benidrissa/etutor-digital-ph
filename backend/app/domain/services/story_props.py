@@ -244,86 +244,57 @@ def _str(value: Any) -> str:
     return " ".join(str(value).split())
 
 
-#: Words a long label is cut before: where a description of the thing starts.
-_LABEL_BREAKS = frozenset(
-    [
-        "avec",
-        "qui",
-        "que",
-        "dont",
-        "pour",
-        "sur",
-        "sous",
-        "dans",
-        "contre",
-        "entre",
-        "plein",
-        "pleine",
-        "pleins",
-        "pleines",
-        "with",
-        "that",
-        "which",
-        "who",
-        "whose",
-        "for",
-        "on",
-        "under",
-        "inside",
-        "near",
-        "from",
-        "full",
-        "containing",
-    ]
+def _wordset(words: str) -> frozenset[str]:
+    """The words of a space-separated list."""
+    return frozenset(words.split())
+
+
+#: Words a long label is cut before: where its description starts — a
+#: relative, a preposition of place or purpose, an agent, a participle
+#: ("dessiné par l'ami", "drawn by", "holding", "devant").
+_LABEL_BREAKS = _wordset(
+    # French: relatives and prepositions.
+    "avec qui que dont pour sur sous dans contre entre devant derriere pres par"
+    " plein pleine pleins pleines contenant"
+    # French: participles that describe the thing.
+    " dessine dessinee dessines dessinees fait faite faits faites peint peinte"
+    " peints peintes ecrit ecrite ecrits ecrites rempli remplie remplis remplies"
+    " vu vue vus vues pose posee poses posees trouve trouvee trouves trouvees"
+    " offert offerte donne donnee achete achetee ramasse ramassee"
+    # English: relatives and prepositions.
+    " with that which who whose for on under inside near from full containing"
+    " holding beside behind next by"
+    # English: participles that describe the thing.
+    " drawn made painted written filled seen found picked bought given kept"
+    " lying sitting standing hanging"
 )
-#: Words that start a noun's own complement: a label is cut there only when no
-#: description can be cut off.
-_LABEL_COMPLEMENTS = frozenset({"de", "du", "des", "d", "of"})
 #: Words a shortened label never ends on.
-_LABEL_TAILS = frozenset(
-    [
-        "de",
-        "du",
-        "des",
-        "d",
-        "l",
-        "la",
-        "le",
-        "les",
-        "un",
-        "une",
-        "au",
-        "aux",
-        "à",
-        "a",
-        "avec",
-        "et",
-        "ou",
-        "of",
-        "the",
-        "an",
-        "and",
-        "or",
-        "with",
-        "in",
-        "on",
-        "to",
-        "for",
-        "qui",
-        "que",
-    ]
+_LABEL_TAILS = _wordset(
+    "de du des d l la le les un une au aux à a avec et ou en par sur sous dans pour"
+    " contenant qui que of the an and or with in on at to for by from into near"
+    " under holding"
 )
 
 
 def _label_word(word: str) -> str:
-    """A label word as the cut rules read it: folded, an elision reduced to its article."""
-    folded = fold(word).strip('.,;:!?()«»"')
-    return folded.split("'", 1)[0] if "'" in folded[:3] else folded
+    """A label word as the cut rules read it: folded, without its punctuation."""
+    return fold(word).strip('.,;:!?()«»"')
+
+
+def _elided(word: str) -> bool:
+    """A first word that holds its article: "l'escargot", "d'eau"."""
+    return "'" in fold(word)[:3]
+
+
+def _is_tail(word: str) -> bool:
+    """A word a label never ends on; a capital letter is never one ("la vitamine A")."""
+    if word[:1].isupper():
+        return False
+    return fold(word).strip(".,;:!?()«»\"'") in _LABEL_TAILS
 
 
 def _drop_tail(words: list[str]) -> list[str]:
-    # The whole word: "d'oignon" is a noun, a bare "d'" or "de" is not.
-    while len(words) > 1 and fold(words[-1]).strip(".,;:!?()«»\"'") in _LABEL_TAILS:
+    while len(words) > 1 and _is_tail(words[-1]):
         words = words[:-1]
     return words
 
@@ -331,35 +302,38 @@ def _drop_tail(words: list[str]) -> list[str]:
 def short_label(value: Any, limit: int = PROP_LABEL_LIMIT) -> str:
     """A prop label of at most ``limit`` characters, never cut mid-phrase, never with "…".
 
-    A label is what a name tag shows: a short noun with its article. A longer
-    one is cut where its description starts ("le bocal fermé avec quelque
-    chose de gris" → "le bocal fermé"), else before the noun's last
-    complement that fits ("le diagramme des niveaux du vivant de l'atome à la
-    biosphère" → "le diagramme des niveaux du vivant"), else after the last
-    whole word that fits; never on an article or a preposition. An ellipsis
-    the model wrote is removed.
+    A label is what a name tag shows: a short noun with its article. One that
+    fits is kept whole (only a dangling small word goes). A longer one is cut
+    at the first word where its description starts, when what comes before
+    fits ("le diagramme des niveaux du vivant dessiné par l'ami" → "le
+    diagramme des niveaux du vivant"; "the closed jar with something grey
+    inside" → "the closed jar"); else it keeps the longest run of whole words
+    that fits and does not end on an article or a preposition. A label the
+    model cut itself ("le bocal fermé avec quelque chose de…") is cut where
+    its description starts, else kept whole without its "…".
     """
     text = _str(value)
-    # A label the model cut itself ("le bocal fermé avec quelque chose de…")
-    # is cut again where its description starts.
     clipped = text.endswith(("…", "..."))
     text = text.rstrip(".…").rstrip(" ,;:-–—").strip()
-    words = text.split(" ")
+    words = text.split(" ") if text else []
+    if not words:
+        return ""
     if len(text) <= limit and not clipped:
         return " ".join(_drop_tail(words))
-    limit = min(limit, len(text))
-    for breaks in (_LABEL_BREAKS, _LABEL_COMPLEMENTS):
-        fitting = [
-            n
-            for n in range(2, len(words))
-            if _label_word(words[n]) in breaks and len(" ".join(words[:n])) <= limit
-        ]
-        if fitting:
-            return " ".join(_drop_tail(words[: fitting[-1]])).rstrip(" ,;:-–—")
-    fits = [n for n in range(1, len(words)) if len(" ".join(words[:n])) <= limit]
-    if not fits:
-        return text[:limit].rstrip(" ,;:-–—")
-    return " ".join(_drop_tail(words[: fits[-1]])).rstrip(" ,;:-–—")
+    first = 1 if _elided(words[0]) else 2
+    for n in range(first, len(words)):
+        if _label_word(words[n]) in _LABEL_BREAKS:
+            head = " ".join(_drop_tail(words[:n])).rstrip(" ,;:-–—")
+            if len(head) <= limit:
+                return head
+            break
+    if len(text) <= limit:
+        return " ".join(_drop_tail(words))
+    for n in range(len(words) - 1, 0, -1):
+        head = " ".join(words[:n]).rstrip(" ,;:-–—")
+        if len(head) <= limit and not _is_tail(words[n - 1]):
+            return head
+    return text[:limit].rstrip(" ,;:-–—")
 
 
 def _cut(text: str, limit: int) -> str:
