@@ -955,7 +955,8 @@ def _plan_block(ctx: LessonStoryContext) -> str:
     ]
     if phrases:
         lines.append(
-            'CATCHPHRASES (may come back word for word; mark such a line "refrain": true): '
+            'CATCHPHRASES (each may come back word for word, but all together at most twice in the'
+            ' whole module: a joke worn out is not funny; mark such a line "refrain": true): '
             + " · ".join(phrases)
         )
     props = _plan_props_line(plan, lang)

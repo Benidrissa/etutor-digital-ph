@@ -530,6 +530,10 @@ class Checks(_Loose):
     #: #2681: ``{declared, educational, stickers, figures, lines,
     #: lines_with_props, coverage, closeups, scenes_without_visual}``.
     props: dict[str, Any] | None = None
+    #: #2708, a module story: ``{say_run_max, closeups, closeups_with_art,
+    #: words_before_first_card, card_words_max, refrain_count, mentor_share}``.
+    #: Left out of a dump while unset, so no stored chapter document changes.
+    story_metrics: dict[str, Any] | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 # --- The course file --------------------------------------------------------

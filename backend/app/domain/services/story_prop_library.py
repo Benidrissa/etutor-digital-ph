@@ -390,10 +390,17 @@ def props_media(doc_props: Sequence[DocProp], resolved: Resolved) -> PropsMedia:
 async def load_matches(
     session: AsyncSession, keys: Iterable[PropKey]
 ) -> dict[PropKey, AssetView | None]:
-    """The cached results of ``keys``, with each matched asset's metadata (one query)."""
+    """The cached results of ``keys``, with each matched asset's metadata (one query).
+
+    A miss older than the newest library asset (the library gained or changed
+    pictures after the phrase was tried) is left out, so it counts as
+    unresolved and is matched again (#2708). A miss tried after the newest
+    asset, or against an empty library, stays a miss: no loop of rematching.
+    """
     keys = list(dict.fromkeys(keys))
     if not keys:
         return {}
+    newest = select(func.max(StoryLibraryAsset.updated_at)).scalar_subquery()
     statement = (
         select(
             StoryPropMatch.query,
@@ -409,6 +416,8 @@ async def load_matches(
             StoryLibraryAsset.credit,
             StoryLibraryAsset.source,
             StoryLibraryAsset.image_large.is_not(None),
+            StoryPropMatch.resolved_at,
+            newest,
         )
         .outerjoin(StoryLibraryAsset, StoryLibraryAsset.id == StoryPropMatch.asset_id)
         .where(tuple_(StoryPropMatch.query, StoryPropMatch.prop_kind).in_(keys))
@@ -416,6 +425,13 @@ async def load_matches(
     out: dict[PropKey, AssetView | None] = {}
     for row in (await session.execute(statement)).all():
         query, prop_kind, asset_id, *rest = row
+        resolved_at, newest_asset = rest[10], rest[11]
+        if (
+            asset_id is None
+            and newest_asset is not None
+            and (resolved_at is None or resolved_at < newest_asset)
+        ):
+            continue
         out[(query, prop_kind)] = (
             AssetView(asset_id, *rest[:9], has_large=bool(rest[9])) if asset_id else None
         )

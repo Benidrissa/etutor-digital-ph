@@ -48,7 +48,7 @@ from app.api.v1.schemas.story_course import (
     ValidationIssue,
     ValidationReport,
 )
-from app.domain.services import mcq_checks
+from app.domain.services import mcq_checks, story_metrics
 from app.domain.services.story_props import is_one_emoji
 
 logger = structlog.get_logger(__name__)
@@ -316,6 +316,8 @@ class StoryCourseValidator:
         checks.props = self._props_checks()
         if self.generated and self._told_from_plan():
             self._check_story_shape()
+        if self._is_module_story():
+            checks.story_metrics = self._check_story_assets()
 
         checks.errors = len(self.errors)
         checks.warnings = len(self.warnings)
@@ -1123,6 +1125,24 @@ class StoryCourseValidator:
         if isinstance(marker, dict):
             return bool(marker.get("plan"))
         return isinstance(getattr(self.course, "module_story", None), dict)
+
+    def _is_module_story(self) -> bool:
+        return isinstance(getattr(self.course, "module_story", None), dict)
+
+    def _check_story_assets(self) -> dict[str, Any]:
+        """#2708, module stories: what the learner sees and how the story talks.
+
+        Warnings only (``educational_prop_without_art``, ``dangling_deixis``,
+        ``unseen_stimulus``, ``lang_integrity``): a text-only course must
+        still publish, and a stored story must keep validating. Returns
+        ``checks.story_metrics``. Chapters are not judged one by one: their
+        generation ranks attempts by warning count, and these are the
+        module's to report.
+        """
+        document = self.course.model_dump(mode="json")
+        for finding in story_metrics.all_findings(document):
+            self._warn(finding.code, finding.path, finding.message)
+        return story_metrics.story_metrics(document)
 
     def _check_story_shape(self) -> None:
         """#2680, generated stories: warnings that never block publishing.

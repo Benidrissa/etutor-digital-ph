@@ -1717,7 +1717,8 @@ MIN_ON_STAGE, MAX_ON_STAGE = 2, 3
 #: Rows of a concept card.
 MAX_CONCEPT_ROWS = 4
 #: An episode has at most this many catchphrases, told at most this often.
-MAX_CATCHPHRASES, MAX_REFRAINS = 2, 4
+#: (#2708: 4 let the friend say the same line 11 times in one module.)
+MAX_CATCHPHRASES, MAX_REFRAINS = 2, 2
 
 
 @dataclass

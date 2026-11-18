@@ -229,3 +229,32 @@ async def test_the_foundry_output_imports_as_is(tmp_path):
         and accepted[0].attribution_required
         and accepted[0].source["site"] == "GitHub"
     )
+
+
+class _CountSession(FakeSession):
+    async def execute(self, statement):
+        self.statements.append(statement)
+        if isinstance(statement, sa.Select):
+            return type("R", (), {"scalar_one": lambda _self: 78})()
+        return None
+
+
+async def test_reset_misses_clears_only_the_misses(capsys):
+    session = _CountSession()
+    code = await script.main(["--reset-misses"], session_factory=lambda: session)
+    assert code == 0 and session.committed
+    count, delete = [_sql(s) for s in session.statements]
+    assert "count(*)" in count and "asset_id IS NULL" in count
+    assert delete.startswith("DELETE FROM story_prop_matches") and "asset_id IS NULL" in delete
+    assert "78 cached misses cleared" in capsys.readouterr().out
+
+
+async def test_reset_misses_dry_run_writes_nothing(capsys):
+    session = _CountSession()
+    assert await script.main(["--reset-misses", "--dry-run"], session_factory=lambda: session) == 0
+    assert not session.committed and len(session.statements) == 1
+    assert "78 cached misses would be cleared" in capsys.readouterr().out
+
+
+async def test_main_needs_a_folder_or_reset_misses():
+    assert await script.main([], session_factory=FakeSession) == 2
