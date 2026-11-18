@@ -1,0 +1,20 @@
+{
+  "name": "sira-asset-foundry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Renders free 3D models into story-mode stickers and close-ups (docs/story-mode-3d-assets.md).",
+  "scripts": {
+    "render": "node render.mjs --manifest manifest.example.json --models node_modules --out out",
+    "postprocess": "python3 postprocess.py --manifest manifest.example.json --models node_modules --out out",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "1.58.2",
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "@netforge/asset-library-files": "0.2.0",
+    "open-anatomy-3d": "0.1.0"
+  }
+}
