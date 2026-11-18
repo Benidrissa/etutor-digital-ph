@@ -366,7 +366,67 @@
 
 /* ---- Motion ------------------------------------------------------------- */
 
+/* ---- Camera (#2712) ------------------------------------------------------ */
+
+/* The scene's layers (not the dialogue, the ribbon or the title card) move as
+   one. A no-op transform keeps the stacking order the same whether or not a
+   shot is on, and nothing here changes layout. */
+.camera {
+  transform: scale(1);
+  transform-origin: var(--cam-x, 50%) 80%;
+}
+
+.cameraLayer {
+  z-index: 2;
+}
+
+/* A fine vertical line down the middle: two things side by side. */
+.cameraSplit:not(.cameraLayer)::after {
+  content: "";
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  left: 50%;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: 0 0 0 1px rgb(29 43 79 / 0.5);
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  .camera {
+    transition: transform 0.7s ease-in-out;
+    will-change: transform;
+  }
+
+  .cameraClose {
+    transform: scale(1.15);
+  }
+
+  .cameraTwo {
+    transform: scale(1.06);
+    transform-origin: 50% 80%;
+  }
+
+  .cameraWide {
+    animation: cameraPullBack 0.8s ease-out both;
+  }
+
+  .cameraSplit:not(.cameraLayer)::after {
+    animation: fadeIn 0.6s ease-out both;
+  }
+
+  /* The picture of a close-up panel drifts in slowly: 1 to 1.08. */
+  .cameraInsert img {
+    animation: cameraInsert 6s ease-out both;
+  }
+
+  .moodMark {
+    transform-origin: 50% 100%;
+  }
+
   .actor {
     transition: left 0.7s ease-in-out;
   }
@@ -500,6 +560,24 @@
   }
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes cameraPullBack {
+  from {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes cameraInsert {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
   }
 }
 

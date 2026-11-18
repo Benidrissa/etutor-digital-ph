@@ -310,6 +310,8 @@ export interface Step {
   frame?: StepFrame;
   /** The props this say/narrate/concept line points at, at most 2 (#2681). */
   props?: string[];
+  /** Forces the camera shot of this beat; absent, the player picks one (#2712). */
+  shot?: "wide" | "two" | "close" | "insert" | "split";
 }
 
 export type StepFrame = "opener" | "objectives" | "finished" | "ask_tutor";
