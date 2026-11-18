@@ -55,6 +55,19 @@ class ImageIndexTask(Task):
 # Same budget as index_course_resources: this is the recovery path for a run
 # that ran out of time on images, so it needs at least the image time that run
 # had (#2659).
+async def _snapshot_figures(source: str) -> dict:
+    """The course's figure rows before they are cleared, by id (#2707). Never raises."""
+    from app.domain.services.figure_ref_repair import snapshot_figures
+    from app.infrastructure.persistence.database import async_session_factory
+
+    try:
+        async with async_session_factory() as session:
+            return await snapshot_figures(session, source)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Figure snapshot before re-index failed", source=source, error=str(exc))
+        return {}
+
+
 @celery_app.task(
     bind=True,
     base=ImageIndexTask,
@@ -194,6 +207,7 @@ def reindex_course_images(
             pipeline = RAGPipeline(_ES(api_key=""))
 
         total_images = 0
+        removed_figures: dict = {}
 
         if clear_old:
             self.update_state(
@@ -207,6 +221,9 @@ def reindex_course_images(
                     "images_processed": 0,
                 },
             )
+            # Lessons name these rows by id; remember them so their refs can be
+            # repointed to the re-extracted rows afterwards (#2707).
+            removed_figures = await _snapshot_figures(rag_collection_id)
             cleared = await pipeline.clear_source_images(source=rag_collection_id)
             logger.info(
                 "Cleared old images before re-indexation",
@@ -309,6 +326,11 @@ def reindex_course_images(
                     "images_processed": total_images,
                 },
             )
+
+        if removed_figures:
+            from app.domain.services.figure_ref_repair import heal_after_reindex
+
+            await heal_after_reindex(course_id, removed_figures)
 
         return total_images
 
