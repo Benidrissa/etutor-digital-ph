@@ -72,15 +72,17 @@ function defaultCast(actors: Map<string, StageActor>): string[] {
 }
 
 /**
- * A close-up of a prop with nothing to show (no picture, no sticker) is
- * dropped: the line before it already names the thing, and an empty card is
- * worse than none. Progress is kept per unit, not per step, so this is safe.
+ * A close-up of an educational prop is never dropped (#2708): with no picture
+ * and no sticker, LookCloser shows a large name card, so the learner still
+ * sees what the chapter is about. Only decor (not educational) with nothing to
+ * show is skipped. Progress is kept per unit, not per step, so this is safe.
  */
 function keepsStep(step: Step, context: PropContext | undefined): boolean {
   const id = closeUpProp(step);
   if (!id) return true;
   const prop = context?.props.get(id);
   if (!prop) return false;
+  if (prop.educational) return true;
   const media = context?.media?.[id];
   return !!pictureFor(prop, media, "en") || !!sameOriginMedia(media?.sticker);
 }

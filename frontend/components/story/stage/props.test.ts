@@ -11,6 +11,7 @@ import { buildActors } from "./cast";
 import {
   MAX_FOREGROUND,
   PROP_HEIGHT,
+  closeUpProp,
   emojiDrawn,
   layoutProps,
   licenseLabel,
@@ -149,10 +150,26 @@ describe("the story's plan with props", () => {
     snail: { sticker: "/api/v1/story-props/9b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d/data" },
   };
 
-  it("drops a close-up with nothing to show", () => {
+  it("keeps the close-up of an educational prop even with nothing to show, drops decor", () => {
     const plan = planSteps(chapters, chapters, actors, { props: KNOWN, media });
-    // The snail has a sticker (shown large); the pebble has nothing.
+    // The snail has a sticker; the pebble is decor with nothing to show.
     expect(plan.filter((item) => item.step.type === "show")).toHaveLength(1);
+    const bare = planSteps(chapters, chapters, actors, { props: KNOWN });
+    // No picture at all: the educational snail still gets a name card (#2708).
+    expect(bare.filter((item) => item.step.type === "show")).toHaveLength(1);
+  });
+
+  it("plays every close-up of an educational prop even with no picture at all (#2708)", () => {
+    const doc: Chapter[] = [
+      {
+        id: "c1",
+        title: { en: "One", fr: "Un" },
+        scenes: [{ id: "s1", place: "yard", cast: ["hero"], props: ["snail"], steps: [say(["snail"]), closeUp("snail"), closeUp("cup")] }],
+      },
+    ];
+    const plan = planSteps(doc, doc, actors, { props: KNOWN, media: {} });
+    // The educational snail is kept (a name card); the decor cup is not.
+    expect(plan.filter((item) => item.step.type === "show").map((item) => closeUpProp(item.step))).toEqual(["snail"]);
   });
 
   it("carries props over at the same place and starts afresh at a new one", () => {
@@ -168,7 +185,7 @@ describe("the story's plan with props", () => {
   it("still plans a story without props", () => {
     const plan = planSteps(chapters, chapters, actors);
     expect(plan.every((item) => item.props.length === 0)).toBe(true);
-    // Without a picture for any prop, both close-ups are dropped.
+    // Without props context, nothing is known about the close-ups: dropped.
     expect(plan.some((item) => item.step.type === "show")).toBe(false);
   });
 });

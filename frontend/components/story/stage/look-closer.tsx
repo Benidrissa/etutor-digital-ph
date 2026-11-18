@@ -14,7 +14,7 @@
 
 "use client";
 
-import { X } from "lucide-react";
+import { Shapes, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -194,11 +194,13 @@ function LookCloserBody({
         ) : (
           <div className="flex flex-col items-center justify-center gap-1 rounded-lg bg-[#fff8db] px-3 py-5 text-center">
             {prop.emoji && emojiDrawn(prop.emoji) ? (
-              <span className="text-5xl leading-none" style={{ fontFamily: EMOJI_FONTS }} aria-hidden="true">
+              <span className="text-7xl leading-none" style={{ fontFamily: EMOJI_FONTS }} aria-hidden="true">
                 {prop.emoji}
               </span>
-            ) : null}
-            <span className="text-base font-extrabold text-[#1d2b4f]" lang={target}>
+            ) : (
+              <Shapes className="h-16 w-16 text-[#1d2b4f]" aria-hidden="true" data-name-card-icon />
+            )}
+            <span className="text-xl font-extrabold text-[#1d2b4f]" lang={target}>
               {label}
             </span>
           </div>
