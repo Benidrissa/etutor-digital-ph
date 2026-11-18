@@ -50,6 +50,7 @@ from app.api.v1.source_images import router as source_images_router
 from app.api.v1.story_art import router as story_art_router
 from app.api.v1.story_audio import router as story_audio_router
 from app.api.v1.story_courses import router as story_courses_router
+from app.api.v1.story_props import router as story_props_router
 from app.api.v1.subscriptions import router as subscriptions_router
 from app.api.v1.tutor import router as tutor_router
 from app.api.v1.tutor_voice import router as tutor_voice_router
@@ -86,6 +87,7 @@ api_v1_router.include_router(sms_relay_router)
 api_v1_router.include_router(source_images_router)
 api_v1_router.include_router(story_courses_router)
 api_v1_router.include_router(story_art_router)
+api_v1_router.include_router(story_props_router)
 api_v1_router.include_router(story_audio_router)
 api_v1_router.include_router(subscriptions_router)
 api_v1_router.include_router(payments_router)

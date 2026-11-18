@@ -184,7 +184,8 @@ export interface PropPicture {
   bytes?: number;
   alt: TextObject;
   caption?: TextObject;
-  via: "lesson_figure" | "course_figure" | "open_photo" | "ai_drawing";
+  /** "open_3d": a render of an open-licence 3D model (the shared prop library). */
+  via: "lesson_figure" | "course_figure" | "open_photo" | "open_3d" | "ai_drawing";
   credit: MediaCredit;
 }
 

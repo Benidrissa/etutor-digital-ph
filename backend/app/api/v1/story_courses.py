@@ -76,11 +76,23 @@ from app.domain.services.story_module_service import (
 from app.domain.services.story_module_service import (
     story_dispatch_key as module_story_dispatch_key,
 )
+from app.domain.services.story_prop_library import (
+    PropKey,
+    PropsMedia,
+    document_props,
+    load_matches,
+    props_media,
+)
 from app.tasks.content_generation import MODULE_STORY_DISPATCH_TTL_S, generate_module_story_task
 from app.tasks.story_art import (
     STORY_ART_DISPATCH_TTL_S,
     generate_story_art,
     story_art_dispatch_key,
+)
+from app.tasks.story_props import (
+    STORY_PROPS_DISPATCH_TTL_S,
+    resolve_story_props,
+    story_props_dispatch_key,
 )
 
 logger = get_logger(__name__)
@@ -388,6 +400,68 @@ async def dispatch_story_art_generation(course_id: uuid.UUID) -> str | None:
     return task_id
 
 
+async def dispatch_story_props_resolution(keys: list[PropKey]) -> str | None:
+    """Start (or join) the matching of ``keys``; its task id, or None when none was started.
+
+    The art dispatch's Redis dedup, keyed by the set of phrases, and failing
+    closed the same way: without Redis nothing is dispatched (every view would
+    otherwise start a task), and the props stay as they are until it is back.
+    """
+    from app.infrastructure.cache.redis import redis_client
+
+    key = story_props_dispatch_key(keys)
+    task_id = str(uuid.uuid4())
+    try:
+        running = await _in_flight_story_task(key)
+        if running:
+            return running
+        if not await redis_client.set(key, task_id, nx=True, ex=STORY_PROPS_DISPATCH_TTL_S):
+            return await redis_client.get(key)
+    except Exception as exc:
+        logger.warning("Story props dispatch dedup unavailable (not dispatched)", error=str(exc))
+        return None
+    try:
+        resolve_story_props.apply_async(
+            args=[[list(pair) for pair in keys]], kwargs={"dedup_key": key}, task_id=task_id
+        )
+    except Exception as exc:
+        try:
+            await _release_dispatch_key(key, task_id)
+        except Exception as release_exc:
+            logger.warning("Story props dispatch key not released", error=str(release_exc))
+        logger.warning("Story props dispatch failed", error=str(exc))
+        return None
+    return task_id
+
+
+async def _story_props(db: AsyncSession, content: dict, *, may_dispatch: bool = True) -> PropsMedia:
+    """The ``art.props`` map of a served story, from the shared prop library.
+
+    One read of the cached matches of the document's search phrases
+    (:mod:`app.domain.services.story_prop_library`); phrases with no result
+    yet are matched by a background task, dispatched (deduplicated) unless
+    ``may_dispatch`` is False (the offline download). Never waits and never
+    fails the story: the read runs in a savepoint, and on any error the props
+    are served as before this library existed (emoji and name tags).
+    """
+    doc_props = document_props(content)
+    if not doc_props:
+        return PropsMedia()
+    try:
+        async with db.begin_nested():
+            resolved = await load_matches(db, [prop.key for prop in doc_props])
+    except Exception as exc:
+        logger.warning("Story prop library unavailable", error=str(exc))
+        return PropsMedia(status="none")
+    media = props_media(doc_props, resolved)
+    if media.unresolved and may_dispatch:
+        try:
+            await dispatch_story_props_resolution(media.unresolved)
+        except Exception as exc:
+            logger.warning("Story props not dispatched", error=str(exc))
+    return media
+
+
 @dataclass
 class _ServedArt:
     """The ``art`` map of a served story, and whether it may still change soon."""
@@ -466,7 +540,13 @@ async def _served(
         authored=is_authored_week(record),
         may_dispatch=may_dispatch,
     )
-    return {**content, "art": served_art.art}, served_art.drawing
+    props = await _story_props(db, content, may_dispatch=may_dispatch)
+    art = dict(served_art.art)
+    if props.props or props.status != "none":
+        # Only for a story with props the library may serve: others are served
+        # exactly as before the library (#2681 phase 1: emoji and name tags).
+        art.update({"props": props.props, "props_status": props.status})
+    return {**content, "art": art}, served_art.drawing or bool(props.unresolved)
 
 
 # -- Module story mode --------------------------------------------------------

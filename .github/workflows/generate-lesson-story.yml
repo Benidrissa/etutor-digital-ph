@@ -18,6 +18,9 @@ name: Generate Module Story
 #   generates the modules' missing lessons and quizzes, and can take several
 #   minutes per module: hence the 60-minute budget.
 # - Run it by hand to list courses (mode=list) or generate given courses.
+# - mode=props lists every prop the stored stories and module plans declare,
+#   ranked by how many modules use it (backend/scripts/story_prop_inventory.py,
+#   docs/story-mode-3d-assets.md). Read-only: no model call, nothing written.
 
 on:
   workflow_run:
@@ -32,17 +35,17 @@ on:
         options: [staging, production]
         default: staging
       mode:
-        description: "list = show courses, module 1's units, cached lessons and quizzes, chapters and module story; generate = make the module stories; requests = what story_requests.json asks for"
+        description: "list = show courses, module 1's units, cached lessons and quizzes, chapters and module story; generate = make the module stories; requests = what story_requests.json asks for; props = rank the props the stories ask for (read-only)"
         required: true
         type: choice
-        options: [list, generate, requests]
+        options: [list, generate, requests, props]
         default: list
       queries:
         description: "list: comma-separated title/slug fragments (e.g. biolog,math)"
         required: false
         default: "biolog,math"
       courses:
-        description: "generate: comma-separated course slugs or UUIDs (module 1 of each)"
+        description: "generate: comma-separated course slugs or UUIDs (module 1 of each); props: optional filter"
         required: false
         default: ""
       languages:
@@ -144,6 +147,21 @@ jobs:
                 [ "$FORCE" = "true" ] && args="--force"
                 echo "== requests scripts/story_requests.json $args"
                 run requests scripts/story_requests.json $args
+                ;;
+              props)
+                # Images deployed before the script existed do not have it.
+                if ! docker compose exec -T backend test -f scripts/story_prop_inventory.py; then
+                  echo "No scripts/story_prop_inventory.py in the deployed backend: deploy first."
+                  exit 0
+                fi
+                for c in $(echo "$COURSES" | tr ',' ' '); do
+                  check "$c"; args="$args --course $c"
+                done
+                if docker compose exec -T backend test -f scripts/story_prop_candidates.json; then
+                  args="$args --library scripts/story_prop_candidates.json"
+                fi
+                echo "== props $args"
+                docker compose exec -T backend uv run python scripts/story_prop_inventory.py --top 100 $args
                 ;;
               *)
                 echo "::error::unknown mode '$MODE'"; exit 2
