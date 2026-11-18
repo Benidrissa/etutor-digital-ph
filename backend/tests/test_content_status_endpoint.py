@@ -26,6 +26,7 @@ async def test_pending_with_no_marker_returns_task_lost():
     with (
         patch.object(content_module, "AsyncResult", return_value=fake_async_result),
         patch.object(content_module, "task_dispatched_at", AsyncMock(return_value=None)),
+        patch.object(content_module, "task_is_vouched", AsyncMock(return_value=False)),
     ):
         response = await content_module.get_generation_status("missing-task-id")
 
@@ -62,6 +63,7 @@ async def test_pending_with_old_marker_returns_task_stalled():
     with (
         patch.object(content_module, "AsyncResult", return_value=fake_async_result),
         patch.object(content_module, "task_dispatched_at", AsyncMock(return_value=stale)),
+        patch.object(content_module, "task_is_vouched", AsyncMock(return_value=False)),
     ):
         response = await content_module.get_generation_status("stalled-task-id")
 
@@ -69,6 +71,27 @@ async def test_pending_with_old_marker_returns_task_stalled():
     assert response.status_code == 200
     assert '"failed"' in body
     assert "task_stalled" in body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("marker_age_s", [None, 3600])
+async def test_pending_vouched_task_stays_pending(marker_age_s):
+    """A task a dedup key still names is queued, however old or unmarked."""
+    fake_async_result = MagicMock()
+    fake_async_result.state = "PENDING"
+    marker = (
+        None if marker_age_s is None else datetime.now(tz=UTC) - timedelta(seconds=marker_age_s)
+    )
+
+    with (
+        patch.object(content_module, "AsyncResult", return_value=fake_async_result),
+        patch.object(content_module, "task_dispatched_at", AsyncMock(return_value=marker)),
+        patch.object(content_module, "task_is_vouched", AsyncMock(return_value=True)) as vouched,
+    ):
+        response = await content_module.get_generation_status("queued-story-task")
+
+    assert '"pending"' in response.body.decode()
+    vouched.assert_awaited_once_with("queued-story-task")
 
 
 @pytest.mark.asyncio

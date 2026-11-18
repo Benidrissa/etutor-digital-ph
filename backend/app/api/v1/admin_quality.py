@@ -22,6 +22,12 @@ Per-course (router prefix ``/admin/courses``):
   and ``validated=true``)
 - ``POST /admin/courses/{course_id}/units/{content_id}/quality/unlock``
   — clears ``is_manually_edited`` so a future run can re-evaluate
+- ``GET  /admin/courses/{course_id}/quality/mcq-audit`` — report-only sweep
+  of the course's quiz MCQs with the shared ``mcq_checks`` (admin only)
+- ``POST /admin/courses/{course_id}/quality/mcq-backfill`` — opt-in Celery
+  regeneration of the course's quizzes so they carry
+  ``option_misconceptions`` (admin only); poll
+  ``GET .../quality/mcq-backfill/{task_id}`` or ``/content/status/{task_id}``
 
 Cross-course (router prefix ``/admin/quality``):
 
@@ -34,11 +40,14 @@ to courses they own (``Course.created_by == user.id``).
 
 from __future__ import annotations
 
+import contextlib
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -59,6 +68,7 @@ from app.api.v1.schemas.quality import (
     UnitQualitySummary,
     to_decimal_safe,
 )
+from app.api.v1.schemas.story_course import ValidationIssue
 from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.course_quality import (
@@ -69,6 +79,7 @@ from app.domain.models.course_quality import (
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.user import UserRole
+from app.domain.services import mcq_checks
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/admin/courses", tags=["Admin - Quality"])
@@ -591,6 +602,398 @@ async def get_unit_quality_detail(
         latest_attempt_id=(latest.id if latest else None),
         latest_attempt_number=(latest.attempt_number if latest else None),
         latest_attempt_score=to_decimal_safe(latest.score) if latest else None,
+    )
+
+
+# ---- MCQ audit and option_misconceptions backfill ----
+
+#: Admin tier only (not course-owning experts): the audit reads every answer
+#: key of a course, and the backfill spends AI credits on the whole course.
+_MCQ_ADMIN_ROLES = (UserRole.admin, UserRole.sub_admin)
+
+
+class McqAuditRow(BaseModel):
+    """One stored quiz (a ``generated_content`` row) and its findings.
+
+    Finding paths are relative to the quiz content, e.g.
+    ``questions[q3].options[1]``.
+    """
+
+    content_id: uuid.UUID
+    module_id: uuid.UUID
+    module_unit_id: uuid.UUID | None = None
+    unit_id: str
+    language: str
+    level: int
+    country_context: str | None = None
+    is_manually_edited: bool = False
+    questions_checked: int = 0
+    has_option_misconceptions: bool = False
+    #: A legacy row (``module_unit_id IS NULL``) whose unit has its own
+    #: FK-keyed quiz row for the same language, level and country. It is never
+    #: served and the backfill skips it, so its findings are listed but count
+    #: against neither ``ok`` nor ``fully_checked``.
+    superseded_by_fk_row: bool = False
+    errors: list[ValidationIssue] = Field(default_factory=list)
+    warnings: list[ValidationIssue] = Field(default_factory=list)
+
+
+class McqAuditSummary(BaseModel):
+    rows_checked: int = 0
+    rows_with_errors: int = 0
+    questions_checked: int = 0
+    error_count: int = 0
+    warning_count: int = 0
+    #: Rows where at least one question has no ``option_misconceptions`` —
+    #: "distractor without misconception" could not be checked there.
+    rows_lacking_option_misconceptions: int = 0
+    questions_lacking_option_misconceptions: int = 0
+    #: Questions whose correct option is too short to leak-check.
+    short_answer_leak_unchecked: int = 0
+    #: Stems and hints naming the correct option beside a distractor, and
+    #: stems naming a verdict answer ("Is it true that…?")
+    #: (``answer_leak_ambiguous`` warnings): a comparison or a leak, for a
+    #: person to judge. They affect neither ``ok`` nor ``fully_checked``.
+    answer_leak_ambiguous: int = 0
+    parity_warning_count: int = 0
+    #: Legacy rows superseded by an FK-keyed row (see ``McqAuditRow``). They
+    #: are still counted above but ignored by ``ok`` and ``fully_checked``.
+    rows_superseded_by_fk_row: int = 0
+    #: The part of ``error_count`` found on those superseded rows.
+    superseded_error_count: int = 0
+
+
+class McqAuditResponse(BaseModel):
+    """Report-only MCQ audit of one course's quizzes.
+
+    ``ok`` means zero errors on the rows learners can be served. It is NOT a
+    clean bill of health on its own: ``fully_checked`` is false whenever some
+    questions could not be checked for misconceptions or for leaks (see the
+    summary counts). Rows superseded by an FK-keyed row are left out of both
+    ``ok`` and ``fully_checked`` (their findings are still listed, and their
+    errors counted in ``summary.superseded_error_count``): no learner sees
+    them and the backfill cannot (and should not) change them.
+    """
+
+    course_id: uuid.UUID
+    language: str | None = None
+    ok: bool
+    fully_checked: bool
+    summary: McqAuditSummary
+    rows: list[McqAuditRow] = Field(default_factory=list)
+    #: Cross-language comparison of each unit's FR and EN quizzes. Warnings
+    #: only: they are independent generations and routinely differ.
+    parity: list[ValidationIssue] = Field(default_factory=list)
+
+
+def build_mcq_audit(
+    course_id: uuid.UUID,
+    entries: Sequence[tuple[Any, str]],
+    *,
+    language: str | None = None,
+) -> McqAuditResponse:
+    """Run the shared MCQ checks over stored quiz rows. Pure: reads, never writes.
+
+    ``entries`` are ``(generated_content_row, unit_label)`` pairs, newest row
+    first within each unit/language — the newest is the one compared for
+    cross-language parity, matching the cache's ``ORDER BY generated_at DESC``.
+    ``unit_label`` is the unit number (from the module_unit for FK-keyed rows,
+    the ``unit_id`` string for legacy rows), which is how a legacy row is
+    matched to the FK-keyed row that supersedes it.
+    """
+    summary = McqAuditSummary()
+    rows: list[McqAuditRow] = []
+    groups: dict[tuple, dict[str, Any]] = {}
+    group_labels: dict[tuple, str] = {}
+    unchecked_live = 0
+
+    # The keys FK-keyed rows occupy. A legacy row with the same module, unit
+    # number, language, level and country resolves to that FK row: the cache
+    # serves the FK row and regeneration overwrites it, never the legacy one.
+    fk_keys = {
+        (gc.module_id, unit_label, gc.language, gc.level, gc.country_context)
+        for gc, unit_label in entries
+        if gc.module_unit_id is not None
+    }
+
+    for gc, unit_label in entries:
+        superseded = (
+            gc.module_unit_id is None
+            and unit_label != "summative"
+            and (gc.module_id, unit_label, gc.language, gc.level, gc.country_context) in fk_keys
+        )
+        content = gc.content
+        if isinstance(content, dict):
+            issues = mcq_checks.check_quiz_content(content)
+            questions = content.get("questions")
+            question_count = len(questions) if isinstance(questions, list) else 0
+        else:
+            issues = [
+                ValidationIssue(
+                    severity="error",
+                    code=mcq_checks.MALFORMED_QUESTION,
+                    path="content",
+                    message="stored quiz content is not an object",
+                )
+            ]
+            question_count = 0
+
+        lacking = sum(1 for i in issues if i.code == mcq_checks.MISCONCEPTIONS_UNCHECKED)
+        short = sum(1 for i in issues if i.code == mcq_checks.LEAK_UNCHECKED_SHORT_ANSWER)
+        ambiguous = sum(1 for i in issues if i.code == mcq_checks.ANSWER_LEAK_AMBIGUOUS)
+        errors = [i for i in issues if i.severity == "error"]
+        warnings = [i for i in issues if i.severity != "error"]
+        rows.append(
+            McqAuditRow(
+                content_id=gc.id,
+                module_id=gc.module_id,
+                module_unit_id=gc.module_unit_id,
+                unit_id=unit_label,
+                language=gc.language,
+                level=gc.level,
+                country_context=gc.country_context,
+                is_manually_edited=bool(gc.is_manually_edited),
+                questions_checked=question_count,
+                has_option_misconceptions=question_count > 0 and lacking == 0,
+                superseded_by_fk_row=superseded,
+                errors=errors,
+                warnings=warnings,
+            )
+        )
+        summary.rows_checked += 1
+        summary.rows_with_errors += 1 if errors else 0
+        summary.questions_checked += question_count
+        summary.error_count += len(errors)
+        summary.warning_count += len(warnings)
+        summary.rows_lacking_option_misconceptions += 1 if lacking else 0
+        summary.questions_lacking_option_misconceptions += lacking
+        summary.short_answer_leak_unchecked += short
+        summary.answer_leak_ambiguous += ambiguous
+        summary.rows_superseded_by_fk_row += 1 if superseded else 0
+        summary.superseded_error_count += len(errors) if superseded else 0
+        if superseded:
+            continue  # never served: not compared across languages either
+        unchecked_live += lacking + short
+
+        key = (gc.module_unit_id or (gc.module_id, unit_label), gc.level, gc.country_context)
+        group_labels[key] = f"units[{unit_label}][level={gc.level},country={gc.country_context}]"
+        groups.setdefault(key, {}).setdefault(gc.language, content)
+
+    parity: list[ValidationIssue] = []
+    for key, by_language in groups.items():
+        if all(isinstance(content, dict) for content in by_language.values()):
+            parity.extend(
+                mcq_checks.check_cross_language_parity(by_language, path=group_labels[key])
+            )
+    summary.parity_warning_count = len(parity)
+
+    return McqAuditResponse(
+        course_id=course_id,
+        language=language,
+        ok=summary.error_count - summary.superseded_error_count == 0,
+        fully_checked=unchecked_live == 0,
+        summary=summary,
+        rows=rows,
+        parity=parity,
+    )
+
+
+@router.get("/{course_id}/quality/mcq-audit", response_model=McqAuditResponse)
+async def audit_course_mcqs(
+    course_id: uuid.UUID,
+    language: Literal["fr", "en"] | None = None,
+    current_user: AuthenticatedUser = Depends(require_role(*_MCQ_ADMIN_ROLES)),
+    session: AsyncSession = Depends(get_db_session),
+) -> McqAuditResponse:
+    """Audit every stored quiz MCQ of a course (all languages unless filtered).
+
+    Report-only: it never changes ``content``, ``validated`` or
+    ``quality_status``. Findings use the story validator's issue shape
+    (severity, code, path, message): answer leaked into the stem (a warning,
+    ``answer_leak_ambiguous``, where a distractor is named beside it or the
+    stem asks for a verdict), duplicate or empty options, distractors without
+    a misconception (only where ``option_misconceptions`` exists — otherwise
+    ``misconceptions_unchecked``), plus warn-only FR/EN parity per unit.
+    """
+    await _assert_course_access(session, course_id, current_user)
+
+    query = (
+        select(GeneratedContent, ModuleUnit.unit_number)
+        .join(Module, Module.id == GeneratedContent.module_id)
+        .outerjoin(ModuleUnit, ModuleUnit.id == GeneratedContent.module_unit_id)
+        .where(Module.course_id == course_id, GeneratedContent.content_type == "quiz")
+        .order_by(
+            Module.module_number,
+            ModuleUnit.order_index.nulls_last(),
+            GeneratedContent.language,
+            GeneratedContent.generated_at.desc(),
+        )
+    )
+    if language:
+        query = query.where(GeneratedContent.language == language)
+    result = await session.execute(query)
+
+    entries: list[tuple[Any, str]] = []
+    for gc, unit_number in result.all():
+        sentinel = gc.content.get("unit_id") if isinstance(gc.content, dict) else None
+        entries.append((gc, str(unit_number or sentinel or "?")))
+
+    report = build_mcq_audit(course_id, entries, language=language)
+    logger.info(
+        "MCQ audit run",
+        course_id=str(course_id),
+        rows=report.summary.rows_checked,
+        errors=report.summary.error_count,
+        rows_lacking_misconceptions=report.summary.rows_lacking_option_misconceptions,
+    )
+    return report
+
+
+class McqBackfillRequest(BaseModel):
+    #: Also regenerate quizzes that already carry option_misconceptions.
+    force: bool = False
+
+
+class McqBackfillResponse(BaseModel):
+    task_id: str
+    status: Literal["dispatched", "already_running"]
+    course_id: uuid.UUID
+
+
+class McqBackfillStatus(BaseModel):
+    task_id: str
+    state: str
+    progress: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+
+
+_TERMINAL_STATES = frozenset({"SUCCESS", "FAILURE", "REVOKED"})
+
+# Compare-and-delete, so two requests that both find a stale lock cannot both
+# clear it and both dispatch.
+_RELEASE_IF_OWNER = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
+
+def _backfill_state(task_id: str) -> tuple[str, dict[str, Any]]:
+    """Celery state + dict meta, without raising on a malformed stored result."""
+    from app.tasks.quiz_backfill import backfill_course_quiz_misconceptions
+
+    result = backfill_course_quiz_misconceptions.AsyncResult(task_id)
+    state = result.state
+    try:
+        info = result.info
+    except (ValueError, KeyError):
+        return "FAILURE", {}
+    return state, info if isinstance(info, dict) else {}
+
+
+@router.post(
+    "/{course_id}/quality/mcq-backfill",
+    response_model=McqBackfillResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_mcq_backfill(
+    course_id: uuid.UUID,
+    payload: McqBackfillRequest | None = None,
+    current_user: AuthenticatedUser = Depends(require_role(*_MCQ_ADMIN_ROLES)),
+    session: AsyncSession = Depends(get_db_session),
+) -> McqBackfillResponse:
+    """Opt-in: regenerate this course's quizzes so they carry misconceptions.
+
+    Dispatches ``backfill_course_quiz_misconceptions``, which sends every quiz
+    row of the course (every language, level and country) through the existing
+    ``force_regenerate`` path. Manually edited rows are skipped and, unless
+    ``force``, so are rows that already carry misconceptions.
+
+    Idempotent while a run is in flight: a Redis lock per course makes a second
+    click return the running task (``already_running``) instead of dispatching
+    another. Poll ``GET .../quality/mcq-backfill/{task_id}`` for progress, or
+    the generic ``GET /api/v1/content/status/{task_id}``.
+    """
+    from app.api.v1._task_status import mark_dispatched
+    from app.infrastructure.cache.redis import redis_client
+    from app.tasks.quiz_backfill import (
+        LOCK_TTL_S,
+        backfill_course_quiz_misconceptions,
+        lock_key,
+    )
+
+    await _assert_course_access(session, course_id, current_user)
+    force = bool(payload.force) if payload else False
+
+    key = lock_key(course_id)
+    task_id = str(uuid.uuid4())
+    try:
+        acquired = await redis_client.set(key, task_id, nx=True, ex=LOCK_TTL_S)
+        if not acquired:
+            running = await redis_client.get(key)
+            if running and _backfill_state(running)[0] not in _TERMINAL_STATES:
+                return McqBackfillResponse(
+                    task_id=running, status="already_running", course_id=course_id
+                )
+            # The previous run ended without releasing its lock: take it over.
+            if running:
+                await redis_client.eval(_RELEASE_IF_OWNER, 1, key, running)
+            acquired = await redis_client.set(key, task_id, nx=True, ex=LOCK_TTL_S)
+            if not acquired:
+                running = await redis_client.get(key)
+                return McqBackfillResponse(
+                    task_id=running or task_id, status="already_running", course_id=course_id
+                )
+    except Exception as exc:
+        # Redis down means the broker is too; the dispatch below will say so.
+        # Concurrent runs cannot corrupt rows (each row is one in-place
+        # overwrite in its own transaction), so failing open is safe.
+        logger.warning("mcq_backfill lock unavailable", course_id=str(course_id), error=str(exc))
+
+    try:
+        backfill_course_quiz_misconceptions.apply_async(
+            kwargs={
+                "course_id": str(course_id),
+                "triggered_by_user_id": str(current_user.id),
+                "force": force,
+            },
+            task_id=task_id,
+        )
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            await redis_client.eval(_RELEASE_IF_OWNER, 1, key, task_id)
+        raise HTTPException(status_code=500, detail=f"Failed to dispatch backfill: {exc}") from exc
+
+    await mark_dispatched(task_id)
+    logger.info(
+        "MCQ misconception backfill dispatched",
+        course_id=str(course_id),
+        task_id=task_id,
+        force=force,
+        admin_id=str(current_user.id),
+    )
+    return McqBackfillResponse(task_id=task_id, status="dispatched", course_id=course_id)
+
+
+@router.get(
+    "/{course_id}/quality/mcq-backfill/{task_id}",
+    response_model=McqBackfillStatus,
+)
+async def get_mcq_backfill_status(
+    course_id: uuid.UUID,
+    task_id: str,
+    current_user: AuthenticatedUser = Depends(require_role(*_MCQ_ADMIN_ROLES)),
+    session: AsyncSession = Depends(get_db_session),
+) -> McqBackfillStatus:
+    """Progress (``done``/``total`` and per-outcome counts) or the final result."""
+    await _assert_course_access(session, course_id, current_user)
+    state, info = _backfill_state(task_id)
+    if info.get("course_id") not in (None, str(course_id)):
+        raise HTTPException(status_code=404, detail="Backfill task not found for this course")
+    return McqBackfillStatus(
+        task_id=task_id,
+        state=state.lower(),
+        progress=info if state == "PROGRESS" else None,
+        result=info if state == "SUCCESS" else None,
     )
 
 

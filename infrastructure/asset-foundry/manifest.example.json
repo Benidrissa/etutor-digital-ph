@@ -1,0 +1,362 @@
+{
+  "_comment": [
+    "Example manifest: the proof-of-concept entries of docs/story-mode-3d-assets.md section 11.",
+    "Files come from unofficial npm mirrors (npm install here, then --models node_modules).",
+    "Production entries must point to files fetched from the original sites, with the page",
+    "their licence was read from. Fields: README.md."
+  ],
+  "library_version": 1,
+  "entries": [
+    {
+      "id": "frog",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/frog.glb",
+      "label": {
+        "en": "a frog",
+        "fr": "une grenouille"
+      },
+      "tags": [
+        "frog",
+        "toad",
+        "amphibian"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/9Z2V8fpazF",
+        "site": "Poly Pizza",
+        "sha256_original": "92dc96c90e7228676f8c43dc7711ba5ed5505029ebb2f6d4ad198d9e35bdbfe0",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "crab",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/crab.glb",
+      "label": {
+        "en": "a crab",
+        "fr": "un crabe"
+      },
+      "tags": [
+        "crab",
+        "crustacean",
+        "beach"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/Gs3yfsV5lB",
+        "site": "Poly Pizza",
+        "sha256_original": "b5487be2c83059cf5b834d4d90cccc69346af36427a8d9ee4509f96af0c148f6",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "bee",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/bee.glb",
+      "label": {
+        "en": "a bee",
+        "fr": "une abeille"
+      },
+      "tags": [
+        "bee",
+        "wasp",
+        "insect",
+        "bug"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/6HsU6GQt3a",
+        "site": "Poly Pizza",
+        "sha256_original": "29a3ac29e6859208bdab9db3d34387e1d154f14564bd17cdc57eda669cb557cf",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "fox",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/fox.glb",
+      "label": {
+        "en": "a fox",
+        "fr": "un renard"
+      },
+      "tags": [
+        "fox",
+        "animal",
+        "canine"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/Bc97C66HKi",
+        "site": "Poly Pizza",
+        "sha256_original": "9917771e1414c46557b011cbaaee6de82a827605008227a364c3862f0be62ddc",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "coin",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/coin.glb",
+      "label": {
+        "en": "a coin",
+        "fr": "une pièce"
+      },
+      "tags": [
+        "coin",
+        "money",
+        "gold"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/7IrL01B97W",
+        "site": "Poly Pizza",
+        "sha256_original": "7163e6e639c6f7251cd8eef817a64c3038c9a6ce45668b177cc5c65ea45c0a6b",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "apple",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/apple.glb",
+      "label": {
+        "en": "an apple",
+        "fr": "une pomme"
+      },
+      "tags": [
+        "food",
+        "apple",
+        "snack"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://kenney.nl/assets/food-kit",
+        "site": "kenney.nl",
+        "original_path": "Models/GLB format/apple.glb",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "banana",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/banana.glb",
+      "label": {
+        "en": "a banana",
+        "fr": "une banane"
+      },
+      "tags": [
+        "food",
+        "banana",
+        "snack"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://kenney.nl/assets/food-kit",
+        "site": "kenney.nl",
+        "original_path": "Models/GLB format/banana.glb",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "watermelon",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/watermelon.glb",
+      "label": {
+        "en": "a watermelon",
+        "fr": "une pastèque"
+      },
+      "tags": [
+        "food",
+        "watermelon",
+        "snack"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://kenney.nl/assets/food-kit",
+        "site": "kenney.nl",
+        "original_path": "Models/GLB format/watermelon.glb",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "tree_palm",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/tree_palm.glb",
+      "label": {
+        "en": "a palm tree",
+        "fr": "un palmier"
+      },
+      "tags": [
+        "tree",
+        "palm",
+        "beach",
+        "tropical"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://kenney.nl/assets/nature-kit",
+        "site": "kenney.nl",
+        "original_path": "Models/GLTF format/tree_palmTall.glb",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "fence",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/fence.glb",
+      "label": {
+        "en": "a wooden fence",
+        "fr": "une clôture en bois"
+      },
+      "tags": [
+        "fence",
+        "wall",
+        "barrier"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://kenney.nl/assets/nature-kit",
+        "site": "kenney.nl",
+        "original_path": "Models/GLTF format/fence_simple.glb",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "log",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/log.glb",
+      "label": {
+        "en": "a log",
+        "fr": "une bûche"
+      },
+      "tags": [
+        "log",
+        "wood",
+        "timber"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://kenney.nl/assets/nature-kit",
+        "site": "kenney.nl",
+        "original_path": "Models/GLTF format/log_large.glb",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "tractor",
+      "kind": "sticker",
+      "file": "@netforge/asset-library-files/library/lowpoly/tractor.glb",
+      "label": {
+        "en": "a tractor",
+        "fr": "un tracteur"
+      },
+      "tags": [
+        "tractor",
+        "farm",
+        "vehicle"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://kenney.nl/assets/car-kit",
+        "site": "kenney.nl",
+        "original_path": "Models/GLB format/tractor.glb",
+        "via": "npm @netforge/asset-library-files 0.2.0 (unofficial mirror: prototype only)"
+      }
+    },
+    {
+      "id": "heart",
+      "kind": "closeup",
+      "file": "open-anatomy-3d/models/anatomy-male.glb",
+      "yaw": 0,
+      "nodes": [
+        "heart",
+        "coronary_arteries"
+      ],
+      "colors": {
+        "heart": "#a8322c",
+        "coronary_arteries": "#d24a3e"
+      },
+      "label": {
+        "en": "the heart",
+        "fr": "le cœur"
+      },
+      "tags": [
+        "heart",
+        "organ",
+        "anatomy",
+        "cardiology"
+      ],
+      "source": {
+        "author": "BodyParts3D © DBCLS / open-anatomy-3d",
+        "license": "CC-BY-4.0",
+        "page": "https://github.com/MervinR07/open-anatomy-3d",
+        "site": "GitHub",
+        "via": "npm open-anatomy-3d 0.1.0 (check the DBCLS licence change before production)",
+        "title": "Heart (anatomy-male)"
+      }
+    },
+    {
+      "id": "skull",
+      "kind": "closeup",
+      "file": "open-anatomy-3d/models/anatomy-male.glb",
+      "yaw": 0.5,
+      "nodes": [
+        "skull",
+        "mandible",
+        "teeth"
+      ],
+      "colors": {
+        "skull": "#e6d8bc",
+        "mandible": "#e6d8bc",
+        "teeth": "#f7f2e6"
+      },
+      "label": {
+        "en": "the skull",
+        "fr": "le crâne"
+      },
+      "tags": [
+        "skull",
+        "bone",
+        "skeleton",
+        "anatomy"
+      ],
+      "source": {
+        "author": "BodyParts3D © DBCLS / open-anatomy-3d",
+        "license": "CC-BY-4.0",
+        "page": "https://github.com/MervinR07/open-anatomy-3d",
+        "site": "GitHub",
+        "via": "npm open-anatomy-3d 0.1.0 (check the DBCLS licence change before production)",
+        "title": "Skull (anatomy-male)"
+      }
+    },
+    {
+      "id": "museum_mask",
+      "kind": "closeup",
+      "file": "does-not-exist.glb",
+      "note": "Deliberately refused, to show the gate: non-commercial licences never pass.",
+      "label": {
+        "en": "a carved mask",
+        "fr": "un masque sculpté"
+      },
+      "tags": [
+        "mask"
+      ],
+      "source": {
+        "author": "Example Museum",
+        "license": "CC-BY-NC-SA-4.0",
+        "page": "https://example.org/mask",
+        "site": "Sketchfab"
+      }
+    }
+  ]
+}

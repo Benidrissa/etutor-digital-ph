@@ -21,6 +21,8 @@ import { ModuleProgressOverlay } from '@/components/learning/module-progress-ove
 // rescoped to per-lesson. Lesson-level players are embedded in
 // lesson-viewer.tsx directly.
 import { DownloadModuleButton } from '@/components/learning/download-module-button';
+// The card only: the story player loads on the /story route, not here.
+import { ModuleStoryCard } from '@/components/learning/module-story-card';
 
 interface ModuleLockGateProps {
   moduleId: string;
@@ -204,6 +206,8 @@ export function ModuleLockGate({ moduleId, language }: ModuleLockGateProps) {
           </p>
         )}
       </div>
+
+      <ModuleStoryCard moduleId={moduleId} language={language} />
 
       <div className="grid md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-8">

@@ -1,5 +1,6 @@
 """Dependencies for local JWT authentication."""
 
+import re
 import uuid
 from collections.abc import Callable
 
@@ -7,13 +8,21 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from ..ai.usage_context import set_ai_context_user
 from ..domain.models.user import UserRole
 from ..domain.services.jwt_auth_service import JWTAuthService
+from .deps import get_db
 
 logger = get_logger(__name__)
+
+#: Roles that read every unit without a subscription.
+_STAFF_ROLES = frozenset({UserRole.admin.value, UserRole.sub_admin.value})
+
+#: A canonical unit number ("1.2"); its minor part is the unit's place in the module.
+_UNIT_NUMBER_RE = re.compile(r"^\d+\.(\d+)$")
 
 # Security scheme for JWT Bearer tokens
 security = HTTPBearer()
@@ -171,8 +180,6 @@ async def _resolve_module_uuid(module_id: str | None, session) -> uuid.UUID | No
     except (ValueError, AttributeError):
         pass
 
-    import re
-
     from ..domain.models.module import Module
 
     code = re.match(r"^M(\d{2})$", module_id.upper())
@@ -195,8 +202,6 @@ async def require_subscription_or_first_unit(
     platform setting (default: 2). Falls back to DB order_index check when
     unit_id format is unrecognised.
     """
-    import re
-
     from ..domain.models.module_unit import ModuleUnit
     from ..domain.services.platform_settings_service import SettingsCache
     from ..domain.services.subscription_service import SubscriptionService
@@ -209,8 +214,7 @@ async def require_subscription_or_first_unit(
     module_id = request.path_params.get("module_id") or request.path_params.get("moduleId")
 
     free_count = SettingsCache.instance().get("subscription-free-units-count", 2)
-    m = re.match(r"^\d+\.(\d+)$", unit_id) if unit_id else None
-    if m and int(m.group(1)) <= free_count:
+    if unit_number_is_free(unit_id, free_count):
         return user
 
     # Check subscription
@@ -241,6 +245,95 @@ async def require_subscription_or_first_unit(
         detail={
             "code": "subscription_required",
             "message": "An active subscription is required to access this content. The first lesson of each module is free.",
+        },
+    )
+
+
+def unit_number_is_free(unit_number: str | None, free_count: int) -> bool:
+    """A canonical unit number ("1.2") whose place in its module is within the free count."""
+    match = _UNIT_NUMBER_RE.match(unit_number) if unit_number else None
+    return match is not None and int(match.group(1)) <= free_count
+
+
+def unit_is_free(unit_number: str | None, order_index: int | None, free_count: int) -> bool:
+    """The free-unit rule of :func:`require_subscription_or_first_unit`, for one unit.
+
+    A unit is free when its number places it within the first ``free_count``
+    units of its module ("1.1", "1.2" with the default of 2), or else when its
+    ``order_index`` (0-based) does.
+    """
+    if unit_number_is_free(unit_number, free_count):
+        return True
+    return order_index is not None and order_index < free_count
+
+
+async def module_story_access(
+    session: AsyncSession, user: AuthenticatedUser, module_id: uuid.UUID
+) -> bool:
+    """Whether ``user`` may read the story of the module ``module_id``.
+
+    A module story tells every unit of its module, the paid ones included. So
+    it is open to admins and sub-admins, to a learner with an active
+    subscription, and otherwise only when every unit of the module is free
+    under the lessons' own rule (:func:`unit_is_free`). A module with no unit
+    has nothing paid to protect: the story routes answer 404 for it anyway.
+    """
+    from ..domain.models.module_unit import ModuleUnit
+    from ..domain.services.platform_settings_service import SettingsCache
+    from ..domain.services.subscription_service import SubscriptionService
+
+    if user.role in _STAFF_ROLES:
+        return True
+    try:
+        user_uuid: uuid.UUID | None = uuid.UUID(str(user.id))
+    except (TypeError, ValueError):
+        user_uuid = None
+    if (
+        user_uuid is not None
+        and await SubscriptionService().get_active_subscription(user_uuid, session) is not None
+    ):
+        return True
+
+    free_count = SettingsCache.instance().get("subscription-free-units-count", 2)
+    units = (
+        await session.execute(
+            select(ModuleUnit.unit_number, ModuleUnit.order_index).where(
+                ModuleUnit.module_id == module_id
+            )
+        )
+    ).all()
+    return all(unit_is_free(u.unit_number, u.order_index, free_count) for u in units)
+
+
+async def require_subscription_or_free_module(
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> AuthenticatedUser:
+    """Gate of a module story: staff, a subscriber, or a module whose units are all free.
+
+    Reads ``module_id`` from the path. A value that is not a UUID passes: the
+    route answers 404 ``module_not_found`` for it, as it does for an unknown
+    module, so a learner and a subscriber see the same answer. The session is
+    the request's own (``get_db``), shared with the route.
+
+    Raises:
+        HTTPException: 403 ``{"code": "subscription_required"}``.
+    """
+    if user.role in _STAFF_ROLES:
+        return user
+    try:
+        module_id = uuid.UUID(str(request.path_params.get("module_id")))
+    except (TypeError, ValueError):
+        return user
+    if await module_story_access(session, user, module_id):
+        return user
+    logger.info("Module story refused: subscription required", user_id=user.id)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "subscription_required",
+            "message": "An active subscription is required for the story of this module.",
         },
     )
 

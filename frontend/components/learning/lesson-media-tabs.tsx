@@ -20,10 +20,13 @@ interface LessonMediaTabsProps {
 }
 
 /**
- * Three-tab media region — Lire / Écouter / Regarder — that unifies the
- * three modalities of consuming a lesson. All panes are kept mounted via
- * Base UI's ``keepMounted`` so audio polling, audio playback continuity,
- * and video status badging survive tab switches.
+ * Three-tab media region — Lire / Écouter / Vidéo — that unifies the three
+ * ways of consuming a lesson. All panes are kept mounted via Base UI's
+ * ``keepMounted`` so audio polling, audio playback continuity, and video
+ * status badging survive tab switches.
+ *
+ * Story mode is not a tab here: a module has one story covering all its
+ * units, opened from the module page (/modules/[moduleId]/story).
  */
 export function LessonMediaTabs({
   lessonId,
@@ -37,8 +40,7 @@ export function LessonMediaTabs({
 
   const handleValueChange = useCallback(
     (value: unknown) => {
-      const tab = value as LessonMediaTab;
-      onActiveTabChange?.(tab);
+      onActiveTabChange?.(value as LessonMediaTab);
     },
     [onActiveTabChange],
   );

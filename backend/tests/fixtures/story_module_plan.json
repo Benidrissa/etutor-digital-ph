@@ -1,0 +1,130 @@
+{
+  "_comment": "The showrunner's episode plan for the kids biology module of story_screenplay_module.json (#2680): what the plan call answers. Planning fields in English; titles, discoveries, card titles and catchphrases in both languages. Refs q1..q12 are the module quiz's questions as the plan prompt numbers them.",
+  "episode_title": {"en": "The basket of mysteries", "fr": "Le panier des mystères"},
+  "logline": "{child} and {friend} must sort Grandma Mariam's basket of treasures into living and not living for Friday's science fair, but a shy snail keeps escaping and a rival team says the mimosa only moves in the wind.",
+  "want": "Win the living-or-not table at Friday's science fair with Grandma's basket.",
+  "stakes": "Grandma promised her sweetest mangoes to the whole class if the table wins.",
+  "clock": "The fair opens on Friday morning.",
+  "hero_flaw": "{child} rushes to an answer before looking.",
+  "voices": {
+    "hero": "rushes, then catches the mistake and works it out out loud",
+    "friend": "names every object, jumps to wild theories, loves riddles",
+    "mentor": "answers a question with a question, lends the microscope",
+    "family": "teases kindly, proud of her basket and her mangoes",
+    "margo": "whispers one riddle-like hint, never the answer"
+  },
+  "running_gag": "The shy snail keeps escaping and leaves a silver trail.",
+  "catchphrases": [{"who": "friend", "en": "Detectives, to work!", "fr": "Détectives, au travail !"}],
+  "props": [
+    {"id": "basket", "en": "Grandma's basket", "fr": "le panier de Mamie", "query": "woven straw basket", "kind": "sticker", "emoji": "🧺", "at": "ground", "size": "m", "planted": "1.1", "paid_off": "rally"},
+    {"id": "snail", "en": "the snail", "fr": "l'escargot", "query": "garden snail", "kind": "real", "emoji": "🐌", "at": "ground", "size": "s", "planted": "1.1", "paid_off": "rally"},
+    {"id": "pebble", "en": "the pebble", "fr": "le caillou", "query": "grey river pebble", "kind": "real", "emoji": "🪨", "at": "ground", "size": "s", "planted": "1.1", "paid_off": "rally"},
+    {"id": "nere_seed", "en": "the néré seed", "fr": "la graine de néré", "query": "Parkia biglobosa seed", "kind": "real", "at": "ground", "size": "s", "planted": "1.1", "paid_off": "rally"}
+  ],
+  "chapters": [
+    {
+      "unit": "1.1",
+      "title": {"en": "The shy snail", "fr": "L'escargot timide"},
+      "when": "Saturday morning",
+      "opens_on": "Grandma Mariam tips her basket of treasures onto the courtyard bench.",
+      "goal": "Sort Grandma's treasures into living and not living for the fair table.",
+      "obstacle": "{child} rushes and calls the hiding snail dead.",
+      "beats": [
+        {"ideas": [1], "place": "courtyard", "cast": ["hero", "friend", "family"],
+         "problem": "The snail and the mimosa sprig lie still: are they alive?",
+         "discovery": {"en": "The leaf folds when you touch it: living things react!", "fr": "La feuille se ferme quand on la touche : le vivant réagit !"},
+         "card_title": {"en": "The shy leaf", "fr": "La feuille timide"},
+         "questions": ["q1", "q2"]},
+        {"ideas": [2], "place": "courtyard", "cast": ["hero", "friend", "family"],
+         "problem": "The néré seed does nothing at all: is it dead like the pebble?",
+         "discovery": {"en": "A seed feeds, grows and makes new seeds: it is alive, just asleep!", "fr": "Une graine se nourrit, grandit et refait des graines : elle vit, elle dort !"},
+         "card_title": {"en": "The sleeping seed", "fr": "La graine qui dort"},
+         "questions": ["q3"]},
+        {"ideas": [3], "place": "classroom", "cast": ["hero", "friend", "mentor"],
+         "problem": "The seed and the pebble look the same to the eye.",
+         "discovery": {"en": "The seed is full of tiny boxes, the pebble has none: life has cells!", "fr": "La graine est pleine de petites boîtes, le caillou non : le vivant a des cellules !"},
+         "card_title": {"en": "Tiny boxes inside", "fr": "Des petites boîtes dedans"},
+         "questions": []}
+      ],
+      "turn": "Under Mr Kaboré's microscope the néré seed shows tiny cells and the pebble shows none.",
+      "ends_on": "The snail is gone; a silver trail runs under the classroom door.",
+      "game": null,
+      "paper_task": "the living-or-not list for the fair table"
+    },
+    {
+      "unit": "1.2",
+      "title": {"en": "The silver trail", "fr": "La traînée d'argent"},
+      "when": "Monday at school",
+      "opens_on": "Monday: the silver trail ends on a bean leaf in the school garden.",
+      "goal": "Explain to the jury how a tiny snail is built, from cell to whole animal.",
+      "obstacle": "{friend} insists the whole snail is one giant cell.",
+      "beats": [
+        {"ideas": [1], "place": "school_garden", "cast": ["hero", "friend", "mentor"],
+         "problem": "{friend} says the snail is one giant cell.",
+         "discovery": {"en": "One cell is the smallest living piece: a snail has millions!", "fr": "Une cellule est le plus petit morceau vivant : un escargot en a des millions !"},
+         "card_title": {"en": "The smallest living piece", "fr": "Le plus petit bout de vie"},
+         "questions": ["q4"]},
+        {"ideas": [2], "place": "classroom", "cast": ["hero", "friend", "mentor"],
+         "problem": "A bean leaf under the microscope looks like a wall of green bricks.",
+         "discovery": {"en": "Same cells side by side make a tissue, and tissues make a leaf!", "fr": "Des cellules pareilles font un tissu, et les tissus font une feuille !"},
+         "card_title": {"en": "The leaf is a team", "fr": "La feuille est une équipe"},
+         "questions": ["q5", "q6"]},
+        {"ideas": [3], "place": "classroom", "cast": ["hero", "friend", "margo"],
+         "problem": "How do all these parts crawl like one animal?",
+         "discovery": {"en": "Organs team up in systems, and the systems make one whole snail!", "fr": "Les organes font équipe en systèmes, et ça fait un escargot entier !"},
+         "card_title": {"en": "From box to snail", "fr": "De la boîte à l'escargot"},
+         "questions": []}
+      ],
+      "turn": "{child} climbs the ladder from cell to tissue, organ, system and snail.",
+      "ends_on": "Grandma calls: the rival team says the mimosa only folds because of the wind.",
+      "game": "sort the cards from cell to organism before the bell",
+      "paper_task": "draw the ladder from cell to snail for the fair poster"
+    },
+    {
+      "unit": "1.3",
+      "title": {"en": "The wind trial", "fr": "Le procès du vent"},
+      "when": "Wednesday afternoon",
+      "opens_on": "A rival poster on Grandma's gate says MIMOSA = WIND.",
+      "goal": "Prove that the mimosa folds because it is touched, not because of the wind.",
+      "obstacle": "{child} wants to fan the plant and touch it at the same time.",
+      "beats": [
+        {"ideas": [1], "place": "courtyard", "cast": ["hero", "friend", "family"],
+         "problem": "Everyone shouts a reason; nobody has looked at the plant.",
+         "discovery": {"en": "First we look closely, then we ask one clear question.", "fr": "D'abord on regarde de près, puis on pose une seule question claire."},
+         "card_title": {"en": "One clear question", "fr": "Une seule question claire"},
+         "questions": ["q9"]},
+        {"ideas": [2], "place": "courtyard", "cast": ["hero", "friend", "margo"],
+         "problem": "Wild guesses fly: a ghost, the wind, magic.",
+         "discovery": {"en": "Our guess is that touch makes it fold, and we can test that!", "fr": "Notre idée : le toucher la fait se fermer, et on peut le tester !"},
+         "card_title": {"en": "A guess we can test", "fr": "Une idée qu'on peut tester"},
+         "questions": ["q7"]},
+        {"ideas": [3], "place": "school_garden", "cast": ["hero", "friend", "mentor"],
+         "problem": "{child} wants to fan and touch the mimosa at once.",
+         "discovery": {"en": "Two pots, same sun, same water: only one thing changes!", "fr": "Deux pots, même soleil, même eau : une seule chose change !"},
+         "card_title": {"en": "Change just one thing", "fr": "Ne change qu'une chose"},
+         "questions": ["q8"]}
+      ],
+      "turn": "With two mimosa pots, only the touched one folds: touch, not wind.",
+      "ends_on": "Friday dawn: the basket waits on the fair table, but the snail has escaped again.",
+      "game": null,
+      "paper_task": "the fair-test plan: what changes and what stays the same"
+    }
+  ],
+  "rally": {
+    "title": {"en": "The living table", "fr": "La table du vivant"},
+    "when": "Friday at the science fair",
+    "opens_on": "The jury walks toward the fair table and the snail is missing.",
+    "final_obstacle": "The jury wants proof, object by object, of what is alive, and one juror doubts the mimosa test.",
+    "steps": [
+      {"from_unit": "1.1", "uses": "react and cells: the shy snail hides, the pebble has no cells", "questions": ["q10"]},
+      {"from_unit": "1.2", "uses": "the ladder poster from cell to snail", "questions": ["q11"]},
+      {"from_unit": "1.3", "uses": "a fair test, and a new guess when a test says no", "questions": ["q12"]}
+    ],
+    "payoffs": ["basket", "snail", "pebble", "nere_seed"],
+    "resolution": "{child} follows the silver trail to the snail and proves, card by card, what is alive; the jury pins a golden ribbon.",
+    "last_image": "{friend} ties a tiny ribbon on the pebble: best non-living friend.",
+    "game": null,
+    "paper_task": "the fair table's living-or-not label"
+  },
+  "__complete": true
+}

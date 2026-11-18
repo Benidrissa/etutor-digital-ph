@@ -24,7 +24,9 @@ permissions:
 jobs:
   smoke:
     name: Smoke — app.sira-donnia.org
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright cannot install
+    # chromium ("Playwright does not support chromium on ubuntu26.04-x64").
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:

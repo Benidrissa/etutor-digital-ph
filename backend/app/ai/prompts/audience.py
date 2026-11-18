@@ -251,3 +251,46 @@ def get_audience_guidance(audience: AudienceContext, language: str) -> str:
     tier = _age_tier(audience.age_min, audience.age_max)
     table = _GUIDANCE_FR if language == "fr" else _GUIDANCE_EN
     return table.get(tier, "")
+
+
+#: The register of a story (#2680), per age tier: how the episode sounds, not
+#: how a lesson teaches. It fills ``{story_register}`` in the story prompts,
+#: which no longer carry the lesson pedagogy of ``{audience_guidance}``.
+STORY_REGISTERS: dict[str, str] = {
+    "5-8": (
+        "AGES 5-8: lines of 4 to 10 words; one feeling at a time, said out loud; sound"
+        " words (Plop! Crac! Splash!); slapstick; a catchphrase the child can shout"
+        " along. Gentle silliness, no real danger: at worst a lost object or a spoiled"
+        " surprise."
+    ),
+    "9-12": (
+        "AGES 9-12: quick banter; a mystery with clues or a challenge with a deadline;"
+        " mild suspense; silly mistakes and wordplay a 10-year-old gets; the hero"
+        " outsmarts a grown-up once; the world of home, school, the market and the"
+        " neighbourhood."
+    ),
+    "13+": (
+        "AGES 13-15: real stakes (a team, a competition, a reputation); dry humour and a"
+        " twist; no baby talk; the hero reasons out loud."
+    ),
+    "adult": (
+        "ADULT LEARNERS: a problem at work with real consequences for real people (a"
+        " stock-out before the district visit, a report due to the ministry); colleagues,"
+        " a supervisor, the community; light, situational humour; no cartoon silliness."
+    ),
+}
+
+
+def story_register(audience: AudienceContext) -> str:
+    """The story register of an audience: by the oldest age of a kids course, else adult.
+
+    Up to 8, up to 12, older; ``adult`` when the course is not for children.
+    """
+    if not audience.is_kids:
+        return STORY_REGISTERS["adult"]
+    oldest = audience.age_max or 12
+    if oldest <= 8:
+        return STORY_REGISTERS["5-8"]
+    if oldest <= 12:
+        return STORY_REGISTERS["9-12"]
+    return STORY_REGISTERS["13+"]

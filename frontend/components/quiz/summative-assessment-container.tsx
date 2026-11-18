@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { Timer, AlertTriangle, Loader2, PlayCircle } from 'lucide-react';
+import { Timer, AlertTriangle, Info, Loader2, PlayCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +59,8 @@ export function SummativeAssessmentContainer({
   const [result, setResult] = useState<SummativeAssessmentResponse | null>(null);
   const [attemptCheck, setAttemptCheck] = useState<SummativeAssessmentAttemptCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Shown above the assessment after it changed under the learner.
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Poll timer for background summative generation (#2608). Held in a ref so we
   // can cancel it on unmount and avoid setState-after-unmount.
@@ -164,7 +166,17 @@ export function SummativeAssessmentContainer({
     }
   };
   
+  // The assessment was regenerated while the learner was taking it: load the
+  // current version (a fresh attempt) and say why they are back at the start.
+  const handleAssessmentChanged = () => {
+    setError(null);
+    setNotice(t('assessmentChanged'));
+    setAssessment(null);
+    handleStartAssessment();
+  };
+
   const handleAssessmentComplete = (resultData: SummativeAssessmentResponse) => {
+    setNotice(null);
     setResult(resultData);
     setState('completed');
     
@@ -287,6 +299,16 @@ export function SummativeAssessmentContainer({
   if (state === 'taking' && assessment) {
     return (
       <div className="space-y-4">
+        {notice && (
+          <div className="max-w-4xl mx-auto px-4 pt-4">
+            <Alert className="bg-amber-50 border-amber-200">
+              <Info className="w-4 h-4" />
+              <AlertDescription className="text-amber-900">
+                {notice}
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
         {error && (
           <div className="max-w-4xl mx-auto px-4 pt-4">
             <Alert className="bg-red-50 border-red-200">
@@ -301,6 +323,7 @@ export function SummativeAssessmentContainer({
           assessment={assessment}
           onComplete={handleAssessmentComplete}
           onError={handleAssessmentError}
+          onAssessmentChanged={handleAssessmentChanged}
           timeLimit={summativeTimeLimit}
         />
       </div>
