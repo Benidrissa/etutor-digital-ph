@@ -466,6 +466,17 @@ export function artFor(art: StoryArt | undefined, key: string, pose: Pose): stri
   return undefined;
 }
 
+/**
+ * The mood to mark with a small overlay: a surprised or sad pose whose picture
+ * is another pose's (the art has no such pose), so the mood still reads (#2712).
+ */
+export function moodMarkFor(art: StoryArt | undefined, key: string, pose: Pose): "surprised" | "sad" | undefined {
+  if (pose !== "surprised" && pose !== "sad") return undefined;
+  const poses = art?.characters?.[key];
+  if (!poses || safeArtUrl(poses[pose]) || !artFor(art, key, pose)) return undefined;
+  return pose;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Layout                                                                     */
 /* -------------------------------------------------------------------------- */

@@ -296,6 +296,9 @@ class Step(_Loose):
     ref: str | None = None
     #: say / narrate / concept (#2681): the props this line points at (at most 2).
     props: list[str] | None = None
+    #: any step (#2712): forces the camera shot of the beat. Absent, the player
+    #: picks one itself. Unknown values are ignored by the player.
+    shot: str | None = None
     # Optional keys a generated story may carry (extra keys are kept):
     # ``teaches`` (concept): the lesson IDEA numbers the card names, an int or
     #   a list of ints (#2680);
