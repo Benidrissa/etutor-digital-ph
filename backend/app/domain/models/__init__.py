@@ -51,6 +51,12 @@ from app.domain.models.sms_relay import (
     SmsProcessingStatus,
 )
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
+from app.domain.models.story_art import StoryArt
+from app.domain.models.story_audio import StoryLineAudio
+from app.domain.models.story_bible import StoryCourseBible
+from app.domain.models.story_course import StoryCourseRecord, StoryCourseStatus
+from app.domain.models.story_module_plan import StoryModulePlan
+from app.domain.models.story_prop_library import StoryLibraryAsset, StoryPropMatch
 from app.domain.models.subscription import (
     PaymentStatus,
     PaymentType,
@@ -134,6 +140,14 @@ __all__ = [
     "PaymentType",
     "SourceImage",
     "SourceImageChunk",
+    "StoryArt",
+    "StoryLineAudio",
+    "StoryCourseBible",
+    "StoryModulePlan",
+    "StoryLibraryAsset",
+    "StoryPropMatch",
+    "StoryCourseRecord",
+    "StoryCourseStatus",
     "Subscription",
     "SubscriptionPayment",
     "SmsProcessingStatus",

@@ -94,6 +94,9 @@ export function BreadcrumbNav() {
         case 'case-study':
           label = t("caseStudy");
           break;
+        case 'story':
+          label = t("story");
+          break;
         case 'profile':
           label = t("profile");
           break;

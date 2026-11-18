@@ -202,3 +202,28 @@ async def test_no_json_found_retried_then_falls_back(claude_service):
     assert result["raw_response"] is True
     assert result["type"] == "quiz"
     assert claude_service.client.messages.create.await_count == 2
+
+
+def test_a_client_for_another_configured_model_keeps_the_content_defaults_otherwise():
+    """#2698: ``ClaudeService(model=...)`` serves the story-stem judge."""
+    values = {
+        "ai-max-tokens-content": 64000,
+        "ai-temperature-content": 0.7,
+        "ai-model-content": "claude-opus-4-8",
+    }
+    with patch("app.ai.claude_service.get_settings") as mock_settings:
+        mock_settings.return_value = MagicMock(anthropic_api_key="test-key")
+        with patch("app.ai.claude_service.SettingsCache") as mock_cache:
+            mock_cache.instance.return_value.get.side_effect = lambda key, default=None: values.get(
+                key, default
+            )
+            from app.ai.claude_service import ClaudeService
+
+            content = ClaudeService()
+            judge = ClaudeService(model="claude-haiku-4-5", max_tokens=2000, temperature=0.0)
+    assert (content._model, content._max_tokens, content._temperature) == (
+        "claude-opus-4-8",
+        64000,
+        0.7,
+    )
+    assert (judge._model, judge._max_tokens, judge._temperature) == ("claude-haiku-4-5", 2000, 0.0)

@@ -210,6 +210,7 @@ async def test_summative_attempt_response_carries_no_answer_key():
             QuizAnswerSubmission(question_id="q2", selected_option=0, time_taken_seconds=5),
         ],
         total_time_seconds=10,
+        content_revision=1,  # what the client echoes from the payload it was served
     )
 
     resp = await submit_summative_assessment_attempt(request, MagicMock(), session, user)

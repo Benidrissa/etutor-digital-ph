@@ -34,20 +34,25 @@ export function SettingsClient() {
 
   useEffect(() => { loadSettings(); }, []);
 
-  async function loadSettings() {
+  async function loadSettings(): Promise<SettingsByCategory[] | null> {
     try {
       const data = await getAdminSettings();
       setCategories(data);
       if (data.length > 0 && !activeTab) setActiveTab(data[0].category);
-    } catch { setToast("Failed to load settings"); }
+      return data;
+    } catch { setToast("Failed to load settings"); return null; }
     finally { setLoading(false); }
   }
 
   async function handleSave(key: string, value: unknown) {
     setSaving(key);
     try { await updateSetting(key, value); } catch { /* response may be blocked by proxy */ }
-    await loadSettings();
-    showToast(t("saved"));
+    // The response may be lost, so the reloaded value tells whether the save
+    // took: a refused value (e.g. one no longer offered) must not say "Saved".
+    const data = await loadSettings();
+    const stored = data?.flatMap((c) => c.settings).find((s) => s.key === key);
+    const saved = stored !== undefined && JSON.stringify(stored.value) === JSON.stringify(value);
+    showToast(saved ? t("saved") : t("saveFailed"));
     setSaving(null);
   }
 
@@ -187,6 +192,11 @@ function SettingRow({ setting, saving, onSave, onReset, t }: {
           ) : setting.allowed_options && setting.allowed_options.length > 0 ? (
             <select value={draft} onChange={(e) => setDraft(e.target.value)}
               className="rounded border bg-background px-2 py-1 text-sm">
+              {/* A stored value no longer offered (e.g. a retired model) is shown
+                  as it is, so choosing any option is a real change. */}
+              {!setting.allowed_options.includes(draft) && (
+                <option value={draft} disabled>{draft} ({t("notOffered")})</option>
+              )}
               {setting.allowed_options.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}

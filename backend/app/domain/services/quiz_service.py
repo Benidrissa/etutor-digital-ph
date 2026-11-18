@@ -14,13 +14,33 @@ from app.ai.prompts.audience import detect_audience
 from app.ai.prompts.quiz import get_quiz_system_prompt
 from app.ai.rag.retriever import SemanticRetriever
 from app.api.v1.schemas.quiz import QuizContent, QuizResponse
+from app.api.v1.schemas.story_course import ValidationIssue
 from app.domain.models.content import GeneratedContent
 from app.domain.models.course import Course
 from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
+from app.domain.services import content_revisions, mcq_checks
 from app.domain.services.platform_settings_service import SettingsCache
 
 logger = structlog.get_logger()
+
+
+def default_question_count(unit_id: str) -> int:
+    """Quiz length when the caller does not say.
+
+    The platform settings the generate endpoints use:
+    ``quiz-summative-questions-count`` for a summative,
+    ``quiz-unit-questions-count`` for a unit quiz.
+    """
+    key, fallback = (
+        ("quiz-summative-questions-count", 20)
+        if unit_id == "summative"
+        else ("quiz-unit-questions-count", 10)
+    )
+    try:
+        return int(SettingsCache.instance().get(key, fallback))
+    except (TypeError, ValueError):
+        return fallback
 
 
 class QuizService:
@@ -82,6 +102,77 @@ class QuizService:
         row = fallback_result.scalars().first()
         return row, row is not None
 
+    async def _overwrite_cached_quiz(
+        self,
+        session: AsyncSession,
+        *,
+        module_id: UUID,
+        unit_id: str,
+        module_unit_uuid: UUID | None,
+        language: str,
+        country: str,
+        level: int,
+        content: dict,
+        sources: list[str],
+    ) -> GeneratedContent | None:
+        """Replace the cached quiz row for this exact key; ``None`` if there is none.
+
+        Unit-scoped rows are matched like ``update_cached_content_in_place``
+        (the lesson fix for #2561). Summative quizzes are module-scoped
+        (``module_unit_id IS NULL`` + the ``content.unit_id`` sentinel), which
+        that helper does not cover, so they are matched here on the same key as
+        ``idx_unique_module_scoped_content``. Manually edited rows are never
+        overwritten (returns ``None``), matching the lesson helper.
+
+        The row keeps its id and question ids, so before it is overwritten its
+        current content is saved as the pre-image of its current revision
+        (unless the caller — quality agent, backfill — already saved one).
+        A learner who was served that revision is then still graded against
+        the questions they saw (``app.api.v1.quiz._content_to_grade``).
+        """
+        from app.domain.services.lesson_service import (
+            apply_in_place_update,
+            find_in_place_target,
+        )
+
+        # Re-read under a row lock: the session may hold this row from long
+        # before (the quality run loads every candidate up front), and another
+        # writer may have regenerated it since. The pre-image and the bump
+        # below must start from the database's revision.
+        if module_unit_uuid is not None:
+            row = await find_in_place_target(
+                session,
+                module_unit_uuid=module_unit_uuid,
+                content_type="quiz",
+                language=language,
+                level=level,
+                country_context=country,
+                for_update=True,
+            )
+        else:
+            result = await session.execute(
+                content_revisions.locked_for_overwrite(
+                    select(GeneratedContent)
+                    .where(
+                        GeneratedContent.content_type == "quiz",
+                        GeneratedContent.module_id == module_id,
+                        GeneratedContent.module_unit_id.is_(None),
+                        GeneratedContent.content["unit_id"].astext == unit_id,
+                        GeneratedContent.language == language,
+                        GeneratedContent.level == level,
+                        GeneratedContent.country_context == country,
+                    )
+                    .order_by(GeneratedContent.generated_at.desc())
+                )
+            )
+            row = result.scalars().first()
+        if row is None or row.is_manually_edited:
+            return None
+
+        await content_revisions.ensure_pre_image(session, row)
+        apply_in_place_update(row, content=content, sources_cited=sources)
+        return row
+
     @staticmethod
     def _quiz_response_from_row(
         row: GeneratedContent, unit_id: str, country: str, is_fallback: bool
@@ -98,6 +189,7 @@ class QuizService:
             generated_at=row.generated_at.isoformat(),
             cached=True,
             country_fallback=is_fallback,
+            content_revision=content_revisions.current_revision(row),
         )
 
     async def get_cached_quiz(
@@ -131,7 +223,8 @@ class QuizService:
         language: str,
         country: str,
         level: int,
-        num_questions: int,
+        num_questions: int | None = None,
+        *,
         session: AsyncSession,
         force_regenerate: bool = False,
         user_id: UUID | None = None,
@@ -146,8 +239,16 @@ class QuizService:
             language: Content language (fr/en)
             country: User's country for contextualization
             level: Learning level (1-4)
-            num_questions: Number of questions to generate (5-15)
+            num_questions: Number of questions to generate (5-15). ``None``
+                means the platform setting for the quiz kind
+                (:func:`default_question_count`). Regenerating callers (quality
+                agent, backfill) pass the cached row's own count instead, so a
+                regeneration keeps the quiz's length.
             session: Database session
+            force_regenerate: Skip the cache and overwrite the cached row for
+                this key in place (it used to INSERT, collide with the unique
+                index and silently keep the stale row). The old content is kept
+                as a revision pre-image, so answers to it stay gradeable.
             user_id: Optional user UUID for background task logging
 
         Returns:
@@ -157,6 +258,8 @@ class QuizService:
             ValueError: If module not found or invalid parameters
             Exception: If quiz generation fails
         """
+        if num_questions is None:
+            num_questions = default_question_count(unit_id)
         try:
             from app.domain.services._unit_resolution import resolve_module_unit_id
 
@@ -214,6 +317,46 @@ class QuizService:
                 quality_constraints=quality_constraints,
             )
 
+            content_payload = {**quiz_content.model_dump(), "unit_id": unit_id}
+            sources = self._extract_sources_from_quiz(quiz_content)
+
+            # Regeneration replaces the cached row for this exact key in place.
+            # INSERTing instead collides with the unique index, rolls back and
+            # returns the stale row — the same no-op the lesson Refresh had (#2561).
+            if force_regenerate:
+                overwritten = await self._overwrite_cached_quiz(
+                    session,
+                    module_id=module_id,
+                    unit_id=unit_id,
+                    module_unit_uuid=module_unit_uuid,
+                    language=language,
+                    country=country,
+                    level=level,
+                    content=content_payload,
+                    sources=sources,
+                )
+                if overwritten is not None:
+                    await session.commit()
+                    await session.refresh(overwritten)
+                    logger.info(
+                        "Quiz regenerated in place",
+                        quiz_id=str(overwritten.id),
+                        num_questions=len(quiz_content.questions),
+                        content_revision=overwritten.content_revision,
+                    )
+                    return QuizResponse(
+                        id=overwritten.id,
+                        module_id=module_id,
+                        unit_id=unit_id,
+                        language=language,
+                        level=level,
+                        country_context=country,
+                        content=quiz_content,
+                        generated_at=overwritten.generated_at.isoformat(),
+                        cached=False,
+                        content_revision=content_revisions.current_revision(overwritten),
+                    )
+
             # Store in cache. module_unit_uuid was resolved at the top of this
             # function and stays None for "summative" quizzes.
             generated_content = GeneratedContent(
@@ -223,8 +366,8 @@ class QuizService:
                 content_type="quiz",
                 language=language,
                 level=level,
-                content={**quiz_content.model_dump(), "unit_id": unit_id},
-                sources_cited=self._extract_sources_from_quiz(quiz_content),
+                content=content_payload,
+                sources_cited=sources,
                 country_context=country,
                 validated=False,
             )
@@ -262,6 +405,7 @@ class QuizService:
                 content=quiz_content,
                 generated_at=generated_content.generated_at.isoformat(),
                 cached=False,
+                content_revision=content_revisions.current_revision(generated_content),
             )
 
         except Exception as e:
@@ -625,6 +769,8 @@ INSTRUCTIONS:
 6. {context_note}
 7. Progress from easier to harder questions
 8. {practical_note}
+9. Every wrong option must be a trap built on a real misconception, never a random distractor. In "option_misconceptions" (same order as "options", exactly 4 entries) write one short sentence per WRONG option naming the misconception that would make a learner choose it, and null for the correct option
+10. Never repeat the correct option's wording in the question text, and never give two options the same wording
 
 RESPONSE FORMAT (JSON):
 {{
@@ -641,6 +787,12 @@ RESPONSE FORMAT (JSON):
         "Option D text"
       ],
       "correct_answer": 1,
+      "option_misconceptions": [
+        "Misconception that makes a learner choose option A",
+        null,
+        "Misconception that makes a learner choose option C",
+        "Misconception that makes a learner choose option D"
+      ],
       "explanation": "Explanation of why option B is correct and why others are wrong.",
       "sources_cited": ["Source reference from context"],
       "difficulty": "easy|medium|hard"
@@ -703,8 +855,10 @@ RESPONSE FORMAT (JSON):
                     got=len(questions),
                 )
 
+            findings: list[ValidationIssue] = []
             for i, question in enumerate(questions):
-                self._validate_question(question, f"question {i + 1}")
+                findings.extend(self._validate_question(question, f"question {i + 1}"))
+            self._log_mcq_findings(findings, unit_id=unit_id, question_count=len(questions))
 
             if is_kids:
                 _passing = SettingsCache.instance().get("quiz-kids-passing-score", 60.0)
@@ -730,13 +884,27 @@ RESPONSE FORMAT (JSON):
             logger.error("Quiz response validation failed", error=str(e))
             raise ValueError(f"Invalid quiz format: {e}")
 
-    def _validate_question(self, question: dict, context: str) -> None:
+    def _validate_question(self, question: dict, context: str) -> list[ValidationIssue]:
         """
-        Validate a single quiz question structure.
+        Validate a single quiz question structure, then run the shared MCQ checks.
+
+        Structural problems raise, as before. The shared checks
+        (``mcq_checks``: answer leaked into the stem, duplicate options,
+        a distractor without a misconception) are returned, not raised: this
+        runs on the learner's request path (``generate_quiz_task`` has no
+        retry), and a regeneration would not deterministically fix them, so
+        failing would only turn an imperfect quiz into no quiz. The caller
+        logs them and the admin MCQ audit reports them.
+
+        ``option_misconceptions`` is normalised in place: aligned with
+        ``options`` and ``None`` at ``correct_answer``'s index.
 
         Args:
             question: Question dictionary to validate
             context: Context string for error messages
+
+        Returns:
+            The shared-check findings for this question.
 
         Raises:
             ValueError: If question is invalid
@@ -759,6 +927,35 @@ RESPONSE FORMAT (JSON):
         # Set defaults
         question.setdefault("sources_cited", [])
         question.setdefault("difficulty", "medium")
+
+        # Prompts are admin-overridable, so the field may be missing or
+        # misshapen; normalise rather than trust it.
+        question["option_misconceptions"] = mcq_checks.normalise_option_misconceptions(
+            question.get("option_misconceptions"), len(options), correct_answer
+        )
+        return mcq_checks.check_quiz_question(question, path=f"questions[{question['id']}]")
+
+    @staticmethod
+    def _log_mcq_findings(
+        findings: list[ValidationIssue], *, unit_id: str, question_count: int
+    ) -> None:
+        """One log line per quiz: defects kept, and how much went unchecked."""
+        defects = mcq_checks.hard_errors(findings)
+        unchecked = sum(1 for f in findings if f.code == mcq_checks.MISCONCEPTIONS_UNCHECKED)
+        if defects:
+            logger.warning(
+                "Generated quiz has MCQ defects (kept; see admin MCQ audit)",
+                unit_id=unit_id,
+                question_count=question_count,
+                defects=[f"{f.code}@{f.path}" for f in defects],
+            )
+        if unchecked:
+            logger.info(
+                "Generated quiz lacks option_misconceptions",
+                unit_id=unit_id,
+                questions_without=unchecked,
+                question_count=question_count,
+            )
 
     def _extract_sources_from_quiz(self, quiz_content: QuizContent) -> list[str]:
         """

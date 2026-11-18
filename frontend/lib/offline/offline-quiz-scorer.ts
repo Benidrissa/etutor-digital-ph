@@ -13,6 +13,19 @@ interface OfflineQuizAttemptResponse extends QuizAttemptResponse {
   offline: true;
 }
 
+/** The `quiz_answer` payload queued in `offline_actions` for background sync. */
+export interface QueuedQuizAnswerPayload {
+  quiz_id: string;
+  module_id?: string;
+  unit_id?: string;
+  /** question_id -> selected (original) option index */
+  answers: Record<string, number>;
+  total_time_seconds: number;
+  offline_scored_at?: string;
+  /** Revision of the quiz the answers were given to; absent on older queue entries. */
+  content_revision?: number;
+}
+
 /**
  * Score a quiz attempt locally using stored correct answers.
  * Queues the result in IndexedDB for background sync.
@@ -59,18 +72,20 @@ export async function scoreQuizOffline(
     offline: true,
   };
 
-  // Queue for background sync
-  await addOfflineAction({
-    actionType: 'quiz_answer',
-    payload: {
-      quiz_id: quiz.id,
-      module_id: quiz.module_id,
-      unit_id: quiz.unit_id,
-      answers,
-      total_time_seconds: totalTimeSeconds,
-      offline_scored_at: response.attempted_at,
-    },
-  });
+  // Queue for background sync. content_revision pins the answers to the
+  // questions they were given to: if the quiz is regenerated before the sync,
+  // the server still grades them against this revision (or refuses with 409
+  // quiz_changed rather than grade them against new questions).
+  const payload: QueuedQuizAnswerPayload = {
+    quiz_id: quiz.id,
+    module_id: quiz.module_id,
+    unit_id: quiz.unit_id,
+    answers,
+    total_time_seconds: totalTimeSeconds,
+    offline_scored_at: response.attempted_at,
+    content_revision: quiz.content_revision,
+  };
+  await addOfflineAction({ actionType: 'quiz_answer', payload });
 
   return response;
 }

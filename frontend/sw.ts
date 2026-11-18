@@ -5,6 +5,7 @@ import {
   CacheFirst,
   StaleWhileRevalidate,
   ExpirationPlugin,
+  RangeRequestsPlugin,
 } from "serwist";
 
 declare global {
@@ -19,7 +20,7 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 
 // Bump when storage shape or routing changes so clients drop stale caches.
 // v6 added an ExpirationPlugin to the pages cache, pre-warmed by
-// frontend/lib/offline/download-manager.ts (PAGES_CACHE_NAME constant must
+// frontend/lib/offline/prewarm.ts (PAGES_CACHE_NAME constant must
 // match `pages-${CACHE_VERSION}`) so downloaded modules render offline.
 // v7 excludes /api/v1/content/status/ from the API SWR cache so a stale
 // "generating" body can't keep the quiz spinner alive forever offline.
@@ -29,7 +30,86 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // v9 drops the pre-#2622 shell so existing PWA clients pick up the moved
 // API Keys route (/admin/api-keys) + admin nav change instead of the stale
 // cached settings-embedded card (#2625).
-const CACHE_VERSION = "v9-api-keys-tab";
+// v10 adds the story media route (#2681): story art, prop pictures and
+// course figures go to their own stable cache, and the story player with
+// props and the Previous button (#2682) replaces the cached one.
+// v11 replaces the v10 story player, whose Previous handed out fresh first
+// tries (#2688), and course figures get a cache of their own.
+// v12 replaces the story player whose read-aloud used the browser's voice:
+// lines are now spoken with the AI voice (#2704), its clips kept in a stable
+// cache of their own.
+const CACHE_VERSION = "v12-story-voice";
+
+// Story pictures (#2681): character poses, backdrops, prop stickers and
+// photos. Not versioned with CACHE_VERSION on purpose, so a downloaded story
+// keeps its pictures across service worker updates. Course figures have a
+// cache of their own, so browsing lesson figures never pushes story art out.
+const STORY_MEDIA_CACHE = "story-media-v1";
+const COURSE_FIGURES_CACHE = "course-figures-v1";
+const STORY_MEDIA_PATH = /^\/api\/v1\/(story-art|story-props)\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
+// Read-aloud clips (#2704): one per spoken line and voice, never changed in
+// place. Stable like the story media, in a cache of their own so a chatty
+// story never pushes its pictures out.
+const STORY_AUDIO_CACHE = "story-audio-v1";
+const STORY_AUDIO_PATH = /^\/api\/v1\/story-audio\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
+const SOURCE_IMAGE_PATH = /^\/api\/v1\/source-images\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
+
+/** Only whole, successful answers are kept: never an error page. */
+const okOnly = {
+  cacheWillUpdate: async ({ response }: { response: Response }) =>
+    response && response.status === 200 ? response : null,
+};
+
+// Least recently used goes first, and the 90 days count from the last use:
+// story art is fetched once and then read from the cache for good, so
+// counting from the first fetch would evict a story played every day (#2688).
+const storyMediaPlugins = [
+  new ExpirationPlugin({
+    maxEntries: 600,
+    maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    maxAgeFrom: "last-used",
+    purgeOnQuotaError: true,
+  }),
+  okOnly,
+];
+// An <audio> element asks for byte ranges: a clip answered from the cache is
+// cut to the range asked for (Safari plays nothing from a plain 200).
+const storyAudioPlugins = [
+  new ExpirationPlugin({
+    maxEntries: 2000,
+    maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    maxAgeFrom: "last-used",
+    purgeOnQuotaError: true,
+  }),
+  okOnly,
+  new RangeRequestsPlugin(),
+];
+const courseFigurePlugins = [
+  new ExpirationPlugin({
+    maxEntries: 200,
+    maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    maxAgeFrom: "last-used",
+    purgeOnQuotaError: true,
+  }),
+  okOnly,
+];
+
+/**
+ * The runtime caches this worker versions with CACHE_VERSION. The first
+ * service worker named them without a version ("pages", "static-assets"…).
+ */
+const VERSIONED_RUNTIME_CACHES = ["google-fonts", "static-images", "static-assets", "api-responses", "pages"];
+
+/**
+ * Runtime caches of an older CACHE_VERSION, or of the first, unversioned
+ * worker (#2692): nothing reads them any more. Only names of this list
+ * qualify, so the precache, the story media, the course figures and any
+ * cache this worker does not own are kept by construction.
+ */
+export function isStaleRuntimeCache(name: string): boolean {
+  const ours = VERSIONED_RUNTIME_CACHES.some((prefix) => name === prefix || name.startsWith(`${prefix}-v`));
+  return ours && !name.endsWith(`-${CACHE_VERSION}`);
+}
 
 const OFFLINE_FALLBACK_URL = "/offline.html";
 
@@ -94,6 +174,34 @@ const serwist = new Serwist({
         ],
       }),
     },
+    // Before the API rule: story art and prop pictures never change in place
+    // (a new picture gets a new id), so the cache answers first.
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        request.method === "GET" && STORY_MEDIA_PATH.test(url.pathname),
+      handler: new CacheFirst({
+        cacheName: STORY_MEDIA_CACHE,
+        plugins: storyMediaPlugins,
+      }),
+    },
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        request.method === "GET" && STORY_AUDIO_PATH.test(url.pathname),
+      handler: new CacheFirst({
+        cacheName: STORY_AUDIO_CACHE,
+        plugins: storyAudioPlugins,
+      }),
+    },
+    // Course figures have been fixed in place before: shown from the cache,
+    // refreshed behind it, in a cache of their own.
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        request.method === "GET" && SOURCE_IMAGE_PATH.test(url.pathname),
+      handler: new StaleWhileRevalidate({
+        cacheName: COURSE_FIGURES_CACHE,
+        plugins: courseFigurePlugins,
+      }),
+    },
     {
       matcher: ({ url, request }: { url: URL; request: Request }) => {
         if (request.method !== "GET") return false;
@@ -114,6 +222,11 @@ const serwist = new Serwist({
         // a stale "generating" body keeps the quiz spinner alive forever
         // when the device is offline.
         if (url.pathname.startsWith("/api/v1/content/status/")) return false;
+        // Story mode: a module story is gated per learner, rewritten when
+        // any of its lessons or quizzes changes, and its offline copy lives
+        // in IndexedDB (saved by the module download). SWR would replay a
+        // regenerated, or no longer authorised, story for up to a day.
+        if (url.pathname.startsWith("/api/v1/story-courses/")) return false;
         if (url.pathname.startsWith("/api/")) return true;
         return false;
       },
@@ -143,5 +256,20 @@ const serwist = new Serwist({
     },
   ],
 });
+
+// Each CACHE_VERSION bump used to leave the older runtime caches on the
+// device for good (their expiration is no longer registered), until a quota
+// error purged the live ones instead (#2688). The precache, the story media
+// and the course figures are kept.
+if (typeof self.addEventListener === "function") {
+  self.addEventListener("activate", (event: ExtendableEvent) => {
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.filter(isStaleRuntimeCache).map((key) => caches.delete(key))))
+        .catch(() => undefined),
+    );
+  });
+}
 
 serwist.addEventListeners();

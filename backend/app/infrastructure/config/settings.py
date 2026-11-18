@@ -241,6 +241,11 @@ class Settings(BaseSettings):
     # Free-tier cap on live voice-call minutes per user per day. Paid tiers
     # should override via subscription but v1 applies the same cap to all.
     tutor_voice_daily_minutes_cap: int = 10
+    # Story read-aloud (#2704): new lines one learner may have synthesized per
+    # day. A line already cached (heard by anyone before) never counts. A
+    # module story is a few hundred lines; past the cap the player falls back
+    # to the browser's own voice.
+    story_tts_daily_new_lines_per_user: int = 1500
 
     # MinIO / S3-compatible object storage
     minio_endpoint: str = "http://localhost:9000"

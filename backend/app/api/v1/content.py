@@ -30,6 +30,9 @@ from app.api.v1._task_status import (
     dispatched_at as task_dispatched_at,
 )
 from app.api.v1._task_status import (
+    is_vouched as task_is_vouched,
+)
+from app.api.v1._task_status import (
     mark_dispatched as mark_task_dispatched,
 )
 from app.api.v1.schemas.content import (
@@ -92,7 +95,10 @@ async def get_generation_status(task_id: str) -> JSONResponse:
         (worker outage, expired result, bad task ID); marker older than
         ``TASK_STALL_THRESHOLD_S`` means the task was queued but no worker
         has picked it up. Both surface as ``failed`` so the frontend stops
-        polling instead of waiting out the 3-minute UI timeout.
+        polling instead of waiting out the 3-minute UI timeout — unless the
+        task is vouched for (``vouch_while_owned``): a dedup key that
+        concurrent requests join still names it, so it is queued, not lost
+        (a rate-limited story generation can wait past the threshold).
     """
     result = AsyncResult(task_id)
     state = result.state
@@ -100,10 +106,14 @@ async def get_generation_status(task_id: str) -> JSONResponse:
     if state == "PENDING":
         marker = await task_dispatched_at(task_id)
         if marker is None:
+            if await task_is_vouched(task_id):
+                return JSONResponse({"status": "pending"})
             logger.info("content.status.task_lost", task_id=task_id)
             return JSONResponse({"status": "failed", "error": "task_lost"})
         age_s = (datetime.now(tz=UTC) - marker).total_seconds()
         if age_s > TASK_STALL_THRESHOLD_S:
+            if await task_is_vouched(task_id):
+                return JSONResponse({"status": "pending"})
             logger.warning("content.status.task_stalled", task_id=task_id, age_s=age_s)
             return JSONResponse({"status": "failed", "error": "task_stalled"})
         return JSONResponse({"status": "pending"})
@@ -1192,6 +1202,7 @@ async def get_quiz(
     from sqlalchemy import select
 
     from app.domain.models.content import GeneratedContent
+    from app.domain.services.content_revisions import current_revision
 
     try:
         query = select(GeneratedContent).where(
@@ -1221,6 +1232,7 @@ async def get_quiz(
             content=QuizContent(**content_dict),
             generated_at=quiz_content.generated_at.isoformat(),
             cached=True,
+            content_revision=current_revision(quiz_content),
         )
         if unit_id == "summative":
             # Summative payloads must never carry the answer key (#2550)

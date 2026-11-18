@@ -39,3 +39,19 @@ export function clearQuizState(key: string): void {
     // Ignore: storage failures here are not actionable.
   }
 }
+
+/**
+ * Storage key for an in-progress quiz or assessment attempt.
+ *
+ * Scoped to the revision served: regeneration replaces the questions under the
+ * same quiz id, and restoring answers given to the old questions would put
+ * them against the new ones. Revision 1 keeps the pre-revision key so attempts
+ * in progress when revisions were introduced are not lost.
+ */
+export function quizAttemptStorageKey(
+  prefix: string,
+  quiz: { id: string; content_revision?: number },
+): string {
+  const revision = quiz.content_revision ?? 1;
+  return revision > 1 ? `${prefix}:v1:${quiz.id}:r${revision}` : `${prefix}:v1:${quiz.id}`;
+}
