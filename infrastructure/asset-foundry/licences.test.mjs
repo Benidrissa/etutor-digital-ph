@@ -48,3 +48,7 @@ test("provenance and shape are required", () => {
   assert.equal(gate({ ...entry("sticker", "CC0-1.0"), id: "Bad Id" }).ok, false);
   assert.equal(gate(entry("poster", "CC0-1.0")).ok, false);
 });
+
+test("a source can require a credit even for CC0 (the Poly Haven API)", () => {
+  assert.equal(gate(entry("sticker", "CC0-1.0", { credit_required: true })).attributionRequired, true);
+});

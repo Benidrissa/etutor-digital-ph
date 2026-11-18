@@ -41,6 +41,11 @@ Same policy as story photos (#2681), plus two rules for 3D:
 
 Every entry must also name its `author` and the `page` its license was read from. Run the gate tests with `npm test` (`node --test`).
 
+Each source has its own terms on top of the license (doc §3 and §12):
+- **Poly Haven API:** free for any use, but it requires a credit to Poly Haven and a unique User-Agent. Set `"credit_required": true` on its entries.
+- **Sketchfab:** each download needs a signed-in Sketchfab user, so the operator downloads curated models with their own account. Credits name the author, the license, the model link and Sketchfab. Prefer "Human Created" models, and set `"noai": true` on any model tagged NoAI.
+- **ambientCG:** download once; never depend on its API at run time.
+
 ## Manifest
 
 ```jsonc
@@ -63,7 +68,8 @@ Every entry must also name its `author` and the `page` its license was read from
         "page": "https://…",              // where the license was read
         "site": "Poly Pizza",             // shown in the credit line
         "title": "…",                     // CC BY: the work's title, for the credit
-        "noai": false                     // true: never send it to an AI restyle
+        "noai": false,                    // true: never send it to an AI restyle (Sketchfab NoAI)
+        "credit_required": false          // true: credit even a CC0 asset (Poly Haven API terms)
       }
     }
   ]

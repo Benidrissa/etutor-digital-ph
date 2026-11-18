@@ -4,9 +4,9 @@
 **Scope:** how Poly Haven, Sketchfab, BlenderKit, Quaternius and ambientCG could supply part of story mode's visuals, combined with AI images, so the AI does not have to draw everything.
 **Related:** #2672 (story epic), #2675 (cast and backdrop art), #2681 (props, phase 1), #2683 (real photos, phase 2), #2684 (AI stickers, phase 3).
 
-> ⚠ **The license facts below were not checked live.** This session's network policy blocks polyhaven.com, ambientcg.com, sketchfab.com, blenderkit.com and quaternius.com, so every license and API point comes from prior knowledge (up to mid-2026). Items marked **⚠ verify** must be confirmed on each site's license and API pages before anything is built.
+> ✅ **License facts verified on 2026-11-18** on each site's own pages (§3, quotes in §12): Poly Haven, ambientCG, Sketchfab, Quaternius and Kenney. Not verified: BlenderKit, whose site now redirects to blendkit.com. The first draft was written while every one of these sites was blocked from this session.
 >
-> **Update (same day):** the usual alternatives are blocked too (Kenney, Poly Pizza, OpenGameArt, Wikimedia, Smithsonian, NIH 3D). Only GitHub, npm and PyPI are reachable. Real Quaternius and Kenney CC0 models, and a CC BY 4.0 anatomy model, were found mirrored on npm and used for a working proof of concept. See §11.
+> **Earlier the same day:** the usual alternatives were blocked too (Kenney, Poly Pizza, OpenGameArt, Wikimedia, Smithsonian, NIH 3D). Only GitHub, npm and PyPI are reachable. Real Quaternius and Kenney CC0 models, and a CC BY 4.0 anatomy model, were found mirrored on npm and used for a working proof of concept. See §11.
 
 ---
 
@@ -41,11 +41,11 @@ The run cap is `MAX_IMAGES_PER_RUN = 40` per course. Everything is stored as Web
 
 | Site | What it offers | License (⚠ verify) | Can it be automated? | Fit with the flat cartoon style | Best role in Sira | Priority |
 |---|---|---|---|---|---|---|
-| **Quaternius** | Stylised low-poly packs: rigged and animated characters, animals, farm, nature, food, furniture, buildings | **CC0**, no credit required | No API; zips from the site, itch.io or Google Drive. Curate once by hand | **Excellent:** low-poly with flat colours renders almost like the house style | Core of the **sticker library** and set dressing for backdrops | **1** |
-| **Sketchfab** | Millions of models, including science, anatomy and cultural-heritage scans | **Per model:** CC0, BY, BY-SA, BY-ND, BY-NC… plus store licenses. A **"NoAI" tag** exists | Search and Download APIs (OAuth). ⚠ verify whether server-side bulk download is allowed, and the post-Fab status | Varies: often photoreal or scanned, so it needs a toon render or AI restyle | **Educational close-ups** ("real" props) where Commons is weak | **2** |
-| **Poly Haven** | HDRIs, PBR textures and realistic models (furniture, tools, rocks, plants) | **CC0** for all assets | Public JSON API. ⚠ verify the commercial-use terms of the API itself | Photoreal, so materials must be flattened before toon rendering | HDRI **lighting** for every render, plus a few realistic props (rocks, baskets, crates) | 3 |
-| **ambientCG** | Thousands of PBR materials, plus some HDRIs and models | **CC0** | Public JSON API | Textures only; flatten to an average colour | **Materials** for the 3D blockout sets (soil, walls, roofs, wood) | 3 |
-| **BlenderKit** | Large library inside a Blender add-on; free tier plus a paid plan | Royalty Free (no passing on the files) and CC0. ⚠ verify any AI clause | Add-on only; no documented third-party bulk API (⚠ verify) | Mixed | Optional: an artist building backdrop scenes **by hand** | 4 |
+| **Quaternius** | Stylised low-poly packs: rigged and animated characters, animals, farm, nature, food, furniture, buildings | **CC0** ✅: "can be used for free without the need for attribution in commercial, educational, and personal projects"; modification allowed | No API; zips from the site, itch.io or Google Drive. Curate once by hand | **Excellent:** low-poly with flat colours renders almost like the house style | Core of the **sticker library** and set dressing for backdrops | **1** |
+| **Sketchfab** | Millions of models, including science, anatomy and cultural-heritage scans | **Per model** ✅: 700,000+ downloadable Creative Commons models, "most" commercial; store licenses (Standard, Editorial) still sold. **NoAI** models may not be used "as inputs to Generative AI Programs" | Data and Download APIs, glTF/GLB/USDZ. **Each download needs a signed-in Sketchfab user** (OAuth); download without one needs an agreement with Sketchfab | Varies: often photoreal or scanned, so it needs a toon render or AI restyle | **Educational close-ups** ("real" props) where Commons is weak | **2** |
+| **Poly Haven** | HDRIs, PBR textures and realistic models (furniture, tools, rocks, plants) | **CC0** ✅ for all assets | Public JSON API ✅ "free to use, for any purpose", commercial included. **Requires a credit to Poly Haven** and a unique User-Agent. The website's terms forbid scraping: use the API | Photoreal, so materials must be flattened before toon rendering | HDRI **lighting** for every render, plus a few realistic props (rocks, baskets, crates) | 3 |
+| **ambientCG** | Thousands of PBR materials, plus some HDRIs and models | **CC0** ✅, credit optional | Public JSON API (v1–v3). Run by one person and "potentially not as reliable or stable as needed for an 'enterprise-level' application": download once, never at runtime | Textures only; flatten to an average colour | **Materials** for the 3D blockout sets (soil, walls, roofs, wood) | 3 |
+| **BlenderKit** | Large library inside a Blender add-on; free tier plus a paid plan | Royalty Free (no passing on the files) and CC0. ⚠ not verified: the site now redirects to blendkit.com | Add-on only; no documented third-party bulk API (⚠ not verified) | Mixed | Optional: an artist building backdrop scenes **by hand** | 4 |
 
 ### Notes per site
 
@@ -53,13 +53,21 @@ The run cap is `MAX_IMAGES_PER_RUN = 40` per course. Everything is stored as Web
 
 **Sketchfab.** The richest source for *educational* objects, but every model has its own license, so the pipeline must gate each one:
 - **Allowed:** CC0, CC BY, and CC BY-SA (standalone only). This matches the photo policy of #2681.
-- **Rejected:** NC (Sira sells courses for credits), ND (a toon render or restyle is an adaptation), store licenses, and any model tagged **NoAI** if it would go through the AI restyle. ⚠ verify the exact wording of the NoAI tag; it may also forbid use "as input to" generative AI.
+- **Rejected:** NC (Sira sells courses for credits), ND (a toon render or restyle is an adaptation), store licenses, and any model tagged **NoAI** if it would go through the AI restyle. Confirmed: the terms forbid using NoAI content "as inputs to Generative AI Programs", so a NoAI model may be rendered but never restyled. The foundry's gate already does this.
+- **Prefer "Human Created" models.** Uploads made with AI must be labelled "CreatedWithAI", and their provenance is weaker.
 - **Watch out:** many museum scans on Sketchfab are **BY-NC-SA**, so they are not usable here.
-- ⚠ verify that the Download API still works after Epic moved the store to Fab, and that its guidelines allow storing renders server-side.
+- **Downloading:** the Download API is live (glTF, GLB, USDZ) and the store is still on Sketchfab. But "downloading models requires users to be authenticated with a Sketchfab account", and download without an end-user means "contact us". In practice, the foundry operator signs in with their own account and downloads each curated model; there is no unattended bulk harvesting. Ask Sketchfab for an agreement before automating it.
+- **Credit**, from the integration guidelines: show the model's license, the author's name and a link to the model, and say that the model is provided by Sketchfab. The foundry's credit line already carries the author, license and site, with the model page in `source.page`.
 
-**Poly Haven.** Every asset is CC0. The HDRIs give every render the same warm "West African afternoon" light. The models are photoreal, so their textures should be replaced by flat colours (see §5.2). ⚠ verify the API's terms for commercial products. If in doubt, download the few dozen assets once by hand: the asset license (CC0) is separate from the API terms.
+**Poly Haven.** Every asset is CC0. The HDRIs give every render the same warm "West African afternoon" light. The models are photoreal, so their textures should be replaced by flat colours (see §5.2).
 
-**ambientCG.** CC0 materials for the blockout sets (laterite, sand, plaster, mud brick, corrugated metal, woven mats). It is interchangeable with Poly Haven textures; use one as the default to keep the manifest simple.
+Confirmed API terms: "The API is free to use, for any purpose", commercial included. Two conditions apply:
+- **Credit:** a clear credit to Poly Haven (for example "Powered by Poly Haven") where the content appears;
+- **User-Agent:** every request sends a unique User-Agent.
+
+The website's own terms forbid scraping "without express permission", so fetch through the API and never crawl the pages.
+
+**ambientCG.** CC0, with credit optional (confirmed). CC0 materials for the blockout sets (laterite, sand, plaster, mud brick, corrugated metal, woven mats). It is interchangeable with Poly Haven textures; use one as the default to keep the manifest simple.
 
 **BlenderKit.** Avoid it in any automated step. Under the royalty-free license you may use renders in your product but not pass on the asset files. Its terms may restrict AI use (⚠ verify). Use it only if an artist composes backdrop sets in Blender, and keep the .blend files out of the repo.
 
@@ -315,3 +323,19 @@ The candidate list used by the Phase 0 estimate is `backend/scripts/story_prop_c
 - Stickers from 3D models sit well on the stage and are small enough for 2G.
 - Game-oriented packs bring game-looking items (cute "enemy" crab and bee, treasure chest). Curate per model, not per pack.
 - The style is close to, not identical with, the AI cast. The optional one-time AI restyle (decision 3) would close the gap.
+
+---
+
+## 12. License sources (read on 2026-11-18)
+
+| Site | Page | What it says |
+|---|---|---|
+| Poly Haven | polyhaven.com/license | "Our assets are all licensed as CC0 … You can use our assets for any purpose, including commercial work. You do not need to give credit". The site's terms forbid "Web scraping or data mining without express permission" |
+| Poly Haven API | polyhaven.com/our-api | "The API is free to use, for any purpose … Personal, academic, or commercial." "⚠️ Attribution required". "All requests to the API require a unique User-Agent header" |
+| ambientCG | docs.ambientcg.com/license/ | "Creative Commons CC0 1.0 Universal License … even for commercial purposes, all without asking permission." "You don't need to give credit" |
+| ambientCG API | docs.ambientcg.com/api/ | Built "with hobbyists and educators in mind and the API is therefore potentially not as reliable or stable as needed for an 'enterprise-level' application" |
+| Sketchfab Download API | sketchfab.com/developers/download-api (and /guidelines) | "Downloading models requires users to be authenticated with a Sketchfab account … If you want your application to download models without end-user authentication, contact us." "More than 700,000 3D models are available for download under Creative Commons licenses. Most models allow commercial use." "Your app should clearly display the license of the model as well as author attribution … Your app must clearly mention that downloadable models are provided by Sketchfab." |
+| Sketchfab terms | sketchfab.com/terms | Users may not "Collect, aggregate, mine, scrape or otherwise use NoAI Content … (iii) as inputs to Generative AI Programs." Content made with AI must be labelled "CreatedWithAI" |
+| Quaternius | quaternius.com/faq.html | "These assets can be used for free without the need for attribution in commercial, educational, and personal projects. All models are under the CC0 License." Modification is allowed |
+| Kenney | kenney.nl/support | "All game assets on the asset pages are public domain licensed (CC0). You're free to use them, even in commercial projects." |
+| BlenderKit | — | Not read: www.blenderkit.com now redirects to www.blendkit.com, which this environment does not allow |

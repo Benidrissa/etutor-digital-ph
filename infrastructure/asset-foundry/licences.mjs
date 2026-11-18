@@ -5,7 +5,10 @@
 //   - a sticker (composited on the stage, next to the AI cast) takes no
 //     share-alike licence, which would spread to what it is composited with;
 //   - every entry names its author and the page its licence was read from;
-//   - a model marked "noai" may be rendered but never restyled by an AI.
+//   - a model marked "noai" may be rendered but never restyled by an AI
+//     (Sketchfab's terms: NoAI content is never an input to generative AI);
+//   - "credit_required" forces a credit line where a source's terms ask for
+//     one even on CC0 assets (the Poly Haven API).
 // render.mjs writes each verdict next to its render; postprocess.py publishes
 // only renders that carry one, so these rules live in this file alone.
 
@@ -32,7 +35,9 @@ export function gate(entry) {
   return {
     ok: true,
     licence,
-    attributionRequired: !isPublic,
+    // CC0 needs no credit, but a source's own terms can ask for one (the Poly
+    // Haven API: "Attribution required"): set source.credit_required.
+    attributionRequired: !isPublic || source.credit_required === true,
     aiRestyleAllowed: !source.noai && !isBySa,
   };
 }
