@@ -316,7 +316,7 @@ def test_a_line_of_an_earlier_chapter_is_sent_back_unless_it_is_the_refrain():
     assert built[-1]["refrain"] is True and built[-1]["en"] == "Detectives, to work!"
 
 
-def test_the_refrain_is_capped_at_four_in_a_module():
+def test_the_refrain_is_capped_at_two_in_a_module():
     ctx = chapter_ctx()
     ctx.refrains_before = repair.MAX_REFRAINS
     result = build(ctx, spine())

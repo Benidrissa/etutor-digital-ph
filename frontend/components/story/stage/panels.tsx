@@ -347,10 +347,10 @@ export function Chalkboard({
 
 /* ---- Picture panel and cards --------------------------------------------------- */
 
-export function VisualPanel({ children }: { children: ReactNode }) {
+export function VisualPanel({ children, insert = false }: { children: ReactNode; insert?: boolean }) {
   return (
     <div
-      className={`${styles.panel} ${styles.inset} ${styles.popIn} rounded-2xl border-[3px] bg-white px-3 shadow-[0_5px_0_rgba(29,43,79,0.25)]`}
+      className={`${styles.panel} ${styles.inset} ${styles.popIn} ${insert ? styles.cameraInsert : ""} rounded-2xl border-[3px] bg-white px-3 shadow-[0_5px_0_rgba(29,43,79,0.25)]`}
       style={{ borderColor: NAVY }}
       data-step-panel="show"
     >

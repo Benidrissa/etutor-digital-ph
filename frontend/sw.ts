@@ -38,7 +38,9 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // v12 replaces the story player whose read-aloud used the browser's voice:
 // lines are now spoken with the AI voice (#2704), its clips kept in a stable
 // cache of their own.
-const CACHE_VERSION = "v12-story-voice";
+// v13 replaces the story player that deleted every close-up without art:
+// educational props now always get their close-up (#2708).
+const CACHE_VERSION = "v13-story-closeups";
 
 // Story pictures (#2681): character poses, backdrops, prop stickers and
 // photos. Not versioned with CACHE_VERSION on purpose, so a downloaded story

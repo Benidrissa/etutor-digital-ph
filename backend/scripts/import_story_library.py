@@ -22,6 +22,11 @@ Usage (inside the backend container, after copying the folder in)::
 
     python scripts/import_story_library.py /tmp/library --dry-run
     python scripts/import_story_library.py /tmp/library --prune
+    python scripts/import_story_library.py --reset-misses      # no folder needed
+
+``--reset-misses`` deletes only the cached misses (phrases that matched no
+asset), so each is matched again on its next view (#2708). A miss older than
+the newest asset is matched again on its own; this is for forcing it.
 """
 
 from __future__ import annotations
@@ -39,7 +44,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import delete, select, update  # noqa: E402
+from sqlalchemy import delete, func, select, update  # noqa: E402
 
 from app.domain.models.story_prop_library import (  # noqa: E402
     ASSET_KINDS,
@@ -234,9 +239,36 @@ async def embed_entries(entries: list[Incoming]) -> dict[str, list[float]]:
     return {entry.slug: vector for entry, vector in zip(entries, vectors, strict=True)}
 
 
+async def reset_misses(session, *, dry_run: bool = False) -> int:
+    """Delete the cached misses (``asset_id`` NULL); return how many there were."""
+    count = (
+        await session.execute(
+            select(func.count())
+            .select_from(StoryPropMatch)
+            .where(StoryPropMatch.asset_id.is_(None))
+        )
+    ).scalar_one()
+    if dry_run:
+        print(f"Dry run: {count} cached misses would be cleared.")
+        return int(count)
+    await session.execute(delete(StoryPropMatch).where(StoryPropMatch.asset_id.is_(None)))
+    print(f"{count} cached misses cleared: those phrases are matched again on their next view.")
+    return int(count)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("folder", help="the foundry's output folder (library.json and WebP files)")
+    parser.add_argument(
+        "folder",
+        nargs="?",
+        help="the foundry's output folder (library.json and WebP files)",
+    )
+    parser.add_argument(
+        "--reset-misses",
+        action="store_true",
+        help="delete the cached phrase misses (no asset), so they are matched again "
+        "(alone: no folder needed; an import already clears every match)",
+    )
     parser.add_argument(
         "--prune", action="store_true", help="delete assets missing from the folder"
     )
@@ -247,6 +279,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 async def main(argv: list[str] | None = None, session_factory=None, embed=None) -> int:
     args = parse_args(argv)
+    if args.folder is None:
+        if not args.reset_misses:
+            print("a folder, or --reset-misses, is needed", file=sys.stderr)
+            return 2
+        if session_factory is None:
+            from app.infrastructure.persistence.database import async_session_factory
+
+            session_factory = async_session_factory
+        async with session_factory() as session:
+            await reset_misses(session, dry_run=args.dry_run)
+            if not args.dry_run:
+                await session.commit()
+        return 0
     folder = Path(args.folder)
     if not (folder / "library.json").is_file():
         print(f"{folder}/library.json not found", file=sys.stderr)

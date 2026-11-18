@@ -36,6 +36,8 @@ interface StageCharacterProps {
   speaking: boolean;
   /** No gestures and no blinking (reduced motion, or the stage is paused). */
   still: boolean;
+  /** Marks a mood the art has no pose for (#2712): "!" or a sweat drop. */
+  moodMark?: "surprised" | "sad";
 }
 
 const GESTURES: Record<Exclude<Gesture, null>, { frames: Keyframe[]; duration: number }> = {
@@ -79,6 +81,7 @@ function StageCharacterView({
   enterDelay,
   speaking,
   still,
+  moodMark,
 }: StageCharacterProps) {
   const gestureRef = useRef<HTMLDivElement | null>(null);
   const faceRef = useRef<HTMLDivElement | null>(null);
@@ -184,6 +187,21 @@ function StageCharacterView({
           </div>
         </div>
       </div>
+      {moodMark && picture ? (
+        <span
+          aria-hidden="true"
+          data-mood-mark={moodMark}
+          className={`${styles.moodMark} ${styles.popIn} pointer-events-none absolute -top-[4%] right-[4%] z-[4] flex h-6 w-6 items-center justify-center rounded-full border-2 border-[#1d2b4f] ${moodMark === "sad" ? "bg-[#bfe3ff]" : "bg-[#ffd23f]"}`}
+        >
+          {moodMark === "sad" ? (
+            <svg viewBox="0 0 12 16" className="h-3.5 w-3 fill-[#1d6fb8]">
+              <path d="M6 1C6 1 1.5 7 1.5 10.2a4.5 4.5 0 0 0 9 0C10.5 7 6 1 6 1Z" />
+            </svg>
+          ) : (
+            <span className="text-sm font-black leading-none text-[#1d2b4f]">!</span>
+          )}
+        </span>
+      ) : null}
       {speaking ? (
         <span
           aria-hidden="true"

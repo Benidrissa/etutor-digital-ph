@@ -7,6 +7,7 @@
  * says what it is.
  */
 
+import { Shapes } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 
@@ -116,13 +117,12 @@ function StagePropView({
             {shown.emoji}
           </span>
         ) : (
-          <span
-            className="mb-[6%] block max-w-[30cqw] truncate rounded-full border-2 border-[#1d2b4f] bg-[#fff8db] px-2 py-0.5 font-extrabold text-[#1d2b4f] shadow"
-            style={{ fontSize: "max(11px, 2.2cqw)" }}
-            lang={lang}
-          >
-            {label}
-          </span>
+          <Shapes
+            className="mb-[6%] text-[#1d2b4f] drop-shadow"
+            style={{ height: "70%", width: "auto", maxWidth: "100%" }}
+            aria-hidden="true"
+            data-prop-icon
+          />
         )}
       </span>
       {slot.onTable ? (

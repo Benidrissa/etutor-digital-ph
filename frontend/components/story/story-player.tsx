@@ -33,6 +33,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
   type ReactNode,
   type TouchEvent,
@@ -57,6 +58,7 @@ import {
   FIGURE_HEIGHT,
   GROUND,
   artFor,
+  moodMarkFor,
   buildActors,
   heroVariants,
   poseFor,
@@ -993,6 +995,13 @@ export function StoryPlayer({
     return "idle";
   };
 
+  // The camera (#2712): a shot per beat, off under reduced motion and data
+  // saver. Only the scene's layers move; the speech and cards never do.
+  const shot = !reducedMotion && !introOpen && !beatOn && !celebrating && !savesData() ? current?.shot : undefined;
+  const camSlot = speakerId ? cast.indexOf(speakerId) : -1;
+  const cameraStyle = (camSlot >= 0 ? { "--cam-x": `${stageSlots[camSlot] ?? 50}%` } : undefined) as CSSProperties | undefined;
+  const cameraClass = shot ? ` ${styles[`camera${shot[0].toUpperCase()}${shot.slice(1)}`]}` : "";
+
   const speakingLine = step && speakerId ? lineOf(stepText(step, target)) || lineOf(stepText(step, home)) : "";
   const speakBeats = Math.max(2, Math.min(40, Math.round(lineSeconds(speakingLine, readAloud) / 0.42)));
 
@@ -1025,6 +1034,7 @@ export function StoryPlayer({
         enterDelay={0.25 + slot * 0.3}
         speaking={speaking && step?.type === "say"}
         still={reducedMotion || paused}
+        moodMark={moodMarkFor(story.art, actor.artKey, pose)}
       />
     );
   });
@@ -1172,7 +1182,7 @@ export function StoryPlayer({
           if (!prop) return null;
           const media = propMedia?.[closeUp];
           return (
-            <VisualPanel key={index}>
+            <VisualPanel key={index} insert={current?.shot === "insert" && !reducedMotion && !savesData()}>
               <LookCloser
                 variant="step"
                 prop={prop}
@@ -1188,7 +1198,7 @@ export function StoryPlayer({
           );
         }
         return (
-          <VisualPanel key={index}>
+          <VisualPanel key={index} insert={current?.shot === "insert" && !reducedMotion && !savesData()}>
             <ConceptVisual
               visual={step.visual ?? "unknown"}
               params={step.params}
@@ -1522,7 +1532,9 @@ export function StoryPlayer({
           onTouchEnd={onTouchEnd}
         >
           <div key={`${current?.chapterId ?? ""}:${current?.placeRun ?? 0}`} className={`${styles.scene} ${styles.iris}`}>
-            <Backdrop placeId={placeId} theme={theme} url={backdropUrl} />
+            <div className={`${styles.layer} ${styles.camera}${cameraClass}`} style={cameraStyle}>
+              <Backdrop placeId={placeId} theme={theme} url={backdropUrl} />
+            </div>
             {titleCard}
             {ribbonTitle ? (
               // On a wide stage with props in front, the caption moves to the
@@ -1531,7 +1543,7 @@ export function StoryPlayer({
                 <PlaceRibbon label={text(ribbonTitle, target, home)} lang={target} />
               </div>
             ) : null}
-            <div className={styles.layer}>
+            <div className={`${styles.layer} ${styles.camera} ${styles.cameraLayer}${cameraClass}`} style={cameraStyle}>
               {propViews.filter((view) => view.scenery).map((view) => view.node)}
               {characters}
               {propViews.filter((view) => !view.scenery).map((view) => view.node)}

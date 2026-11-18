@@ -52,6 +52,7 @@ from app.domain.services.story_bible import (
 )
 from app.domain.services.story_course_validator import line_key, validate_story_course
 from app.domain.services.story_from_lesson_service import StoryFromLessonService, pack_issues
+from app.domain.services.story_metrics import ASSET_CODES
 from app.domain.services.story_module_assembly import (
     ChapterSource,
     ModuleStoryContext,
@@ -388,11 +389,12 @@ async def test_the_module_story_validates_with_zero_errors_and_zero_warnings(tol
     doc = told["doc"]
     report = validate_module_story(doc)
     assert report.ok, [e.model_dump() for e in report.errors]
-    assert report.warnings == [], [w.model_dump() for w in report.warnings]
+    others = [w for w in report.warnings if w.code not in ASSET_CODES]  # #2708
+    assert others == [], [w.model_dump() for w in others]
     direct = validate_story_course(
         StoryCourse.model_validate(json.loads(json.dumps(doc))), generated=True
     )
-    assert direct.ok and direct.warnings == []
+    assert direct.ok and [w for w in direct.warnings if w.code not in ASSET_CODES] == []
 
 
 async def test_one_chapter_per_lesson_then_the_rally_with_story_titles(told):
@@ -458,7 +460,7 @@ async def test_no_line_is_told_twice_but_the_refrain(told):
             for lang in ("en", "fr"):
                 key = (lang, line_key(step[lang]))
                 assert seen.setdefault(key, chapter["id"]) == chapter["id"], step
-    assert refrains == 3
+    assert refrains == repair.MAX_REFRAINS  # 2 since #2708 (the fixture said 3)
 
 
 async def test_every_lesson_concept_is_taught(told):

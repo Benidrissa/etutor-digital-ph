@@ -253,6 +253,8 @@ async def test_load_matches_reads_hits_and_misses_in_one_query():
                 view.credit,
                 view.source,
                 False,
+                None,
+                None,
             ),
             (
                 "garden snail",
@@ -268,6 +270,8 @@ async def test_load_matches_reads_hits_and_misses_in_one_query():
                 None,
                 None,
                 False,
+                None,
+                None,
             ),
         ]
     )
@@ -285,6 +289,31 @@ async def test_load_matches_reads_hits_and_misses_in_one_query():
     assert "(story_prop_matches.query, story_prop_matches.prop_kind) IN" in sql
     assert "image_data" not in sql and "story_library_assets.image_large IS NOT NULL" in sql
     assert await lib.load_matches(FakeSession(), []) == {}
+
+
+def _miss_row(query, resolved_at, newest):
+    return (query, "real", None, *([None] * 9), False, resolved_at, newest)
+
+
+async def test_a_miss_older_than_the_newest_asset_is_unresolved_again():
+    """#2708: importing the library later must change stories already served."""
+    import datetime as dt
+
+    old = dt.datetime(2026, 11, 1, tzinfo=dt.UTC)
+    new = dt.datetime(2026, 11, 10, tzinfo=dt.UTC)
+    session = FakeSession(
+        [
+            _miss_row("stale miss", old, new),
+            _miss_row("fresh miss", new, new),
+            _miss_row("empty library miss", old, None),
+        ]
+    )
+    keys = [("stale miss", "real"), ("fresh miss", "real"), ("empty library miss", "real")]
+    found = await lib.load_matches(session, keys)
+    assert ("stale miss", "real") not in found
+    assert found[("fresh miss", "real")] is None
+    assert found[("empty library miss", "real")] is None
+    assert "max(story_library_assets.updated_at)" in _compiled(session.statements[0])
 
 
 async def test_resolve_phrases_with_an_empty_library_embeds_nothing():
@@ -418,6 +447,8 @@ async def test_story_props_dispatches_the_unresolved_phrases(monkeypatch):
                 view.credit,
                 view.source,
                 False,
+                None,
+                None,
             )
         ]
     )

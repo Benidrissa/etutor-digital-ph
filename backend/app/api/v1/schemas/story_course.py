@@ -296,6 +296,9 @@ class Step(_Loose):
     ref: str | None = None
     #: say / narrate / concept (#2681): the props this line points at (at most 2).
     props: list[str] | None = None
+    #: any step (#2712): forces the camera shot of the beat. Absent, the player
+    #: picks one itself. Unknown values are ignored by the player.
+    shot: str | None = None
     # Optional keys a generated story may carry (extra keys are kept):
     # ``teaches`` (concept): the lesson IDEA numbers the card names, an int or
     #   a list of ints (#2680);
@@ -530,6 +533,10 @@ class Checks(_Loose):
     #: #2681: ``{declared, educational, stickers, figures, lines,
     #: lines_with_props, coverage, closeups, scenes_without_visual}``.
     props: dict[str, Any] | None = None
+    #: #2708, a module story: ``{say_run_max, closeups, closeups_with_art,
+    #: words_before_first_card, card_words_max, refrain_count, mentor_share}``.
+    #: Left out of a dump while unset, so no stored chapter document changes.
+    story_metrics: dict[str, Any] | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 # --- The course file --------------------------------------------------------

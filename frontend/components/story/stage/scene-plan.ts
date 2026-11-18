@@ -47,6 +47,35 @@ export interface PlannedStep {
   pointed: string[];
   /** Every prop the scene uses, for fetching their pictures ahead. */
   sceneProps: string[];
+  /** The camera shot of this beat (#2712); absent: the camera stays put. */
+  shot?: Shot;
+}
+
+/** A camera shot (#2712). */
+export type Shot = "wide" | "two" | "close" | "insert" | "split";
+
+const SHOTS: ReadonlySet<string> = new Set<Shot>(["wide", "two", "close", "insert", "split"]);
+
+/**
+ * The camera shot for a beat, from the story alone, so stories already stored
+ * get shots without a migration. A step's own `shot` overrides the rules.
+ * `next` is the step that follows in the same scene.
+ */
+export function shotFor(
+  planned: Pick<PlannedStep, "step" | "startsScene" | "pointed">,
+  next?: Step,
+): Shot | undefined {
+  const { step } = planned;
+  const forced = (step as { shot?: unknown }).shot;
+  if (typeof forced === "string" && SHOTS.has(forced)) return forced as Shot;
+  const talks = step.type === "say" || step.type === "narrate";
+  if (step.type === "show") return step.visual === "compare" ? "split" : "insert";
+  if (talks && planned.startsScene) return "wide";
+  if (step.type === "say" && (step.mood === "surprised" || step.mood === "think") && planned.pointed.length) {
+    return "close";
+  }
+  if (talks && next?.type === "ask") return "two";
+  return undefined;
 }
 
 /** At most this many on stage: beyond, a 320px stage gets crowded. */
@@ -72,15 +101,17 @@ function defaultCast(actors: Map<string, StageActor>): string[] {
 }
 
 /**
- * A close-up of a prop with nothing to show (no picture, no sticker) is
- * dropped: the line before it already names the thing, and an empty card is
- * worse than none. Progress is kept per unit, not per step, so this is safe.
+ * A close-up of an educational prop is never dropped (#2708): with no picture
+ * and no sticker, LookCloser shows a large name card, so the learner still
+ * sees what the chapter is about. Only decor (not educational) with nothing to
+ * show is skipped. Progress is kept per unit, not per step, so this is safe.
  */
 function keepsStep(step: Step, context: PropContext | undefined): boolean {
   const id = closeUpProp(step);
   if (!id) return true;
   const prop = context?.props.get(id);
   if (!prop) return false;
+  if (prop.educational) return true;
   const media = context?.media?.[id];
   return !!pictureFor(prop, media, "en") || !!sameOriginMedia(media?.sticker);
 }
@@ -129,7 +160,7 @@ export function planSteps(
       let firstOfScene = true;
       steps.forEach((step, index) => {
         const props = propPlan[index] ?? { props: [], entering: [], pointed: [] };
-        out.push({
+        const planned: PlannedStep = {
           step,
           chapterId: chapter.id,
           chapterNumber,
@@ -144,7 +175,9 @@ export function planSteps(
           entering: props.entering,
           pointed: props.pointed,
           sceneProps,
-        });
+        };
+        planned.shot = shotFor(planned, steps[index + 1]);
+        out.push(planned);
         firstOfChapter = false;
         firstOfScene = false;
       });
