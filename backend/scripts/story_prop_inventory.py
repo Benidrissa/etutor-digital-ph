@@ -36,7 +36,6 @@ import asyncio
 import json
 import re
 import sys
-import unicodedata
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -52,79 +51,14 @@ from app.domain.models.course import Course  # noqa: E402
 from app.domain.models.module import Module  # noqa: E402
 from app.domain.models.story_course import StoryCourseRecord  # noqa: E402
 from app.domain.models.story_module_plan import StoryModulePlan  # noqa: E402
+from app.domain.services.story_prop_library import (  # noqa: E402
+    head_noun,
+    normalise_query,
+    singular,
+    tokens,
+)
 
 DEFAULT_TOP = 60
-_ARTICLES = frozenset({"a", "an", "the", "some"})
-#: A search phrase is cut at its first preposition: "bowl of rice" is a bowl.
-_PREPOSITIONS = frozenset({"of", "with", "for", "on", "in", "from", "at", "by", "under"})
-#: Plurals that only lose their "s" would be mangled by the "es" rule.
-_KEEP_ENDINGS = ("ss", "us", "is", "ous")
-_IRREGULAR = {
-    "leaves": "leaf",
-    "knives": "knife",
-    "loaves": "loaf",
-    "shelves": "shelf",
-    "wolves": "wolf",
-    "halves": "half",
-    "calves": "calf",
-    "lives": "life",
-    "men": "man",
-    "women": "woman",
-    "children": "child",
-    "people": "person",
-    "teeth": "tooth",
-    "feet": "foot",
-    "mice": "mouse",
-    "geese": "goose",
-}
-
-
-# -- Words ------------------------------------------------------------------------
-
-
-def _fold(text: str) -> str:
-    """Lower case, accents removed."""
-    decomposed = unicodedata.normalize("NFKD", text)
-    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
-
-
-def tokens(text: str) -> list[str]:
-    """The words of ``text``: CamelCase and snake_case split, digits dropped."""
-    spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", text or "")
-    return [word for word in re.split(r"[^a-z]+", _fold(spaced)) if word]
-
-
-def singular(word: str) -> str:
-    """A rough English singular: berries → berry, boxes → box, seeds → seed."""
-    if word in _IRREGULAR:
-        return _IRREGULAR[word]
-    if len(word) <= 3 or word.endswith(_KEEP_ENDINGS):
-        return word
-    if word.endswith("ies"):
-        return word[:-3] + "y"
-    if word.endswith(("ches", "shes", "xes", "ses", "zes", "oes")):
-        return word[:-2]
-    if word.endswith("s"):
-        return word[:-1]
-    return word
-
-
-def normalise_query(query: str) -> str:
-    """A search phrase, folded and without a leading article."""
-    words = tokens(query)
-    while words and words[0] in _ARTICLES:
-        words = words[1:]
-    return " ".join(words)
-
-
-def head_noun(query: str) -> str:
-    """The thing a search phrase names: its last word before any preposition."""
-    words = normalise_query(query).split()
-    for index, word in enumerate(words):
-        if word in _PREPOSITIONS and index > 0:
-            words = words[:index]
-            break
-    return singular(words[-1]) if words else ""
 
 
 # -- Collecting -------------------------------------------------------------------

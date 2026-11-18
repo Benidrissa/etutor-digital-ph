@@ -42,7 +42,8 @@ export function creditsFor(story: StoryCourse, lang: "fr" | "en"): CreditEntry[]
   for (const prop of story.props ?? []) {
     if (!prop?.id) continue;
     const media = story.art?.props?.[prop.id];
-    if (sameOriginMedia(media?.sticker)) drawn = true;
+    // A library sticker is a render of a credited 3D model, not a drawing made with AI.
+    if (sameOriginMedia(media?.sticker) && media?.picture?.via !== "open_3d") drawn = true;
     const picture = pictureFor(prop, media, lang);
     if (!picture || picture.via === "ai_drawing") continue;
     const key = `${picture.credit.kind}:${picture.src.split("?")[0]}`;

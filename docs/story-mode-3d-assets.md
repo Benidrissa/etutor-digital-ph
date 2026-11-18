@@ -129,7 +129,7 @@ The **flatten step** applies to both engines and is the key to unifying photorea
 
 Post-processing reuses what `story_art_service.py` already does: alpha trim (`ALPHA_THRESHOLD`), max height, and WebP output. Target sticker size is about 400 px on the long side, around 20–40 KB.
 
-### 5.3 Library table (one new migration, `112_story_library_asset`)
+### 5.3 Library table (migration `112_story_prop_library`, built: see §13)
 
 | Column | Purpose |
 |---|---|
@@ -224,7 +224,7 @@ This is the expected split: **3D covers generic objects and lab equipment; photo
 | Phase | Work | Output | Cost |
 |---|---|---|---|
 | **0: Measure** (do this first) | **Built:** `backend/scripts/story_prop_inventory.py` ranks every `prop.query` of the stored story documents and module plans, by head noun and by search phrase. With `--library` it gives a first, lexical estimate of the hit rate. Run it on a server from the *Generate Module Story* workflow, mode `props`. Optionally, forecast courses with no story yet (see below) | The real "shopping list", and the expected library hit rate before building anything | None (forecast: optional, see below) |
-| **A: Sticker library MVP** | Foundry (three.js and Playwright), manifest of about 150 CC0 items (Quaternius and Poly Haven), license gate, `story_library_asset`, embedding matcher plugged in ahead of #2684, **miss log** | Free stickers for the most frequent everyday props, in stories already made and stories made later | Optional one-time AI restyle: 150 × 1–4 ¢ ≈ $1.50–6, once for all courses |
+| **A: Sticker library MVP** | **Code built (§13):** the library tables, import, matcher, serving and miss log. **Still to do:** curate the manifest of about 150 CC0 items (Quaternius and Poly Haven) from the Phase 0 ranking, then import it. The foundry (three.js and Playwright) and its license gate are built. The library is served ahead of #2684 | Free stickers for the most frequent everyday props, in stories already made and stories made later | Optional one-time AI restyle: 150 × 1–4 ¢ ≈ $1.50–6, once for all courses |
 | **B: Backdrops** | 15 themed blockouts; toon-rendered placeholder library; A/B test of blockout → `edit_image` for course places | Better placeholders; more consistent backdrops if the A/B test wins | About 10 A/B images |
 | **C: Educational close-ups** | Sketchfab search by allowed license; curated science and instrument set; `via: "open_3d"` credits | Accurate close-ups where Commons is weak | None per course |
 | **D: Optional** | 3D pose guides for new cast poses (multi-image edit); Wi-Fi-only "View in 3D" | More poses; interactive close-ups | To be estimated |
@@ -339,3 +339,41 @@ The candidate list used by the Phase 0 estimate is `backend/scripts/story_prop_c
 | Quaternius | quaternius.com/faq.html | "These assets can be used for free without the need for attribution in commercial, educational, and personal projects. All models are under the CC0 License." Modification is allowed |
 | Kenney | kenney.nl/support | "All game assets on the asset pages are public domain licensed (CC0). You're free to use them, even in commercial projects." |
 | BlenderKit | — | Not read: www.blenderkit.com now redirects to www.blendkit.com, which this environment does not allow |
+
+---
+
+## 13. Phase A as built
+
+**Tables** (migration `112_story_prop_library`):
+- `story_library_assets`: one row per picture. It holds the WebP (plus a 960 px version for close-ups), label, tags, license, credit line (EN/FR), source and an embedding.
+- `story_prop_matches`: what each normalised search phrase matched, per prop kind. A row whose `asset_id` is null is a **miss**, and the misses are the library's to-do list:
+
+  ```sql
+  SELECT prop_kind, query, resolved_at
+  FROM story_prop_matches
+  WHERE asset_id IS NULL
+  ORDER BY resolved_at DESC;
+  ```
+
+**Matching** (`app/domain/services/story_prop_library.py`, task `app/tasks/story_props.py`):
+- A phrase is matched once, in the background, never while a story is served. The first view of a story dispatches the matching of its new phrases (deduplicated, and failing closed without Redis), and the next view serves the result.
+- A **sticker** prop gets a library sticker. A **real** prop gets a library close-up, unless the story already shows a course figure for it.
+- Embeddings (text-embedding-3-small) accept a match at a cosine of 0.62, or at 0.45 when the phrase's head noun is one of the asset's words. Without embeddings, the head noun alone decides.
+- With an empty library, nothing is embedded and every phrase is recorded as a miss.
+- **The thresholds are first guesses:** tune them on the Phase 0 ranking.
+
+**Serving:**
+- Stories with eligible props get `art.props` (sticker, picture and credit, `via: "open_3d"`) and `art.props_status`. Stories without such props are served exactly as before.
+- Pictures come from `GET /api/v1/story-props/{id}/data` (`?size=large` for a close-up), cached as immutable. The service worker already caches that route for offline use.
+- The credits sheet credits a library sticker to its 3D model, not to "drawings made with AI".
+
+**Operating it:**
+1. Render with the foundry (`infrastructure/asset-foundry`) from a curated manifest.
+2. Copy its output folder into the backend container.
+3. Run `python scripts/import_story_library.py <folder> --dry-run`, then again without `--dry-run`, adding `--prune` to remove assets that left the manifest.
+
+What the import does:
+- It checks every license again and refuses what the library may not serve.
+- An unchanged picture keeps its id and URL; a changed one gets a new id.
+- It embeds labels and tags, and clears the match cache so every phrase is matched again against the new library.
+

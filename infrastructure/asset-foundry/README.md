@@ -7,7 +7,7 @@ Turns free 3D models into story-mode pictures, so the AI does not have to draw e
 
 The plan, the license policy and the examples are in [docs/story-mode-3d-assets.md](../../docs/story-mode-3d-assets.md).
 
-**Status: starting point.** The pipeline runs end to end on the example manifest. Nothing here is wired to the app yet: there is no library table and no prop matcher (doc §5.3–5.4). It runs on an operator's machine or in CI, never on the VPS or in the learner's browser.
+**Status: starting point.** The pipeline runs end to end on the example manifest. Its output is loaded into the app by `backend/scripts/import_story_library.py` (doc §13). It runs on an operator's machine or in CI, never on the VPS or in the learner's browser.
 
 ## Pipeline
 
@@ -113,4 +113,4 @@ Output goes to `out/` (git-ignored). A run of the example takes a few seconds:
 See the doc, §8.
 
 1. **Phase 0:** rank the props the stories ask for, with `backend/scripts/story_prop_inventory.py`. It can also run from the *Generate Module Story* workflow, mode `props`. Use the result to choose the first ~150 manifest entries.
-2. **Phase A:** load `library.json` into a `story_library_asset` table and match `prop.query` against it ahead of the AI stickers (#2684).
+2. **Phase A:** the backend side is built (doc §13). Copy this folder's `out/` into the backend container and import it with `python scripts/import_story_library.py <folder> --dry-run`, then again without `--dry-run`. Stories then serve the matching stickers and close-ups ahead of the AI stickers (#2684).
