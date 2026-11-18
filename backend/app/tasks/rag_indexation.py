@@ -334,12 +334,14 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         from app.ai.rag.chunker import TextChunker, detect_language
         from app.ai.rag.embeddings import EmbeddingService
         from app.ai.rag.pipeline import RAGPipeline
+        from app.domain.services.figure_ref_repair import heal_after_reindex, snapshot_figures
 
         embedding_service = EmbeddingService(api_key=openai_key)
         pipeline = RAGPipeline(embedding_service)
 
         total_chunks = 0
         total_images = 0
+        removed_figures: dict = {}
 
         # Phase 1: DB-only resources (file_hash-deduped; no file on disk).
         # Cloning from a donor is ~instant, so index these first — a soft time
@@ -376,6 +378,19 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 # below have no dedup of their own). Scoped by course_resource_id. #2534
                 async with async_session_factory() as _clear_session:
                     await pipeline.clear_resource_chunks(rag_collection_id, res.id, _clear_session)
+                    # Lessons name these image rows by id; remember them so their
+                    # refs can be repointed to the cloned rows afterwards (#2707).
+                    try:
+                        removed_figures.update(
+                            await snapshot_figures(_clear_session, rag_collection_id, res.id)
+                        )
+                    except Exception as snap_exc:  # noqa: BLE001
+                        await _clear_session.rollback()
+                        logger.warning(
+                            "Figure snapshot before re-index failed",
+                            course_id=course_id,
+                            error=str(snap_exc),
+                        )
                     await pipeline.clear_resource_images(rag_collection_id, res.id, _clear_session)
 
                 # Content-hash dedup: clone from donor course if same text already indexed.
@@ -450,6 +465,8 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
         # Pure-deduped course (every source was file_hash-deduped): no disk PDFs
         # to extract text/images from, so we're done.
         if not pdf_files:
+            if removed_figures:
+                await heal_after_reindex(course_id, removed_figures)
             return total_chunks, total_images
 
         # Build pdf_path → course_resource_id lookup so chunks land with
@@ -704,6 +721,9 @@ def index_course_resources(self, course_id: str, rag_collection_id: str) -> dict
                 images=image_count,
                 course_id=course_id,
             )
+
+        if removed_figures:
+            await heal_after_reindex(course_id, removed_figures)
 
         return total_chunks, total_images
 
