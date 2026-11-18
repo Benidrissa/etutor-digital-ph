@@ -215,7 +215,7 @@ This is the expected split: **3D covers generic objects and lab equipment; photo
 
 | Phase | Work | Output | Cost |
 |---|---|---|---|
-| **0: Measure** (do this first) | A script that dumps every `prop.query` and `kind` from the stored story documents and ranks them by frequency. Optionally, forecast courses with no story yet (see below) | The real "shopping list", and the expected library hit rate before building anything | None (forecast: optional, see below) |
+| **0: Measure** (do this first) | **Built:** `backend/scripts/story_prop_inventory.py` ranks every `prop.query` of the stored story documents and module plans, by head noun and by search phrase. With `--library` it gives a first, lexical estimate of the hit rate. Run it on a server from the *Generate Module Story* workflow, mode `props`. Optionally, forecast courses with no story yet (see below) | The real "shopping list", and the expected library hit rate before building anything | None (forecast: optional, see below) |
 | **A: Sticker library MVP** | Foundry (three.js and Playwright), manifest of about 150 CC0 items (Quaternius and Poly Haven), license gate, `story_library_asset`, embedding matcher plugged in ahead of #2684, **miss log** | Free stickers for the most frequent everyday props, in stories already made and stories made later | Optional one-time AI restyle: 150 × 1–4 ¢ ≈ $1.50–6, once for all courses |
 | **B: Backdrops** | 15 themed blockouts; toon-rendered placeholder library; A/B test of blockout → `edit_image` for course places | Better placeholders; more consistent backdrops if the A/B test wins | About 10 A/B images |
 | **C: Educational close-ups** | Sketchfab search by allowed license; curated science and instrument set; `via: "open_3d"` credits | Accurate close-ups where Commons is weak | None per course |
@@ -280,18 +280,22 @@ npm packages are unofficial redistributions, so each one was checked for publish
 | Package | What it holds | Provenance | Verdict |
 |---|---|---|---|
 | `@netforge/asset-library-files` 0.2.0 | 228 optimised GLBs: **77 Quaternius** (animals, props, characters) and **145 Kenney** (food, nature, vehicles, buildings) | NOTICE lists every pack and where its CC0 was checked. The companion manifest (`@netforge/asset-library`) records each model's Poly Pizza page and sha256, and says that models Poly Pizza lists as CC BY are excluded | ✅ Used for the proof of concept. New package (Oct 2026) from a single publisher, so re-check against the originals |
-| `@jgengine/assets` 0.59.0 | No model bytes: a machine-built **index of 63 Quaternius packs (2,832 model names)**, plus KayKit, ambientCG and game-icons, with license and author per pack | Generated from the real pack contents; license per source | ✅ Useful to measure coverage before downloading. Flags *Ultimate Modular Women* as CC BY 3.0 on Poly Pizza: a reason to gate per model, not per author |
+| `@jgengine/assets` 0.59.0 | No model bytes: a machine-built **index of 55 Quaternius packs (2,103 distinct model names)**, plus 8 KayKit packs, ambientCG and game-icons, with license and author per pack | Generated from the real pack contents; license per source | ✅ Useful to measure coverage before downloading. Flags *Ultimate Modular Women* as CC BY 3.0 on Poly Pizza: a reason to gate per model, not per author |
 | `@pmndrs/assets` 1.7.0 | 18 Poly Haven HDRIs (512 px EXR), 568 matcaps, textures | Long-standing package from the react-three-fiber maintainers; CC0 | ✅ HDRIs for lighting. ⚠ matcap origin (emmelleppi/matcaps) to verify |
 | `open-anatomy-3d` 0.1.0 | Male and female anatomy GLBs, 147 named parts (heart, skull, kidney…) | CC BY 4.0, adapted from BodyParts3D (© DBCLS), HuBMAP and MakeHuman. Says the 2025 BodyParts3D release moved from CC BY-SA 2.1 JP to CC BY 4.0 | ✅ Promising for health courses' close-ups. ⚠ verify the DBCLS license change before production |
 | `dramatis` 0.1.3 | Character creator: CC0 MakeHuman base data, plays Quaternius animation clips | Apache-2.0 code; licence manifest per asset | Later, for 3D pose guides (Phase D) only |
 
-**Quaternius coverage of everyday story props**, from the 2,832-name index:
+**Quaternius coverage of everyday story props**, from that index:
 - **Present:** buckets, barrels, jars, plates, mugs, tables, chairs, benches, beds, books, palm trees and many other trees, pebbles and rocks, bushes and flowers, crops and fruit, cow, sheep, donkey, horse, chicken, dog, cat, fish, bee, well, fence, bicycle, cars, a bus, a taxi, a tractor, boats, houses, first-aid kits and bandages, bottles, candles and lamps, coins, tools (axe, hoe…).
 - **Absent:** basket, goat, snail, microscope and lab glassware, clock, trophy, and every West Africa-specific object.
 
 ### 11.3 Proof of concept
 
-The scripts live in the session scratchpad: `render.mjs`, `closeup.mjs`, `post.py` and `compose.py`. They are not in the repo.
+The pipeline is now in [`infrastructure/asset-foundry/`](../infrastructure/asset-foundry/): a manifest, the license gate in code, rendering, post-processing and a `library.json` carrying credits and provenance. Its example manifest reproduces the renders below.
+
+The candidate list used by the Phase 0 estimate is `backend/scripts/story_prop_candidates.json`:
+- 1,604 model names from 43 on-theme Quaternius and Kenney packs;
+- sci-fi, weapons, monsters and the like left out, to limit false matches.
 
 1. **Stickers** (three.js toon shading in headless Chromium, the stage outline colour `#3b2418`, colours mapped to the house palette, a 2D sticker stroke, WebP ≤ 400 px):
    - **25–200 ms per render**, **3.6–17 KB per WebP**, no GPU, no AI call.
