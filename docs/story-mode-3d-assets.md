@@ -377,3 +377,32 @@ What the import does:
 - An unchanged picture keeps its id and URL; a changed one gets a new id.
 - It embeds labels and tags, and clears the match cache so every phrase is matched again against the new library.
 
+
+---
+
+## 14. Shared stock art and the bundled library (#2714)
+
+Two changes stop every course from drawing the same things again, and stop the library from depending on a manual step.
+
+### 14.1 Stock art: cast and places drawn once
+
+- **Slots.** `story_stock_art` holds one image per slot: kind, theme, variant, region pack and pose.
+  - Characters: theme is the cast role (`hero`, `friend`, `mentor`, `family`, `tutor`). The variant is the hero's variant (`girl`, `boy`, `woman`, `man`) or, for the other roles, the course's audience (`kids`, `adult`). A slot without a variant fits every audience.
+  - Places: theme is the player's `placeTheme` (`places.ts`, ported to `place_theme`), the variant is the place id when the image is specific to it.
+  - Poses: the four a run draws, plus `surprised` and `sad`, which only stock may hold (a run never draws them, so no course costs more). The player already falls back to another pose (`ART_LADDER`).
+- **Adoption** (`StoryArtGenerator._adopt_stock`). Before drawing an item, the run looks for **approved** stock of the same slot (the most specific first, a character only when its four base poses exist) and gives the course `story_art` rows that point at it (`stock_id`, no bytes). A miss draws as before, so a stack with no stock still gets art.
+- **Serving.** A stock-backed row is served at `/api/v1/story-art/{stock id}/data`: the same URL for every course, immutable, and already matched by the service worker's story-media route. A course's own images are served exactly as before; no existing row is touched and `ART_VERSION` is unchanged (nothing is redrawn).
+- **Review.** A promoted image is a `candidate`: never adopted, never served, until a human approves it. Check skin tones, clothes and the setting of the pack before approving. A better image is a new row (new id, new URL); the old one is `retired` and keeps serving the courses that already use it.
+- **Settings** (admin, category AI): `story-art-use-stock` (default on, which only matters once something is approved), `story-art-stock-pack` (`west_africa`), `story-art-max-custom-images` (0: no cap, as today). With a cap above 0, a course keeps at most that many drawings of its own; the rest are stored as a final failure (`custom_art_cap`), so the player shows its placeholder and no view says "being drawn". An operator's run with `retry_failed` draws them regardless.
+
+Seeding stock costs **no AI call**: `scripts/promote_story_stock.py` copies one existing course's ready art into candidates.
+
+### 14.2 The library ships in the image
+
+- **The pack.** `backend/app/data/story_library/` holds the rendered stickers and `library.json` (version, licence and credit of each entry). It is built with the foundry from `infrastructure/asset-foundry/library/manifest.json`; `fetch_poly_pizza.py` fetches the models listed in `wishlist.json` and re-reads each model's Poly Pizza page, refusing anything that is not "Licence CC0 1.0" by Quaternius or Kenney.
+- **Seeding** (`app/domain/services/story_library_seed.py`, called from the API's lifespan). Every stack runs the same image, and tenants are provisioned by another repository, so the API imports the pack in a background task when it starts:
+  - one small query when the version and the file's sha256 are those already applied (`story_seed_state`);
+  - otherwise an idempotent import: an unchanged picture keeps its id and URL, a changed one gets a new id, an asset removed from the pack is deleted (never one imported by hand);
+  - a new version clears every cached phrase match, so sticky misses are matched again;
+  - no AI call (no embeddings: the matcher uses the head noun until an operator imports the same folder with `scripts/import_story_library.py`, which embeds);
+  - never blocks and never fails a start: errors, an empty pack, missing tables or an unreachable database are logged. `STORY_LIBRARY_AUTOSEED=false` turns it off.

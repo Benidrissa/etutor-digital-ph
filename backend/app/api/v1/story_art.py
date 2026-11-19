@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session
 from app.domain.models.story_art import STATUS_READY, StoryArt
+from app.domain.models.story_stock_art import STOCK_CANDIDATE, StoryStockArt
 
 router = APIRouter(prefix="/story-art", tags=["Story art"])
 
@@ -39,6 +40,22 @@ async def get_story_art_data(
         await db.execute(select(StoryArt.status, StoryArt.image_data).where(StoryArt.id == art_id))
     ).first()
     if row is None:
+        # A shared stock image (#2714): the URL is the stock image's own id, the
+        # same for every course that adopted it. A candidate (not yet reviewed)
+        # is never served.
+        stock = (
+            await db.execute(
+                select(StoryStockArt.status, StoryStockArt.image_data).where(
+                    StoryStockArt.id == art_id
+                )
+            )
+        ).first()
+        if stock is not None and stock[0] != STOCK_CANDIDATE and stock[1]:
+            return Response(
+                content=stock[1],
+                media_type="image/webp",
+                headers={"Cache-Control": IMMUTABLE},
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "story_art_not_found", "message": f"No story art {art_id}"},
