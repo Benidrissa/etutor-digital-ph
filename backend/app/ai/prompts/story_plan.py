@@ -54,6 +54,9 @@ def _bible_block(request: PlanRequest) -> str:
     ]
     if facts:
         lines += ["LOCAL DETAILS you may use:", *facts]
+    note = _policy_note(request)
+    if note:
+        lines.append(note)
     lines.append(
         "THE BIBLE'S MISSION FOR THIS MODULE (a seed: sharpen it into a premise with a want,"
         f' stakes and a clock): "{mission.get("en", "")}" / "{mission.get("fr", "")}"'
@@ -65,6 +68,31 @@ def _bible_block(request: PlanRequest) -> str:
             f" «{previous.get('title', '')}»: {previous.get('logline', '')}"
         )
     return "\n".join(lines)
+
+
+def _voices(request: PlanRequest) -> str:
+    """The ``voices`` keys of the answer; a new plan lists the bible's cast (no mentor when none)."""
+    ids = ["hero", "friend", "mentor", "family", "margo"]
+    if request.cast_policy is not None:
+        ids = [m["id"] for m in request.bible.content.get("cast") or []] or ids
+    return ", ".join(f'"{cid}": "..."' for cid in ids)
+
+
+def _policy_note(request: PlanRequest) -> str:
+    """What the mentor policy (#2710) tells the planner; nothing for a legacy plan."""
+    if request.cast_policy == "none":
+        return (
+            "NO MENTOR: there is no teacher or supervisor in this series. Never use the id"
+            ' "mentor". The children find things out themselves; the friend is the sceptical'
+            ' one ("how do you know?"), and the family member or Margo gives a clue at most.'
+        )
+    if request.cast_policy == "cameo":
+        return (
+            'MENTOR CAMEO: the "mentor" appears only in the FIRST beat of the first chapter'
+            " and the LAST beat of the last chapter, to open or close the story. He never"
+            " explains and never hands a question over; the friend does the doubting."
+        )
+    return ""
 
 
 def _fact_sheets(request: PlanRequest) -> str:
@@ -115,7 +143,7 @@ _OUTPUT = """{
  "logline": "English, at most 40 words: who wants what, what is in the way, what is lost if they fail",
  "want": "...", "stakes": "...", "clock": "...",
  "hero_flaw": "a small, funny flaw {child} is past by the rally",
- "voices": {"hero": "...", "friend": "...", "mentor": "...", "family": "...", "margo": "..."},
+ "voices": {__VOICES__},
  "running_gag": "...",
  "catchphrases": [{"who": "friend", "en": "...", "fr": "..."}],
  "props": [{"id": "dry_leaf", "en": "the dry leaf", "fr": "la feuille sèche", "query": "dry brown leaf", "kind": "real", "emoji": "🍂", "at": "ground", "size": "s", "planted": "__FIRST__", "paid_off": "rally"}],
@@ -225,7 +253,9 @@ def build_plan_user_message(request: PlanRequest) -> str:
             f' "{last}"). Its "ends_on" is a warm last image, a callback to the running gag:'
             " never a cliffhanger. Every other chapter ends unresolved."
         )
-    output = _OUTPUT.replace("__RALLY__", _RALLY if request.has_rally else "")
+    output = _OUTPUT.replace("__RALLY__", _RALLY if request.has_rally else "").replace(
+        "__VOICES__", _voices(request)
+    )
     if not request.has_rally:
         output = output.replace('"paid_off": "rally"', '"paid_off": "__LAST__"').replace(
             "is past by the rally", "is past by the last chapter"

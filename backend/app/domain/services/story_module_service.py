@@ -64,6 +64,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, NamedTuple
 
 import structlog
@@ -721,6 +722,26 @@ async def live_figures(
 # --------------------------------------------------------------------------
 
 
+def _plan_policy(
+    bible_content: dict[str, Any], course: Any, module_info: Any, is_kids: bool
+) -> str | None:
+    """The mentor policy of a new plan (#2710); ``None`` when the bible is a legacy one."""
+    from app.ai.prompts.audience import detect_audience
+    from app.domain.services.platform_settings_service import SettingsCache
+    from app.domain.services.story_cast_policy import (
+        OVERRIDE_SETTING,
+        bible_policy,
+        normalise_override,
+    )
+    from app.domain.services.story_plan import plan_cast_policy
+
+    if bible_policy(bible_content) is None:
+        return None
+    override = normalise_override(SettingsCache.instance().get(OVERRIDE_SETTING, "auto"))
+    audience = detect_audience(course) if course is not None else is_kids
+    return plan_cast_policy(bible_content, course, module_info, audience, override)
+
+
 @dataclass
 class _Run:
     """One generation of a module story: its inputs and what the phases share."""
@@ -959,6 +980,12 @@ class ModuleStoryService:
             )
             course = module.course
             course_id = module.course_id
+            module_info = SimpleNamespace(
+                title_en=module.title_en,
+                title_fr=module.title_fr,
+                description_en=module.description_en,
+                description_fr=module.description_fr,
+            )
             module_number = module.module_number or 1
             module_title = _pair(module.title_en, module.title_fr)
             bible_modules = await _bible_modules(session, module) if bible is None else []
@@ -1010,7 +1037,9 @@ class ModuleStoryService:
         async with session_factory() as session:
             await self._read_sources(run, session, units, pins)
             run.catalogue = await self._build_catalogue(run, session, lessons)
-            run.request = self._plan_request(run, ctx, units, previous_module)
+            run.request = self._plan_request(
+                run, ctx, units, previous_module, course=course, module_info=module_info
+            )
             run.request.catalogue = run.catalogue
             plan_prompt = _system_prompt("plan", course, language, country, module_title)
             run.plan = await self.plans.get_or_create(
@@ -1369,6 +1398,9 @@ class ModuleStoryService:
         ctx: ModuleStoryContext,
         units: Sequence[StoryUnit],
         previous_module: dict[str, Any] | None,
+        *,
+        course: Any = None,
+        module_info: Any = None,
     ) -> PlanRequest:
         """The plan's inputs: fact sheets, blocklist, the course questions as candidates."""
         from app.ai.prompts.story_from_lesson import build_fact_sheet, build_name_blocklist
@@ -1453,6 +1485,7 @@ class ModuleStoryService:
                 "lessons": {str(k): str(v.id) for k, v in run.lesson_rows.items()},
                 "quizzes": {str(k): str(v.id) for k, v in run.quiz_rows.items()},
             },
+            cast_policy=_plan_policy(bible.content, course, module_info, ctx.is_kids),
         )
 
     # -- the context of a chapter -------------------------------------------------

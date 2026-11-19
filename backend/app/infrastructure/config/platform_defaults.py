@@ -1898,7 +1898,8 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "13. Voices: what each character wants in this episode and how they talk, "
             "built on the bible's personalities. {{friend}}, a colleague, jumps to "
             "conclusions; the community member speaks for the people served; the "
-            "supervisor answers a question with a question; Margo whispers one hint at a "
+            "supervisor (only when the cast has one) answers a question with a question; "
+            "Margo whispers one hint at a "
             "time.\n"
             "\n"
             "THE RALLY\n"
@@ -1968,7 +1969,8 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "2. {{child}} is the hero and does the solving: notices, guesses, tries, is "
             "wrong first, feels it (worried, stuck, surprised, proud), then works it out."
             " The decisive idea of every beat comes from {{child}}, never from a grown-"
-            "up. {{friend}} gets things wrong in funny ways. The teacher and the family "
+            'up. {{friend}} gets things wrong in funny ways, and is the one who doubts ("how '
+            'do you know?"). The teacher (only when the cast has one) and the family '
             "ask questions back, give clues and joke; they never explain the lesson.\n"
             "3. Show, then name. An idea is something that HAPPENS on stage (the leaf "
             "folds when touched, the seed in the dark stays asleep) before anyone names "
@@ -1982,9 +1984,12 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "said once, by {{child}}, at the moment of the discovery; the card does the "
             "rest.\n"
             "5. Story first. Between two teaching moments (a card with its questions, a "
-            "figure, the game, a paper task) come at least 3 story lines, and at least 3 "
-            'steps in 5 of the chapter are story lines ("say" or "narrate"). One idea per'
-            " scene, unless the plan joins two.\n"
+            "figure, the game, a paper task) come at least 2 story beats (a line, or a "
+            "figure the characters look at), and at least half of the steps of the chapter"
+            ' are story beats ("say", "narrate" or "show"). One idea per'
+            " scene, unless the plan joins two. Lines are at most 12 words, a card at most "
+            "20 words with ONE new word (no jargon), and nobody says more than 6 lines in a "
+            "row.\n"
             "6. Every scene has a funny moment from a character: the running gag, a silly"
             " guess, a goat eating the evidence, a word taken the wrong way. The humour "
             "is kind: nobody is laughed at for being wrong.\n"
@@ -2090,7 +2095,8 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "2. {{child}} is the hero and does the solving: notices, guesses, tries, is "
             "wrong first, feels it (worried, stuck, surprised, proud), then works it out."
             " The decisive idea of every beat comes from {{child}}, never from a grown-"
-            "up. {{friend}} gets things wrong in funny ways. The supervisor and the "
+            'up. {{friend}} gets things wrong in funny ways, and is the one who doubts ("how '
+            'do you know?"). The supervisor (only when the cast has one) and the '
             "community member ask questions back, give clues and joke; they never explain"
             " the lesson.\n"
             "3. Show, then name. An idea is something that HAPPENS on stage (the leaf "
@@ -2105,8 +2111,9 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "said once, by {{child}}, at the moment of the discovery; the card does the "
             "rest.\n"
             "5. Story first. Between two teaching moments (a card with its questions, a "
-            "figure, the game, a paper task) come at least 3 story lines, and at least 3 "
-            'steps in 5 of the chapter are story lines ("say" or "narrate"). One idea per'
+            "figure, the game, a paper task) come at least 2 story beats (a line, or a "
+            "figure the characters look at), and at least half of the steps of the chapter"
+            ' are story beats ("say", "narrate" or "show"). One idea per'
             " scene, unless the plan joins two.\n"
             "6. A light, situational moment of humour in most scenes: the running gag, a "
             "wrong guess, a word taken the wrong way. The humour is kind: nobody is "
@@ -2626,6 +2633,22 @@ SETTING_DEFINITIONS: list[SettingDef] = [
             "Master switch for module story mode. When false the story endpoints"
             " answer 404 and no story is generated."
         ),
+    ),
+    SettingDef(
+        "story-mentor-policy",
+        "ai",
+        "auto",
+        "string",
+        "Story mentor (teacher / supervisor)",
+        (
+            "Whether new course stories have a mentor character (#2710). auto: chosen per"
+            " course: none for inquiry/experiment topics and for learners aged 10 and up,"
+            " a cameo (opening or closing only) for 6-9 year-olds or apprenticeship topics,"
+            " a lead for safety or high-risk health topics. never: no mentor. always: a"
+            " lead mentor. Applies to NEW course bibles and plans only; a story already"
+            " made keeps its cast."
+        ),
+        allowed_options=["auto", "never", "always"],
     ),
     # ── Video Summaries (HeyGen) ───────────────────────────
     # Per issue #1791: HeyGen-backed 3-min lesson summary videos.
