@@ -868,7 +868,7 @@ async def test_a_remerge_binds_the_saved_catalogue_and_saves_the_binding(monkeyp
     monkeypatch.setattr(service, "load_catalogue", load)
     monkeypatch.setattr(service, "save_catalogue", save)
     doc = story()
-    await service._bind_catalogue(None, MODULE, doc)
+    await service._bind_catalogue(_Savepoint(), MODULE, doc)
     assert doc["checks"] == story()["checks"]  # validation is the caller's
     assert saved["binding"] == {"poster": SHEPARD, "table_drawing": ILLUSTRATION}
     assert {p["id"] for p in doc["props"] if p["kind"] == "figure"} == {"poster", "table_drawing"}
@@ -882,7 +882,7 @@ async def test_a_catalogue_that_cannot_be_read_never_fails_the_merge(monkeypatch
 
     monkeypatch.setattr(service, "load_catalogue", broken)
     doc = story()
-    await service._bind_catalogue(None, MODULE, doc)
+    await service._bind_catalogue(_Savepoint(), MODULE, doc)
     assert doc == story()
 
 
@@ -891,3 +891,64 @@ async def test_without_figure_storage_the_catalogue_is_not_built():
 
     svc = ModuleStoryService(None, None, None)
     assert await svc._build_catalogue(SimpleNamespace(), None, []) is None
+
+
+# -- a failing catalogue never poisons the caller's transaction -------------------------------------------------
+
+
+class _Savepoint:
+    """A session that records its savepoints and whether anything rolled back the whole."""
+
+    def __init__(self):
+        self.entered = self.failed = 0
+        self.rolled_back = False
+
+    def begin_nested(self):
+        outer = self
+
+        class _Ctx:
+            async def __aenter__(self):
+                outer.entered += 1
+
+            async def __aexit__(self, exc_type, *_):
+                outer.failed += exc_type is not None
+                return False  # the error goes on to the caller's except
+
+        return _Ctx()
+
+    async def rollback(self):
+        self.rolled_back = True
+
+
+async def test_the_binding_reads_and_writes_inside_a_savepoint(monkeypatch):
+    from app.domain.services import story_module_service as service
+
+    async def broken(_session, _module_id):
+        raise RuntimeError('relation "story_asset_catalogues" does not exist')
+
+    monkeypatch.setattr(service, "load_catalogue", broken)
+    session, doc = _Savepoint(), story()
+    await service._bind_catalogue(session, MODULE, doc)
+    assert (session.entered, session.failed, session.rolled_back) == (1, 1, False)
+    assert doc == story()
+
+
+async def test_the_catalogue_build_fails_inside_a_savepoint_and_never_rolls_back_the_session(
+    monkeypatch,
+):
+    from app.domain.services import story_module_service as service
+
+    async def broken(*_a, **_k):
+        raise RuntimeError('relation "story_asset_catalogues" does not exist')
+
+    monkeypatch.setattr(service, "load_catalogue", broken)
+
+    class _Run:
+        course_id = None
+        module_id = MODULE
+        lesson_rows: dict = {}
+
+    svc = service.ModuleStoryService(None, None, None, figure_storage=_Storage())
+    session = _Savepoint()
+    assert await svc._build_catalogue(_Run(), session, []) is None
+    assert (session.entered, session.failed, session.rolled_back) == (1, 1, False)

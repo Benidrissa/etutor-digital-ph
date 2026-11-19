@@ -615,13 +615,18 @@ async def _bind_catalogue(session: AsyncSession, module_id: uuid.UUID, doc: dict
     survives. Never fails the merge.
     """
     try:
-        catalogue = await load_catalogue(session, module_id)
-        if not catalogue or not catalogue.get("entries"):
-            return
-        result = rebind_document(doc, catalogue["entries"], binding=catalogue.get("binding") or {})
-        if result.bound:
-            catalogue["binding"] = {**(catalogue.get("binding") or {}), **result.bound}
-            await save_catalogue(session, module_id, catalogue)
+        # A savepoint: a missing table or a failed write rolls back to here,
+        # never the merge's own transaction.
+        async with session.begin_nested():
+            catalogue = await load_catalogue(session, module_id)
+            if not catalogue or not catalogue.get("entries"):
+                return
+            result = rebind_document(
+                doc, catalogue["entries"], binding=catalogue.get("binding") or {}
+            )
+            if result.bound:
+                catalogue["binding"] = {**(catalogue.get("binding") or {}), **result.bound}
+                await save_catalogue(session, module_id, catalogue)
     except Exception as exc:
         logger.warning(
             "Story asset binding skipped", module_id=str(module_id), error=str(exc)[:300]
@@ -1281,30 +1286,31 @@ class ModuleStoryService:
         if self.figure_storage is None:
             return None
         try:
-            from app.domain.models.course import Course  # noqa: PLC0415
+            async with session.begin_nested():
+                from app.domain.models.course import Course  # noqa: PLC0415
 
-            course = await session.get(Course, run.course_id) if run.course_id else None
-            units = [
-                {
-                    "unit_id": u.module_unit_id,
-                    "unit_number": u.unit_number,
-                    "title": u.title,
-                    "lesson_id": run.lesson_rows[u.module_unit_id].id,
-                    "content": run.lesson_rows[u.module_unit_id].content or {},
-                }
-                for u in lessons
-            ]
-            catalogue = await build_catalogue(
-                session,
-                module_id=run.module_id,
-                course_source=course.rag_collection_id if course is not None else None,
-                course_id=run.course_id,
-                units=units,
-                storage=self.figure_storage,
-                retriever=self.asset_retriever,
-                previous=await load_catalogue(session, run.module_id),
-            )
-            await save_catalogue(session, run.module_id, catalogue)
+                course = await session.get(Course, run.course_id) if run.course_id else None
+                units = [
+                    {
+                        "unit_id": u.module_unit_id,
+                        "unit_number": u.unit_number,
+                        "title": u.title,
+                        "lesson_id": run.lesson_rows[u.module_unit_id].id,
+                        "content": run.lesson_rows[u.module_unit_id].content or {},
+                    }
+                    for u in lessons
+                ]
+                catalogue = await build_catalogue(
+                    session,
+                    module_id=run.module_id,
+                    course_source=course.rag_collection_id if course is not None else None,
+                    course_id=run.course_id,
+                    units=units,
+                    storage=self.figure_storage,
+                    retriever=self.asset_retriever,
+                    previous=await load_catalogue(session, run.module_id),
+                )
+                await save_catalogue(session, run.module_id, catalogue)
             await session.commit()
             logger.info(
                 "Story asset catalogue built",
@@ -1321,7 +1327,6 @@ class ModuleStoryService:
                 module_id=str(run.module_id),
                 error=str(exc)[:300],
             )
-            await session.rollback()
             return None
 
     async def _read_sources(
