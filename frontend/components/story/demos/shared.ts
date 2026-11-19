@@ -12,6 +12,8 @@ export interface DemoProps {
   lang: "fr" | "en";
   /** The learner acted and saw the verdict: the bet may be revealed. */
   onDone?: (outcome: { correct: boolean }) => void;
+  /** Show the answer state now (the learner moved on without acting). */
+  reveal?: boolean;
 }
 
 export type Pair = { en?: string; fr?: string };

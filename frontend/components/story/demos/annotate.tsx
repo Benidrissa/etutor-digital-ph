@@ -13,7 +13,7 @@ import { list, pick, type DemoProps } from "./shared";
  * is `expected` in the data. The parts are real buttons (44 px at least, Tab
  * and Enter work); the labels are listed under the figure for a screen reader.
  */
-export default function Annotate({ params, lang, onDone }: DemoProps) {
+export default function Annotate({ params, lang, onDone, reveal }: DemoProps) {
   const t = useTranslations("Story");
   const [picked, setPicked] = useState<number | null>(null);
   const labels = list(params.labels).map((label) => pick(label, lang));
@@ -44,7 +44,7 @@ export default function Annotate({ params, lang, onDone }: DemoProps) {
         <div className="absolute inset-0 flex">
           {labels.map((label, i) => {
             const n = i + 1;
-            const right = picked !== null && n === expected;
+            const right = (picked !== null || !!reveal) && n === expected;
             const wrong = picked === n && n !== expected;
             return (
               <button
@@ -52,7 +52,7 @@ export default function Annotate({ params, lang, onDone }: DemoProps) {
                 type="button"
                 aria-label={t("annotatePart", { n, label })}
                 aria-pressed={picked === n}
-                disabled={picked !== null}
+                disabled={picked !== null || !!reveal}
                 onClick={() => choose(n)}
                 className={`min-h-11 min-w-11 flex-1 border-2 border-dashed border-white/80 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-teal-400 ${
                   right ? "bg-green-500/50" : wrong ? "bg-red-500/40" : "bg-black/10 hover:bg-white/20"
@@ -66,7 +66,9 @@ export default function Annotate({ params, lang, onDone }: DemoProps) {
       </div>
       <p role="status" aria-live="polite" className="min-h-6 font-semibold text-gray-900">
         {picked === null
-          ? ""
+          ? reveal
+            ? t("annotateAnswer", { label: labels[expected - 1] ?? "" })
+            : ""
           : picked === expected
             ? t("annotateRight", { label: labels[expected - 1] ?? "" })
             : t("annotateWrong", { label: labels[expected - 1] ?? "" })}

@@ -2705,6 +2705,7 @@
     "compareBigger": "{winner} is bigger: {a} and {b}.",
     "annotateInstruction": "Tap the part you think holds the answer.",
     "annotatePart": "Part {n}: {label}",
+    "annotateAnswer": "The answer is in: {label}.",
     "annotateRight": "Yes, it is in: {label}.",
     "annotateWrong": "Not quite. Look at: {label}.",
     "sortInstruction": "Put each thing in its box, then check.",

@@ -2705,6 +2705,7 @@
     "compareBigger": "{winner} est plus grand : {a} et {b}.",
     "annotateInstruction": "Touche la partie qui, selon toi, contient la réponse.",
     "annotatePart": "Partie {n} : {label}",
+    "annotateAnswer": "La réponse est dans : {label}.",
     "annotateRight": "Oui, c'est dans : {label}.",
     "annotateWrong": "Pas tout à fait. Regarde : {label}.",
     "sortInstruction": "Mets chaque chose dans sa boîte, puis vérifie.",

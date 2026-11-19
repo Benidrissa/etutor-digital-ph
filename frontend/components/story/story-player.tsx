@@ -508,9 +508,27 @@ export function StoryPlayer({
     return () => clearTimeout(timer);
   }, [titleBeat, revealStep]);
 
+  // A bet's demo the learner left without acting (#2711): the first Next shows
+  // the answer state and the reveal, the second moves on.
+  const actedRef = useRef<Set<number>>(new Set());
+  const [forcedReveal, setForcedReveal] = useState<ReadonlySet<number>>(() => new Set());
   const advance = useCallback(() => {
     // A tap or a key: iOS lets the read-aloud player start on its own after it.
     if (readAloud) unlockSpeech();
+    const here = flat[index]?.step;
+    if (
+      titleBeat === null &&
+      !reviewing &&
+      index === fresh &&
+      here?.type === "show" &&
+      here.bet &&
+      isDemoVisual(here.visual) &&
+      !actedRef.current.has(index) &&
+      !forcedReveal.has(index)
+    ) {
+      setForcedReveal((previous) => new Set(previous).add(index));
+      return;
+    }
     // During a title beat, Next only ends the beat: the first line comes up.
     if (titleBeat !== null) {
       setTitleBeat(null);
@@ -527,7 +545,7 @@ export function StoryPlayer({
       setTitleBeat(null);
     }
     revealStep();
-  }, [readAloud, titleBeat, index, furthest, flat.length, beatAt, revealStep]);
+  }, [readAloud, titleBeat, index, furthest, flat, fresh, reviewing, forcedReveal, beatAt, revealStep]);
 
   // One line back, across scenes and chapters, never to the start card or a
   // title beat. What was answered is shown answered. On the first line, the
@@ -1247,6 +1265,8 @@ export function StoryPlayer({
                 chosen={betAt >= 0 ? records.get(betAt)?.question?.answer : undefined}
                 target={target}
                 home={home}
+                reveal={forcedReveal.has(index) || revisit || reviewing}
+                onActed={() => actedRef.current.add(index)}
               />
             </VisualPanel>
           );

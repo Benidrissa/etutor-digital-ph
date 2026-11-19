@@ -10,7 +10,7 @@ import { list, pick, type DemoProps } from "./shared";
  * each item has one button per box (44 px, Tab, Enter), which also works with
  * a screen reader. Check compares with the `bin` of each item, from the data.
  */
-export default function Sort({ params, lang, onDone }: DemoProps) {
+export default function Sort({ params, lang, onDone, reveal }: DemoProps) {
   const t = useTranslations("Story");
   const bins = list(params.bins).map((bin) => pick(bin, lang));
   const items = list(params.items).map((item) => {
@@ -18,7 +18,8 @@ export default function Sort({ params, lang, onDone }: DemoProps) {
     return { label: pick(row.label, lang), bin: Number(row.bin) };
   });
   const [placed, setPlaced] = useState<Record<number, number>>({});
-  const [checked, setChecked] = useState(false);
+  const [done, setChecked] = useState(false);
+  const checked = done || !!reveal;
   const all = items.every((_, i) => placed[i] !== undefined);
   const right = items.filter((item, i) => placed[i] === item.bin).length;
 

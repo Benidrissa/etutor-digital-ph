@@ -154,6 +154,29 @@ describe("StoryPlayer — the bet", () => {
     expect(screen.getByText("Surprenant !")).toBeInTheDocument();
   });
 
+  it("reveals the bet on the first Next of a demo left un-acted, and moves on with the second", async () => {
+    const user = userEvent.setup();
+    renderPlayer();
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    await clickInCard(user, "Celle de gauche");
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    await screen.findByRole("button", { name: "Mesurer" });
+    expect(screen.queryByText(/Pas cette fois\./)).not.toBeInTheDocument();
+
+    // First Next: no measuring, yet the demo shows its answer and the bet is announced.
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    expect(screen.getByText(/C'est pareil : 12 cm et 12 cm/)).toBeInTheDocument();
+    const live = screen.getAllByRole("status").find((el) => /Ton pari : Celle de gauche/.test(el.textContent ?? ""));
+    expect(live).toHaveTextContent("Pas cette fois.");
+    expect(live).toHaveTextContent("Surprenant !");
+    expect(screen.getByRole("button", { name: "Suite" })).toBeEnabled();
+    expect(screen.queryByText("Les yeux se trompent.")).not.toBeInTheDocument();
+
+    // Second Next: on to the card.
+    await user.click(screen.getByRole("button", { name: "Suite" }));
+    expect(screen.getByText("Les yeux se trompent.")).toBeInTheDocument();
+  });
+
   it("reports nothing for a chapter opened again to look back at it", async () => {
     const onEvent = vi.fn();
     render(

@@ -10,9 +10,10 @@ import { pick, type DemoProps } from "./shared";
  * to their values and the verdict is read from the numbers (`equal` is the
  * data's, not a picture's). `scale` is a ruler, plain bars or a score.
  */
-export default function Compare({ params, lang, onDone }: DemoProps) {
+export default function Compare({ params, lang, onDone, reveal }: DemoProps) {
   const t = useTranslations("Story");
-  const [measured, setMeasured] = useState(false);
+  const [acted, setMeasured] = useState(false);
+  const measured = acted || !!reveal;
   const values = (Array.isArray(params.values) ? params.values : [0, 0]).map(Number);
   const labels = [0, 1].map((i) => pick((params.labels as unknown[])?.[i], lang));
   const unit = typeof params.unit === "string" ? ` ${params.unit}` : "";

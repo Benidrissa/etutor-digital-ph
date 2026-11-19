@@ -10,7 +10,7 @@ import { list, pick, type DemoProps } from "./shared";
  * (a tap alternative to dragging, with the keyboard too); the order is read
  * from each event's `at`, in the data.
  */
-export default function Timeline({ params, lang, onDone }: DemoProps) {
+export default function Timeline({ params, lang, onDone, reveal }: DemoProps) {
   const t = useTranslations("Story");
   const events = list(params.events).map((event, index) => {
     const row = (event ?? {}) as { label?: unknown; at?: unknown };
@@ -18,8 +18,9 @@ export default function Timeline({ params, lang, onDone }: DemoProps) {
   });
   const [order, setOrder] = useState<number[]>([]);
   const truth = [...events].sort((a, b) => a.at - b.at).map((e) => e.index);
-  const done = order.length === events.length && events.length > 0;
-  const correct = done && order.every((n, i) => n === truth[i]);
+  const complete = order.length === events.length && events.length > 0;
+  const done = complete || !!reveal;
+  const correct = complete && order.every((n, i) => n === truth[i]);
   // Shown in the order given, turned round so it is not already the answer.
   const shown = [...events].reverse();
 

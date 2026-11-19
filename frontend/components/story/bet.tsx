@@ -89,6 +89,8 @@ export function BetDemo({
   chosen,
   target,
   home,
+  reveal = false,
+  onActed,
 }: {
   visual: string;
   params?: Record<string, unknown>;
@@ -100,15 +102,26 @@ export function BetDemo({
   chosen?: string;
   target: string;
   home: string;
+  /** The learner left without acting: show the answer state and the reveal now. */
+  reveal?: boolean;
+  /** The learner acted in the demo. */
+  onActed?: () => void;
 }) {
   const t = useTranslations("Story");
-  const [done, setDone] = useState(false);
+  const [acted, setDone] = useState(false);
+  const done = acted || reveal;
   const mine = question?.choices?.find((c) => c.id === chosen);
   const matched = !!question && chosen !== undefined && chosen === String(question.answer);
   const reaction = question?.reveal?.[matched ? "right" : "wrong"];
   return (
     <div>
-      <ConceptVisual visual={visual} params={params} caption={caption} language={lang} onDone={() => setDone(true)} />
+      <ConceptVisual visual={visual} params={params} caption={caption} language={lang}
+        reveal={reveal}
+        onDone={() => {
+          setDone(true);
+          onActed?.();
+        }}
+      />
       {/* Always mounted, so the reveal is announced when it fills. */}
       <div role="status" aria-live="polite" className="mt-2">
         {done && mine ? (
