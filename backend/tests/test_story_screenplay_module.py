@@ -52,7 +52,7 @@ from app.domain.services.story_bible import (
 )
 from app.domain.services.story_course_validator import line_key, validate_story_course
 from app.domain.services.story_from_lesson_service import StoryFromLessonService, pack_issues
-from app.domain.services.story_metrics import ASSET_CODES
+from app.domain.services.story_metrics import ASSET_CODES, PICTURE_CODES
 from app.domain.services.story_module_assembly import (
     ChapterSource,
     ModuleStoryContext,
@@ -69,6 +69,9 @@ from app.domain.services.story_plan import (
     plan_digest,
     validate_plan,
 )
+
+# #2708 and #2750: the document-level warnings of a module story, named (never a blanket).
+DOCUMENT_CODES = ASSET_CODES | PICTURE_CODES
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LANGUAGES = ("fr", "en")
@@ -389,12 +392,12 @@ async def test_the_module_story_validates_with_zero_errors_and_zero_warnings(tol
     doc = told["doc"]
     report = validate_module_story(doc)
     assert report.ok, [e.model_dump() for e in report.errors]
-    others = [w for w in report.warnings if w.code not in ASSET_CODES]  # #2708
+    others = [w for w in report.warnings if w.code not in DOCUMENT_CODES]  # #2708
     assert others == [], [w.model_dump() for w in others]
     direct = validate_story_course(
         StoryCourse.model_validate(json.loads(json.dumps(doc))), generated=True
     )
-    assert direct.ok and [w for w in direct.warnings if w.code not in ASSET_CODES] == []
+    assert direct.ok and [w for w in direct.warnings if w.code not in DOCUMENT_CODES] == []
 
 
 async def test_one_chapter_per_lesson_then_the_rally_with_story_titles(told):

@@ -59,6 +59,7 @@ class AiUsageEvent(Base):
         Index("ix_ai_usage_events_feature_created", "feature", "created_at"),
         Index("ix_ai_usage_events_user_created", "user_id", "created_at"),
         Index("ix_ai_usage_events_provider_created", "provider", "created_at"),
+        Index("ix_ai_usage_events_module_created", "module_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -91,4 +92,10 @@ class AiUsageEvent(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     error_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # What a story call was for (``bible``, ``plan``, ``pack``, ``story``...); for a repair,
+    # the kind it repairs. Plain string, no enum. NULL for older rows and other features (#2735).
+    call_kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    is_repair: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

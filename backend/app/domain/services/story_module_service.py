@@ -1008,6 +1008,7 @@ class ModuleStoryService:
             module_title = _pair(module.title_en, module.title_fr)
             bible_modules = await _bible_modules(session, module) if bible is None else []
             previous_module = await _previous_module(session, module, language)
+            next_module_title = await _next_module_title(session, module)
 
         run = _Run(
             module_id=module_id,
@@ -1056,7 +1057,13 @@ class ModuleStoryService:
             await self._read_sources(run, session, units, pins)
             run.catalogue = await self._build_catalogue(run, session, lessons)
             run.request = self._plan_request(
-                run, ctx, units, previous_module, course=course, module_info=module_info
+                run,
+                ctx,
+                units,
+                previous_module,
+                course=course,
+                module_info=module_info,
+                next_module_title=next_module_title,
             )
             run.request.catalogue = run.catalogue
             plan_prompt = _system_prompt("plan", course, language, country, module_title)
@@ -1421,6 +1428,7 @@ class ModuleStoryService:
         *,
         course: Any = None,
         module_info: Any = None,
+        next_module_title: dict[str, str] | None = None,
     ) -> PlanRequest:
         """The plan's inputs: fact sheets, blocklist, the course questions as candidates."""
         from app.ai.prompts.story_from_lesson import build_fact_sheet, build_name_blocklist
@@ -1476,6 +1484,7 @@ class ModuleStoryService:
             bible.content,
             country=run.country,
         )
+        cast_policy = _plan_policy(bible.content, course, module_info, ctx.is_kids)
         return PlanRequest(
             module_id=run.module_id,
             language=run.language,
@@ -1505,7 +1514,10 @@ class ModuleStoryService:
                 "lessons": {str(k): str(v.id) for k, v in run.lesson_rows.items()},
                 "quizzes": {str(k): str(v.id) for k, v in run.quiz_rows.items()},
             },
-            cast_policy=_plan_policy(bible.content, course, module_info, ctx.is_kids),
+            cast_policy=cast_policy,
+            # #2749: a journey needs a mentor policy too; only a NEW bible has either.
+            journey=bible.content.get("journey") if cast_policy is not None else None,
+            next_module_title=next_module_title,
         )
 
     # -- the context of a chapter -------------------------------------------------
@@ -2473,6 +2485,24 @@ async def _previous_module(
         if isinstance(title, dict):
             out["episode_title"] = title.get(language) or title.get("en")
     return out
+
+
+async def _next_module_title(session: AsyncSession, module: Module) -> dict[str, str] | None:
+    """The title of the course's next module (#2749), for the last chapter's closing line."""
+    if module.course_id is None or module.module_number is None:
+        return None
+    row = (
+        await session.execute(
+            select(Module.title_en, Module.title_fr)
+            .where(
+                Module.course_id == module.course_id,
+                Module.module_number > module.module_number,
+            )
+            .order_by(Module.module_number.asc())
+            .limit(1)
+        )
+    ).first()
+    return _pair(row.title_en, row.title_fr) if row is not None else None
 
 
 async def _bible_modules(session: AsyncSession, module: Module) -> list[BibleModule]:

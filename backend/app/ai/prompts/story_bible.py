@@ -90,7 +90,7 @@ _SCHEMA = """Return this JSON object:
   "missions": [
     {{"module": 1, "en": "the episode's mission, one sentence", "fr": "la mission de l'épisode"}}
   ],
-  "__complete": true
+{journey_row}  "__complete": true
 }}
 
 RULES:
@@ -103,7 +103,18 @@ RULES:
 - "missions": one per module below, in order: a small goal the characters chase through the
   episode, tied to what the module teaches, set in the first lesson and reached in the last.
   At most 20 words each, no question marks.
-- voice: pitch 0.5 to 2.0, rate 0.7 to 1.3."""
+- voice: pitch 0.5 to 2.0, rate 0.7 to 1.3.{journey_rule}"""
+
+#: Asked only of a NEW bible made with the journey switch on (#2749).
+_JOURNEY_ROW = """  "journey": {{
+    "quest": "what this course makes a learner able to do (English)",
+    "shadow": "the main misconception learners bring to this course (English)"
+  }},
+"""
+_JOURNEY_RULE = """
+- "journey": the "quest" is the competence the learner has won by the end of the course; the
+  "shadow" is the course's main misconception, the wrong belief the episodes undo. Each is ONE
+  sentence in English of at most 30 words, with no names."""
 
 
 def _modules_block(modules: Sequence[BibleModule]) -> str:
@@ -123,6 +134,7 @@ def build_bible_messages(
     is_kids: bool,
     country: str,
     mentor_policy: str | None = None,
+    journey: bool = False,
 ) -> tuple[str, str]:
     """``(system prompt, user message)`` for the course's bible."""
     from app.ai.prompts.audience import detect_audience
@@ -163,6 +175,8 @@ def build_bible_messages(
             max_places=8,
             country_line=country_line,
             mentor_row="" if no_mentor else _MENTOR_ROW,
+            journey_row=_JOURNEY_ROW.format() if journey else "",
+            journey_rule=_JOURNEY_RULE if journey else "",
             cast_ids="hero, friend, family, margo"
             if no_mentor
             else "hero, friend, mentor, family, margo",

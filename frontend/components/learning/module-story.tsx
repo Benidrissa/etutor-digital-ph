@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   AlertTriangle,
@@ -14,7 +14,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { choicesKeyFor, readChoices } from '@/components/story/stage/prefs';
-import { StoryPlayer, type PlayerSnapshot } from '@/components/story/story-player';
+import type { PlayerSnapshot } from '@/components/story/story-player';
 import { SubscriptionRequired } from '@/components/shared/subscription-required';
 import { Link } from '@/i18n/routing';
 import { ApiError, apiFetch, getModuleDetailWithProgress, type UnitProgressDetail } from '@/lib/api';
@@ -44,6 +44,13 @@ import {
 import type { Chapter, ChapterCovers, StoryCourse } from '@/lib/story-course/types';
 
 import { ModuleStorySkeleton } from './module-story-skeleton';
+
+// The player and its stage load on demand (#2738): not while the story is
+// still being fetched or written. The Suspense sits outside the keyed player
+// below, so a chapter change never brings the skeleton back.
+const StoryPlayer = lazy(() =>
+  import('@/components/story/story-player').then((m) => ({ default: m.StoryPlayer })),
+);
 
 /**
  * Polling a module story being written. The first open writes every chapter
@@ -779,20 +786,22 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
 
       {chapter ? (
         <div>
-          <StoryPlayer
-            key={`${chapter.id}:${run}`}
-            course={story}
-            chapterId={chapter.id}
-            maxPoints={chapter.covers?.max_points ?? 0}
-            hideFinishSummary
-            variant="embedded"
-            onComplete={(outcome) => handleChapterComplete(selected, outcome)}
-            onStart={(choices) => setFriend(choices.friend)}
-            onEvent={(event) => void reportStoryEvent(event)}
-            review={reviewing ?? undefined}
-            onSnapshot={(snapshot) => liveSnapshotsRef.current.set(chapter.id, snapshot)}
-            onBackFromStart={selected > 0 ? () => backIntoChapterBefore(selected) : undefined}
-          />
+          <Suspense fallback={<ModuleStorySkeleton />}>
+            <StoryPlayer
+              key={`${chapter.id}:${run}`}
+              course={story}
+              chapterId={chapter.id}
+              maxPoints={chapter.covers?.max_points ?? 0}
+              hideFinishSummary
+              variant="embedded"
+              onComplete={(outcome) => handleChapterComplete(selected, outcome)}
+              onStart={(choices) => setFriend(choices.friend)}
+              onEvent={(event) => void reportStoryEvent(event)}
+              review={reviewing ?? undefined}
+              onSnapshot={(snapshot) => liveSnapshotsRef.current.set(chapter.id, snapshot)}
+              onBackFromStart={selected > 0 ? () => backIntoChapterBefore(selected) : undefined}
+            />
+          </Suspense>
 
           {sendsToUnit(chapter.covers) ? (
             <Link
