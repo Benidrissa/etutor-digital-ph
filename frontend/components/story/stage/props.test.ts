@@ -240,6 +240,23 @@ describe("tokens and pictures", () => {
     expect(pictureFor({ ...prop, figure: { generated_image_id: "../x" } }, undefined, "fr")).toBeUndefined();
   });
 
+  it("closes up on the original of a course figure that asks for it, with a readable credit (#2709)", () => {
+    const id = "590809b4-1111-4111-8111-111111111111";
+    const prop = {
+      ...get("cells"),
+      figure: {
+        source_image_id: id,
+        original: true,
+        figure_number: "Figure 1",
+        attribution: "Mindware__Tools_for_Smart_Thinking_Nisbett__Richard_E_2015_Edition_Complete.pdf, p.21",
+      },
+    };
+    const picture = pictureFor(prop, undefined, "fr")!;
+    expect(picture.src).toBe(`/api/v1/source-images/${id}/data`);
+    expect(picture.credit.text.fr).toMatch(/^Tiré du cours · Figure 1 · Mindware Tools.*, p\.21$/);
+    expect(picture.credit.text.fr).not.toMatch(/_/);
+  });
+
   it("puts only the app's own story media in an image", () => {
     expect(sameOriginMedia(sticker)).toBe(sticker);
     expect(sameOriginMedia(photo)).toBe(photo);
