@@ -106,6 +106,7 @@ def test_each_kind_has_its_tokens_and_its_cap():
         "story": 12_000,
         "rally": 10_000,
         "judge": 2_000,
+        "slots": 6_000,
     }
     assert CALL_CAPS["story"] == 12_000 / 25 + 60 == 540
     assert max(CALL_CAPS.values()) < 1_068  # the runaway's 18 minutes

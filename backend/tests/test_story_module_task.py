@@ -784,3 +784,39 @@ def test_the_stem_judge_is_the_cheaper_configured_model(setting, made):
 def test_no_judge_when_no_client_can_be_made():
     with patch("app.ai.claude_service.ClaudeService", side_effect=ValueError("no key")):
         assert content_generation._stem_judge() is None
+
+
+@pytest.mark.parametrize(
+    ("setting", "made"), [("kimi-k2.6", True), ("content", False), ("", False)]
+)
+def test_the_story_writer_is_the_story_model_when_one_is_chosen(setting, made):
+    """#2713: ai-model-story picks the model of screenplays, rallies and slots; none: content."""
+    cache = MagicMock()
+    cache.get.return_value = setting
+    with (
+        patch(
+            "app.domain.services.platform_settings_service.SettingsCache.instance",
+            return_value=cache,
+        ),
+        patch("app.ai.claude_service.ClaudeService") as claude,
+    ):
+        writer = content_generation._story_writer()
+    if made:
+        assert writer is claude.return_value
+        claude.assert_called_once_with(model="kimi-k2.6")
+    else:
+        assert writer is None
+        claude.assert_not_called()
+
+
+def test_no_story_writer_when_no_client_can_be_made():
+    cache = MagicMock()
+    cache.get.return_value = "kimi-k2.6"
+    with (
+        patch(
+            "app.domain.services.platform_settings_service.SettingsCache.instance",
+            return_value=cache,
+        ),
+        patch("app.ai.claude_service.ClaudeService", side_effect=ValueError("no key")),
+    ):
+        assert content_generation._story_writer() is None

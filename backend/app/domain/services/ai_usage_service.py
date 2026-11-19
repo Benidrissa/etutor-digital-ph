@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.ai.providers.pricing import estimate_cost_cents
-from app.ai.usage_context import current_ai_context
+from app.ai.usage_context import current_ai_context, note_usage
 from app.domain.models.ai_usage_event import FEATURE_UNKNOWN, AiUsageEvent
 from app.domain.models.user import User
 
@@ -94,9 +94,10 @@ async def record_ai_usage(
 ) -> None:
     """Persist one ledger row. Never raises; never touches the caller's session."""
     try:
+        ctx = current_ai_context()
+        note_usage(ctx.call_kind, (usage or {}).get("output_tokens"))
         if not _tracking_enabled():
             return
-        ctx = current_ai_context()
         cents, estimated = estimate_cost_cents(
             model=model,
             operation=operation,

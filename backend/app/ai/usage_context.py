@@ -15,7 +15,8 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,9 @@ class AiCallContext:
     user_id: uuid.UUID | None = None
     course_id: uuid.UUID | None = None
     module_id: uuid.UUID | None = None
+    #: What the call is for inside its feature (#2713: a story's "slots", "repair"...).
+    #: Not a ledger column: it feeds the run's :class:`UsageTally`.
+    call_kind: str | None = None
 
 
 _context: ContextVar[AiCallContext | None] = ContextVar("ai_call_context", default=None)
@@ -63,6 +67,7 @@ def set_ai_context(
             user_id=user_id or current.user_id,
             course_id=course_id or current.course_id,
             module_id=module_id or current.module_id,
+            call_kind=current.call_kind,
         )
     )
 
@@ -75,6 +80,7 @@ def ai_usage_context(
     course_id: uuid.UUID | None = None,
     module_id: uuid.UUID | None = None,
     only_if_unset: bool = False,
+    call_kind: str | None = None,
 ) -> Iterator[None]:
     """Merge the given fields into the current context for the ``with`` block.
 
@@ -93,9 +99,75 @@ def ai_usage_context(
             user_id=user_id or current.user_id,
             course_id=course_id or current.course_id,
             module_id=module_id or current.module_id,
+            call_kind=call_kind or current.call_kind,
         )
     )
     try:
         yield
     finally:
         _context.reset(token)
+
+
+@dataclass
+class UsageTally:
+    """Model calls and output tokens of one run, by kind of call (#2713).
+
+    ``calls`` is counted where the call is made; ``output_tokens`` is what the
+    provider reported to the AI usage ledger for it (:func:`note_usage`) and
+    ``estimated_tokens`` a length-based estimate, for a provider that reports
+    nothing. Shared by every task of the run (a plain object in a context var).
+    """
+
+    calls: dict[str, int] = field(default_factory=dict)
+    output_tokens: dict[str, int] = field(default_factory=dict)
+    estimated_tokens: dict[str, int] = field(default_factory=dict)
+
+    def summary(self) -> dict[str, dict[str, int | bool]]:
+        out: dict[str, dict[str, int | bool]] = {}
+        for kind in sorted(set(self.calls) | set(self.output_tokens)):
+            reported = self.output_tokens.get(kind, 0)
+            entry: dict[str, int | bool] = {
+                "calls": self.calls.get(kind, 0),
+                "output_tokens": reported or self.estimated_tokens.get(kind, 0),
+            }
+            if not reported and entry["output_tokens"]:
+                entry["estimated"] = True
+            out[kind] = entry
+        return out
+
+
+_tally: ContextVar[UsageTally | None] = ContextVar("ai_usage_tally", default=None)
+
+
+@contextmanager
+def usage_tally() -> Iterator[UsageTally]:
+    """Count the model calls made inside (and in the tasks they start)."""
+    tally = UsageTally()
+    token = _tally.set(tally)
+    try:
+        yield tally
+    finally:
+        _tally.reset(token)
+
+
+def current_tally() -> UsageTally | None:
+    return _tally.get()
+
+
+def note_call(kind: str, *, estimated_tokens: int = 0) -> None:
+    """One call of ``kind`` made (and, once answered, its estimated output tokens)."""
+    tally = _tally.get()
+    if tally is None:
+        return
+    if estimated_tokens:
+        tally.estimated_tokens[kind] = tally.estimated_tokens.get(kind, 0) + estimated_tokens
+    else:
+        tally.calls[kind] = tally.calls.get(kind, 0) + 1
+
+
+def note_usage(kind: str | None, output_tokens: Any) -> None:
+    """The output tokens the ledger recorded for a call of ``kind`` (never raises)."""
+    tally = _tally.get()
+    if tally is None or not kind or not isinstance(output_tokens, int):
+        return
+    tally.output_tokens[kind] = tally.output_tokens.get(kind, 0) + output_tokens

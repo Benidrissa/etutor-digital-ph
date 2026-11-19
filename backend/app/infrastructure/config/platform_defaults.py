@@ -2682,6 +2682,52 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         ),
         allowed_options=["auto", "never", "always"],
     ),
+    SettingDef(
+        "ai-model-story",
+        "ai",
+        "content",
+        "string",
+        "Model — story writing and repair",
+        "Model for the story generator's chapter screenplays, rallies, slot lines and"
+        " their repairs (#2713). 'content' (the default) uses the content model above, so"
+        " nothing changes until a cheaper one is picked here. The story's bible, plan and"
+        " practice packs stay on the content model; the stem judge keeps its own"
+        " (ai-model-quality). Resolved to a provider by prefix (claude-* → Anthropic;"
+        " moonshot-*/kimi-* → Moonshot).",
+        allowed_options=[
+            "content",
+            "claude-sonnet-4-6",
+            "claude-opus-4-8",
+            "claude-haiku-4-5",
+            "moonshot-v1-128k",
+            "kimi-k2.6",
+        ],
+    ),
+    SettingDef(
+        "story-max-repair-calls",
+        "ai",
+        1,
+        "integer",
+        "Story repair budget",
+        "Extra model calls the story generator may spend repairing a practice pack, a"
+        " chapter screenplay or a slot line after its first answer (#2713). 0 keeps the"
+        " first answer; 1 (the default) is one repair; 2 is the earlier budget of a pack"
+        " (a screenplay was never repaired more than once).",
+        {"min": 0, "max": 2},
+    ),
+    SettingDef(
+        "story-builder-variant",
+        "ai",
+        "classic",
+        "string",
+        "Story builder variant",
+        "How a chapter's screenplay is made (#2713). classic: the model writes the whole"
+        " screenplay. slots: the code builds it (scenes, cast, props, pictures, step"
+        " order, questions, cards) and the model only fills its short lines, in one call"
+        " per chapter. Applies to chapters of NEW plans told after the change; a chapter"
+        " already told keeps its variant until it is told again for another reason.",
+        allowed_options=["classic", "slots"],
+    ),
     # ── Video Summaries (HeyGen) ───────────────────────────
     # Per issue #1791: HeyGen-backed 3-min lesson summary videos.
     # Narration cap defaults to 2000 chars (~2:40 at typical pace) so
