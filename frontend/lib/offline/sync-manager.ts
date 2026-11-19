@@ -43,6 +43,13 @@ export const PREWARM_V15_RUNS_KEY = 'offline_prewarm_v15_runs';
 export const PREWARM_V15_NEXT_KEY = 'offline_prewarm_v15_next';
 export const PREWARM_V15_MAX_RUNS = 3;
 export const PREWARM_V15_BACKOFF_MS = 5 * 60 * 1000;
+// The v16 prewarm (#2741): the story pages again, for the pages cache renamed
+// with the player that preloads the surprised and sad poses. Same retry rules.
+const PREWARM_V16_DONE_KEY = 'offline_prewarm_v16_done';
+export const PREWARM_V16_RUNS_KEY = 'offline_prewarm_v16_runs';
+export const PREWARM_V16_NEXT_KEY = 'offline_prewarm_v16_next';
+export const PREWARM_V16_MAX_RUNS = 3;
+export const PREWARM_V16_BACKOFF_MS = 5 * 60 * 1000;
 
 interface PrewarmKeys {
   done: string;
@@ -64,6 +71,13 @@ const V15_KEYS: PrewarmKeys = {
   next: PREWARM_V15_NEXT_KEY,
   maxRuns: PREWARM_V15_MAX_RUNS,
   backoffMs: PREWARM_V15_BACKOFF_MS,
+};
+const V16_KEYS: PrewarmKeys = {
+  done: PREWARM_V16_DONE_KEY,
+  runs: PREWARM_V16_RUNS_KEY,
+  next: PREWARM_V16_NEXT_KEY,
+  maxRuns: PREWARM_V16_MAX_RUNS,
+  backoffMs: PREWARM_V16_BACKOFF_MS,
 };
 
 export type SyncStatus =
@@ -150,6 +164,7 @@ class SyncManager {
       this.runV8PrewarmMigration();
       this.runV14PrewarmMigration();
       this.runV15PrewarmMigration();
+      this.runV16PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -172,6 +187,7 @@ class SyncManager {
       this.runV8PrewarmMigration();
       this.runV14PrewarmMigration();
       this.runV15PrewarmMigration();
+      this.runV16PrewarmMigration();
     }
   }
 
@@ -408,7 +424,7 @@ class SyncManager {
    * One-shot migration for users who downloaded a module before SW v14.
    * The v10 bump (the story media cache, #2681/#2682), the v12 bump (the
    * story player fixes, #2688) and the v12 bump (the AI read-aloud voice,
-   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, then the v15 bump (lazy story player, #2738) to `pages-v15-story-lazy-player`. Without this, previously-prewarmed pages, the
+   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, then the v15 bump (lazy story player, #2738) and the v16 bump (surprised and sad poses, #2741) to `pages-v16-story-poses`. Without this, previously-prewarmed pages, the
    * module story page among them, are invisible to the SW and an offline
    * navigation falls through to /offline.html.
    *
@@ -437,8 +453,8 @@ class SyncManager {
 
   /**
    * One-shot migration for users who downloaded a module before SW v15, which
-   * loads the story player on demand and renames the pages cache to
-   * `pages-v15-story-lazy-player` (#2738). Same job and same retry rules as
+   * loads the story player on demand and renamed the pages cache (#2738; the
+   * cache is `pages-v16-story-poses` since #2741). Same job and same retry rules as
    * the v14 one; the player's chunk itself is in the service worker precache.
    */
   runV15PrewarmMigration(): Promise<void> {
@@ -455,6 +471,27 @@ class SyncManager {
   }
 
   private v15Run: Promise<void> | null = null;
+
+  /**
+   * One-shot migration for users who downloaded a module before SW v16, whose
+   * story player preloads the surprised and sad poses and which renames the
+   * pages cache to `pages-v16-story-poses` (#2741). Same job and same retry
+   * rules as the v14 and v15 ones.
+   */
+  runV16PrewarmMigration(): Promise<void> {
+    if (!this.v16Run) {
+      // After the v15 run (itself after v14): the three fill the same pages
+      // cache, and a page an earlier one stored is not fetched again.
+      this.v16Run = this.runV15PrewarmMigration()
+        .then(() => this.prewarmDownloadedPages(V16_KEYS))
+        .finally(() => {
+          this.v16Run = null;
+        });
+    }
+    return this.v16Run;
+  }
+
+  private v16Run: Promise<void> | null = null;
 
   private async prewarmDownloadedPages(keys: PrewarmKeys): Promise<void> {
     if (typeof window === 'undefined') return;

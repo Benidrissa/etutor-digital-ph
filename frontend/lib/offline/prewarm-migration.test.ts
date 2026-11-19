@@ -50,11 +50,13 @@ import {
   PREWARM_V15_BACKOFF_MS,
   PREWARM_V15_MAX_RUNS,
   PREWARM_V15_RUNS_KEY,
+  PREWARM_V16_RUNS_KEY,
   SyncManager,
 } from "./sync-manager";
 
 const DONE = "offline_prewarm_v14_done";
 const DONE_V15 = "offline_prewarm_v15_done";
+const DONE_V16 = "offline_prewarm_v16_done";
 const UNIT_GONE = "/fr/modules/mod-1/units/1.6";
 const fetched = () => vi.mocked(prewarmPage).mock.calls.map(([url]) => url);
 const manager = SyncManager.getInstance();
@@ -192,5 +194,46 @@ describe("v15 page prewarm (lazy story player, #2738)", () => {
     await manager.runV15PrewarmMigration();
     expect(fetched()).toEqual([]);
     expect(window.localStorage.getItem(DONE_V15)).toBeNull();
+  });
+});
+
+describe("v16 page prewarm (surprised and sad poses, #2741)", () => {
+  it("warms the pages of a downloaded module once, then is done, whatever v14 and v15 did", async () => {
+    window.localStorage.setItem(DONE, "1");
+    window.localStorage.setItem(DONE_V15, "1");
+    await manager.runV16PrewarmMigration();
+    expect(fetched()).toEqual([
+      "/fr/modules/mod-1/units/1.1",
+      UNIT_GONE,
+      "/fr/modules/mod-1",
+      "/fr/modules/mod-1/story",
+    ]);
+    expect(window.localStorage.getItem(DONE_V16)).toBe("1");
+
+    vi.mocked(prewarmPage).mockClear();
+    await manager.runV16PrewarmMigration();
+    expect(fetched()).toEqual([]);
+  });
+
+  it("runs after v14 and v15 and does not fetch a page they stored", async () => {
+    await Promise.all([
+      manager.runV14PrewarmMigration(),
+      manager.runV15PrewarmMigration(),
+      manager.runV16PrewarmMigration(),
+    ]);
+    expect(fetched()).toHaveLength(4);
+    expect(window.localStorage.getItem(DONE)).toBe("1");
+    expect(window.localStorage.getItem(DONE_V15)).toBe("1");
+    expect(window.localStorage.getItem(DONE_V16)).toBe("1");
+  });
+
+  it("keeps its own retry count when a page may still come", async () => {
+    window.localStorage.setItem(DONE, "1");
+    window.localStorage.setItem(DONE_V15, "1");
+    state.outcomes.set(UNIT_GONE, "network_error");
+    await manager.runV16PrewarmMigration();
+    expect(window.localStorage.getItem(DONE_V16)).toBeNull();
+    expect(window.localStorage.getItem(PREWARM_V16_RUNS_KEY)).toBe("1");
+    expect(window.localStorage.getItem(PREWARM_V15_RUNS_KEY)).toBeNull();
   });
 });

@@ -9,7 +9,7 @@
 
 // Cache name MUST stay aligned with `pages-${CACHE_VERSION}` in frontend/sw.ts.
 // Bump both together when changing.
-export const PAGES_CACHE_NAME = "pages-v15-story-lazy-player";
+export const PAGES_CACHE_NAME = "pages-v16-story-poses";
 
 /**
  * What became of one page:
