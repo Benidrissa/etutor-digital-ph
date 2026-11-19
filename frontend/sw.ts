@@ -55,6 +55,13 @@ const STORY_MEDIA_PATH = /^\/api\/v1\/(story-art|story-props)\/[0-9a-f][0-9a-f-]
 const STORY_AUDIO_CACHE = "story-audio-v1";
 const STORY_AUDIO_PATH = /^\/api\/v1\/story-audio\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
 const SOURCE_IMAGE_PATH = /^\/api\/v1\/source-images\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
+// Lesson illustrations (#2709): never changed in place (a new picture gets a
+// new id). The endpoint serves the WebP itself, or answers 302 to a CDN URL;
+// an image request that is redirected across origins comes back opaque
+// (status 0), so those are kept too, in a small cache of their own (an
+// opaque entry weighs a few MB in the quota, whatever its size).
+const LESSON_IMAGES_CACHE = "lesson-images-v1";
+const LESSON_IMAGE_PATH = /^\/api\/v1\/images\/[0-9a-f][0-9a-f-]{7,63}\/data$/i;
 
 /** Only whole, successful answers are kept: never an error page. */
 const okOnly = {
@@ -85,6 +92,18 @@ const storyAudioPlugins = [
   }),
   okOnly,
   new RangeRequestsPlugin(),
+];
+const lessonImagePlugins = [
+  new ExpirationPlugin({
+    maxEntries: 40,
+    maxAgeSeconds: 90 * DAY_IN_SECONDS,
+    maxAgeFrom: "last-used",
+    purgeOnQuotaError: true,
+  }),
+  {
+    cacheWillUpdate: async ({ response }: { response: Response }) =>
+      response && (response.status === 200 || response.type === "opaque") ? response : null,
+  },
 ];
 const courseFigurePlugins = [
   new ExpirationPlugin({
@@ -192,6 +211,14 @@ const serwist = new Serwist({
       handler: new CacheFirst({
         cacheName: STORY_AUDIO_CACHE,
         plugins: storyAudioPlugins,
+      }),
+    },
+    {
+      matcher: ({ url, request }: { url: URL; request: Request }) =>
+        request.method === "GET" && LESSON_IMAGE_PATH.test(url.pathname),
+      handler: new CacheFirst({
+        cacheName: LESSON_IMAGES_CACHE,
+        plugins: lessonImagePlugins,
       }),
     },
     // Course figures have been fixed in place before: shown from the cache,

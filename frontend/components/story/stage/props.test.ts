@@ -222,6 +222,24 @@ describe("tokens and pictures", () => {
     expect(pictureFor(get("pebble"), undefined, "en")).toBeUndefined();
   });
 
+  it("shows a lesson illustration from its own endpoint, credited as made with AI (#2709)", () => {
+    const id = "22222222-2222-4222-8222-222222222222";
+    const prop = {
+      ...get("cells"),
+      figure: { generated_image_id: id, caption: { en: "Tables", fr: "Tables" } },
+    };
+    const picture = pictureFor(prop, undefined, "fr")!;
+    expect(picture).toMatchObject({ src: `/api/v1/images/${id}/data`, via: "lesson_illustration" });
+    expect(picture.credit).toEqual({
+      kind: "course_illustration",
+      text: { en: "Course illustration (AI)", fr: "Illustration du cours (IA)" },
+    });
+    expect(sameOriginMedia(picture.src)).toBe(picture.src);
+    expect(sameOriginMedia("/api/v1/images/lesson/not-an-image")).toBeUndefined();
+    // An id that is not one never reaches a url.
+    expect(pictureFor({ ...prop, figure: { generated_image_id: "../x" } }, undefined, "fr")).toBeUndefined();
+  });
+
   it("puts only the app's own story media in an image", () => {
     expect(sameOriginMedia(sticker)).toBe(sticker);
     expect(sameOriginMedia(photo)).toBe(photo);

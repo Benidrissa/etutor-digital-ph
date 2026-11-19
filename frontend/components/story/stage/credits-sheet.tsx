@@ -15,7 +15,7 @@ import { text } from "@/lib/story-course/answer";
 import type { MediaCredit, StoryCourse } from "@/lib/story-course/types";
 
 import { CreditLine, StoryDialog } from "./look-closer";
-import { EMOJI_FONTS, emojiDrawn, pictureFor, propLabel, sameOriginMedia } from "./props";
+import { EMOJI_FONTS, ILLUSTRATION_CREDIT, emojiDrawn, pictureFor, propLabel, sameOriginMedia } from "./props";
 
 export interface CreditEntry {
   key: string;
@@ -57,24 +57,29 @@ export function creditsFor(story: StoryCourse, lang: "fr" | "en"): CreditEntry[]
     for (const scene of chapter.scenes ?? []) {
       for (const step of scene.steps ?? []) {
         if (step.type !== "show" || step.visual !== "image") continue;
-        const id = nonEmpty(step.params?.source_image_id);
+        const generated = nonEmpty(step.params?.generated_image_id);
+        const id = nonEmpty(step.params?.source_image_id) ?? generated;
         if (!id) continue;
-        const key = `course:/api/v1/source-images/${id}/data`;
+        const illustration = !nonEmpty(step.params?.source_image_id) && !!generated;
+        const key = illustration ? `course_illustration:/api/v1/images/${id}/data` : `course:/api/v1/source-images/${id}/data`;
         if (seen.has(key)) continue;
         seen.add(key);
         const number = nonEmpty(step.params?.figure_number);
         const attribution = nonEmpty(step.params?.attribution);
         const parts = (from: string) => [from, number, attribution].filter(Boolean).join(" · ");
+        const label = number ?? (step.caption ? text(step.caption, lang, lang === "fr" ? "en" : "fr") : id.slice(0, 8));
         entries.push({
           key,
-          label: number ?? (step.caption ? text(step.caption, lang, lang === "fr" ? "en" : "fr") : id.slice(0, 8)),
-          credit: { kind: "course", title: number, text: { en: parts("From the course"), fr: parts("Tiré du cours") } },
+          label,
+          credit: illustration
+            ? ILLUSTRATION_CREDIT
+            : { kind: "course", title: number, text: { en: parts("From the course"), fr: parts("Tiré du cours") } },
         });
       }
     }
   }
 
-  const order: Record<MediaCredit["kind"], number> = { course: 0, web: 1, generated: 2 };
+  const order: Record<MediaCredit["kind"], number> = { course: 0, course_illustration: 1, web: 2, generated: 3 };
   entries.sort((a, b) => order[a.credit.kind] - order[b.credit.kind]);
 
   const art = story.art;
@@ -130,7 +135,7 @@ export function CreditsSheet({
                     ? entry.emoji
                     : entry.credit.kind === "generated"
                       ? "🎨"
-                      : entry.credit.kind === "course"
+                      : entry.credit.kind === "course" || entry.credit.kind === "course_illustration"
                         ? "📘"
                         : "📷"}
                 </span>

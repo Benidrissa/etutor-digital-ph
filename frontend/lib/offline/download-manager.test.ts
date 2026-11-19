@@ -7,7 +7,7 @@
  * Units are no longer asked for stories of their own.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch, ApiError } from "@/lib/api";
 import { moduleStoryUnitKey } from "@/lib/story-course/load";
@@ -78,6 +78,54 @@ const storyRequests = () =>
 const storedStories = () =>
   upsertContentMock.mock.calls.map(([row]) => row).filter((row) => row.contentType === "story");
 const prewarmed = () => prewarmMock.mock.calls.map(([url]) => url);
+
+describe("downloadModule — story figures (#2709)", () => {
+  const FIGURE = "65bb9ff9-1111-4111-8111-111111111111";
+  const ILLUSTRATION = "22222222-2222-4222-8222-222222222222";
+  const withFigures = {
+    ...story,
+    props: [
+      { id: "poster", kind: "figure", figure: { source_image_id: FIGURE } },
+      { id: "sketch", kind: "figure", figure: { generated_image_id: ILLUSTRATION } },
+    ],
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(navigator, "connection");
+  });
+
+  it("fetches the story's figures and illustrations on an explicit download", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({});
+    vi.stubGlobal("fetch", fetchMock);
+    storyAnswer = async () => withFigures;
+    await downloadModule("mod-1", "fr");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `/api/v1/source-images/${FIGURE}/data?lang=fr`,
+      `/api/v1/images/${ILLUSTRATION}/data`,
+    ]);
+    // Opaque is fine: an illustration may be redirected to a CDN.
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ mode: "no-cors" });
+  });
+
+  it("fetches no picture when the learner saves data", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({});
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "connection", { value: { saveData: true }, configurable: true });
+    storyAnswer = async () => withFigures;
+    await downloadModule("mod-1", "fr");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(storedStories()).toHaveLength(1);
+  });
+
+  it("keeps the story when a picture cannot be fetched", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    storyAnswer = async () => withFigures;
+    await expect(downloadModule("mod-1", "fr")).resolves.toBeUndefined();
+    expect(storedStories()).toHaveLength(1);
+  });
+});
 
 describe("downloadModule — module story", () => {
   it("saves the module story once, after the flashcards, reading the cache only", async () => {

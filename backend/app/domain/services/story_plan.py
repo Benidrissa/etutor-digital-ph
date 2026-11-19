@@ -46,7 +46,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas.story_course import PROP_LABEL_LIMIT, ValidationIssue
 from app.domain.services import story_repair as repair
-from app.domain.services.story_bible import FRIEND, HERO, StoryBible
+from app.domain.services.story_bible import FRIEND, HERO, MENTOR, StoryBible
+from app.domain.services.story_cast_policy import (
+    CAMEO,
+    LEAD,
+    choose_cast_policy,
+    module_policy,
+    with_policy,
+)
+from app.domain.services.story_cast_policy import (
+    KEY as CAST_POLICY_KEY,
+)
 from app.domain.services.story_props import fold, is_one_emoji, prop_slug, short_label
 
 logger = structlog.get_logger(__name__)
@@ -172,6 +182,13 @@ class PlanRequest:
     previous: dict[str, Any] | None = None
     #: The rows the plan is made from: ``{"lessons": {unit id: row id}, "quizzes": {...}}``.
     pins: dict[str, Any] = field(default_factory=dict)
+    #: The mentor policy of this NEW plan (#2710: ``none``/``cameo``/``lead``);
+    #: ``None`` for a module of a legacy bible: the plan then has no ``cast_policy``
+    #: and is told exactly as before.
+    cast_policy: str | None = None
+    #: #2709: the course's own pictures the plan may name (``story_assets``). Not
+    #: part of the plan's digests: a catalogue change never re-plans a module.
+    catalogue: dict[str, Any] | None = None
 
     @property
     def units(self) -> list[str]:
@@ -351,6 +368,7 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     if not isinstance(raw, dict):
         return [_issue("plan_unreadable", "", "the answer is not one JSON object")]
+    raw = _settle_mentor(raw, request)
     bible = request.bible.content
     places = {p["id"] for p in bible.get("places") or []}
     cast_ids = {m["id"] for m in bible.get("cast") or []}
@@ -404,7 +422,16 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
                 )
             cast = beat.get("cast") if isinstance(beat.get("cast"), list) else []
             if any(c not in cast_ids for c in cast):
-                issues.append(_issue("plan_unknown_cast", f"{b_path}.cast", "not a cast id"))
+                no_mentor = MENTOR in cast and MENTOR not in cast_ids
+                issues.append(
+                    _issue(
+                        "plan_unknown_cast",
+                        f"{b_path}.cast",
+                        'this story has no mentor: use the friend, never "mentor"'
+                        if no_mentor
+                        else "not a cast id",
+                    )
+                )
             if not 2 <= len(cast) <= 3 or HERO not in cast:
                 issues.append(
                     _issue(
@@ -564,12 +591,15 @@ def _beat(raw: dict[str, Any], places: list[str], cast_ids: list[str]) -> dict[s
     }
 
 
-def _default_beat(idea: int, places: list[str], lesson: PlanLesson | None) -> dict[str, Any]:
+def _default_beat(
+    idea: int, places: list[str], lesson: PlanLesson | None, *, mentor: bool = True
+) -> dict[str, Any]:
+    """A beat made in code. ``mentor`` False (a story with no mentor, #2710): hero and friend."""
     text = _str(lesson.sheet.ideas[idea - 1], DISCOVERY_LIMIT) if lesson else ""
     return {
         "ideas": [idea],
         "place": places[(idea - 1) % len(places)],
-        "cast": [HERO, FRIEND, "mentor"],
+        "cast": [HERO, FRIEND, MENTOR] if mentor else [HERO, FRIEND],
         "problem": "",
         "discovery": {"en": text, "fr": text},
         "card_title": {"en": f"Key idea {idea}", "fr": f"Idée clé {idea}"},
@@ -583,12 +613,16 @@ def _chapter(
     places: list[str],
     cast_ids: list[str],
     gaps: list[str],
+    *,
+    mentor: bool = True,
 ) -> dict[str, Any]:
     raw = raw if isinstance(raw, dict) else {}
     unit = lesson.unit_number
     beats = [_beat(b, places, cast_ids) for b in raw.get("beats") or [] if isinstance(b, dict)]
     if not beats:
-        beats = [_default_beat(n, places, lesson) for n in range(1, lesson.ideas + 1)]
+        beats = [
+            _default_beat(n, places, lesson, mentor=mentor) for n in range(1, lesson.ideas + 1)
+        ]
         if beats:
             gaps.append(f"{unit}: no beats; one per idea")
     if len(beats) > MAX_BEATS:
@@ -756,6 +790,17 @@ def _rally(
     return rally
 
 
+_FIGURE_REF = re.compile(r"^A\d{1,2}$")
+
+
+def _plan_prop_kind(item: dict[str, Any]) -> str:
+    """ "figure" only with a catalogue number ("A1", #2709); "real" or "sticker" otherwise."""
+    kind = str(item.get("kind")).lower()
+    if kind == "figure" and _FIGURE_REF.match(_str(item.get("figure"), 8)):
+        return "figure"
+    return "real" if kind in ("real", "photo", "figure") else "sticker"
+
+
 def _props(raw: Any, units: list[str], gaps: list[str]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in raw if isinstance(raw, list) else []:
@@ -775,12 +820,14 @@ def _props(raw: Any, units: list[str], gaps: list[str]) -> list[dict[str, Any]]:
             "en": en,
             "fr": fr,
             "query": _str(item.get("query"), 60) or en,
-            "kind": "real" if str(item.get("kind")).lower() in ("real", "photo") else "sticker",
+            "kind": _plan_prop_kind(item),
             "at": str(item.get("at") or "ground").lower(),
             "size": str(item.get("size") or "").lower() or None,
             "planted": planted if planted in units else units[0],
             "paid_off": str(item.get("paid_off") or "rally"),
         }
+        if prop["kind"] == "figure":
+            prop["figure"] = _str(item.get("figure"), 8)
         emoji = _str(item.get("emoji"), 12)
         if is_one_emoji(emoji):
             prop["emoji"] = emoji
@@ -808,8 +855,9 @@ def normalise_plan(
     places = [p["id"] for p in bible.get("places") or []] or ["classroom"]
     cast_ids = [m["id"] for m in bible.get("cast") or []] or [HERO, FRIEND]
     by_unit = {str(c.get("unit")): c for c in raw.get("chapters") or [] if isinstance(c, dict)}
+    mentor = _mentor_in_default_beats(request)
     chapters = [
-        _chapter(by_unit.get(lesson.unit_number), lesson, places, cast_ids, gaps)
+        _chapter(by_unit.get(lesson.unit_number), lesson, places, cast_ids, gaps, mentor=mentor)
         for lesson in request.lessons
     ]
     if previous is not None and rewritten is not None:
@@ -827,6 +875,8 @@ def normalise_plan(
                 chapters[index] = fresh
         frozen = {c["unit"] for c in chapters if c["unit"] not in rewritten}
         _assign_refs(chapters, request, gaps, frozen=frozen)
+        if request.cast_policy == CAMEO:
+            _cameo_only(chapters, cast_ids)
         plan = copy.deepcopy(previous)
         plan["chapters"] = chapters
         return plan, gaps
@@ -859,7 +909,82 @@ def normalise_plan(
     if request.has_rally:
         plan["rally"] = _rally(raw.get("rally"), chapters, request, places, gaps)
     _one_game(plan, request, gaps)
+    if request.cast_policy is not None:
+        if request.cast_policy == CAMEO:
+            _cameo_only(chapters, cast_ids)
+        plan[CAST_POLICY_KEY] = with_policy(request.cast_policy)
     return plan, gaps
+
+
+def _settle_mentor(raw: dict[str, Any], request: PlanRequest) -> dict[str, Any]:
+    """The answer with the mentor settled in code, so he never costs a repair call (#2710).
+
+    ``none``: a mentor in a beat's cast is the friend, and his voice and
+    catchphrases go. ``cameo``: he stays only in the first and the last beat.
+    The same fixes ``normalise_plan`` makes, applied before the checks.
+    """
+    if request.cast_policy not in ("none", CAMEO):
+        return raw
+    out = copy.deepcopy(raw)
+    chapters = [c for c in out.get("chapters") or [] if isinstance(c, dict)]
+    for chapter in chapters:
+        for beat in chapter.get("beats") or []:
+            if not isinstance(beat, dict) or not isinstance(beat.get("cast"), list):
+                continue
+            if request.cast_policy == "none":
+                cast = [FRIEND if c == MENTOR else c for c in beat["cast"]]
+                beat["cast"] = list(dict.fromkeys(cast))
+    if request.cast_policy == CAMEO:
+        for chapter in chapters:
+            chapter["beats"] = [b for b in chapter.get("beats") or [] if isinstance(b, dict)]
+        _cameo_only(chapters, [m["id"] for m in request.bible.content.get("cast") or []])
+    if request.cast_policy == "none":
+        if isinstance(out.get("voices"), dict):
+            out["voices"].pop(MENTOR, None)
+        out["catchphrases"] = [
+            c
+            for c in out.get("catchphrases") or []
+            if not (isinstance(c, dict) and c.get("who") == MENTOR)
+        ]
+    return out
+
+
+def plan_cast_policy(
+    bible_content: dict[str, Any], course: Any, module: Any, audience: Any, override: Any
+) -> str | None:
+    """The mentor policy of a NEW plan of ``module`` (#2710); ``None`` for a legacy bible.
+
+    :func:`choose_cast_policy` (the rules are in its docstring), narrowed to what
+    the course's bible drew: a bible with no mentor makes every module ``none``.
+    """
+    return module_policy(
+        bible_content, choose_cast_policy(course, module, audience, override=override)
+    )
+
+
+def _mentor_in_default_beats(request: PlanRequest) -> bool:
+    """Whether a beat made in code has the mentor: a legacy plan, or a ``lead`` story."""
+    mentor_in_bible = any(m.get("id") == MENTOR for m in request.bible.content.get("cast") or [])
+    return mentor_in_bible and request.cast_policy in (None, LEAD)
+
+
+def _cameo_only(chapters: list[dict[str, Any]], cast_ids: list[str]) -> None:
+    """A cameo mentor stays in the first beat of the story and the last one, nowhere else."""
+    for index, chapter in enumerate(chapters):
+        beats = chapter.get("beats") or []
+        for position, beat in enumerate(beats):
+            keep = (index == 0 and position == 0) or (
+                index == len(chapters) - 1 and position == len(beats) - 1
+            )
+            if keep or MENTOR not in beat["cast"]:
+                continue
+            cast = [c for c in beat["cast"] if c != MENTOR]
+            for filler in (FRIEND, *cast_ids):
+                if len(cast) >= 2:
+                    break
+                if filler != MENTOR and filler not in cast:
+                    cast.append(filler)
+            beat["cast"] = cast
 
 
 def _one_game(plan: dict[str, Any], request: PlanRequest, gaps: list[str]) -> None:
@@ -914,7 +1039,14 @@ def default_plan(request: PlanRequest) -> dict[str, Any]:
     gaps: list[str] = []
     chapters = []
     for lesson in request.lessons:
-        chapter = _chapter({}, lesson, places, [m["id"] for m in bible.get("cast") or []], gaps)
+        chapter = _chapter(
+            {},
+            lesson,
+            places,
+            [m["id"] for m in bible.get("cast") or []],
+            gaps,
+            mentor=_mentor_in_default_beats(request),
+        )
         chapter["title"] = {lang: _str(lesson.title[lang], 120) for lang in ("en", "fr")}
         chapters.append(chapter)
     counts = {c["unit"]: 0 for c in chapters}
@@ -945,6 +1077,8 @@ def default_plan(request: PlanRequest) -> dict[str, Any]:
     if request.has_rally:
         plan["rally"] = _rally({}, chapters, request, places, gaps)
     _one_game(plan, request, gaps)
+    if request.cast_policy is not None:
+        plan[CAST_POLICY_KEY] = with_policy(request.cast_policy)
     return plan
 
 

@@ -342,13 +342,20 @@ def _by_role(raw_cast: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
-def _cast(raw_cast: Any, audience: str) -> list[dict[str, Any]]:
+def _cast(raw_cast: Any, audience: str, mentor_policy: str | None = None) -> list[dict[str, Any]]:
+    """The bible's cast. ``mentor_policy`` ``"none"`` leaves the mentor out (#2710).
+
+    ``None`` (a legacy call) always draws him, exactly as before.
+    """
     given = _by_role(raw_cast)
     looks = _DEFAULT_LOOKS[audience]
     kind = "child" if audience == "kids" else "adult"
     cast: list[dict[str, Any]] = []
     for member_id in CAST_IDS:
         raw = given.get(member_id, {})
+        if member_id == MENTOR and mentor_policy == "none":
+            # No mentor in this course: no cast member, so no art is drawn for him.
+            continue
         if member_id == FAMILY and not raw and given:
             # Optional: a model that wrote a cast but no family member chose so.
             continue
@@ -480,24 +487,34 @@ def normalise_bible(
     is_kids: bool,
     modules: Sequence[BibleModule] = (),
     country: str = "",
+    mentor_policy: str | None = None,
 ) -> dict[str, Any]:
     """A complete bible from whatever the model wrote; deterministic.
 
     Every gap is filled from the audience's defaults, so ``normalise_bible({})``
     is a usable (if generic) bible.
+
+    ``mentor_policy`` (#2710, ``none``/``cameo``/``lead``) is given only for a
+    NEW bible: it is written into the content as ``cast_policy`` and, for
+    ``none``, the mentor is left out of the cast. Left ``None``, the content is
+    exactly what it was before the policy existed, so a legacy bible re-read or
+    rebuilt keeps its digest.
     """
     raw = raw if isinstance(raw, dict) else {}
     audience = _audience(is_kids)
     places = _places(raw.get("places"), audience)
-    return {
+    content: dict[str, Any] = {
         "version": BIBLE_VERSION,
         "audience": audience,
         "country": _str(country, 40),
-        "cast": _cast(raw.get("cast"), audience),
+        "cast": _cast(raw.get("cast"), audience, mentor_policy),
         "places": places,
         "facts": _facts(raw.get("facts"), {p["id"] for p in places}),
         "missions": _missions(raw.get("missions"), modules),
     }
+    if mentor_policy is not None:
+        content["cast_policy"] = {"mentor": mentor_policy}
+    return content
 
 
 # --------------------------------------------------------------------------
@@ -709,6 +726,19 @@ async def _lock(session: AsyncSession, course_id: uuid.UUID) -> None:
         await session.execute(select(func.pg_advisory_xact_lock(_lock_key(course_id))))
 
 
+def _mentor_policy(course: Any, modules: Sequence[BibleModule], audience: Any) -> str:
+    """The mentor policy of a NEW course bible (#2710), with the admin's override."""
+    from app.domain.services.platform_settings_service import SettingsCache
+    from app.domain.services.story_cast_policy import (
+        OVERRIDE_SETTING,
+        course_cast_policy,
+        normalise_override,
+    )
+
+    override = normalise_override(SettingsCache.instance().get(OVERRIDE_SETTING, "auto"))
+    return course_cast_policy(course, modules, audience, override=override)
+
+
 class StoryBibleService:
     """Makes a course's bible with one model call, once, and reads it after that."""
 
@@ -757,9 +787,13 @@ class StoryBibleService:
         from app.ai.prompts.audience import detect_audience
         from app.domain.models.story_bible import StoryCourseBible
 
-        is_kids = detect_audience(course).is_kids
+        audience = detect_audience(course)
+        is_kids = audience.is_kids
+        mentor_policy = _mentor_policy(course, modules, audience)
         try:
-            raw = await self._call(course, modules, is_kids=is_kids, country=country)
+            raw = await self._call(
+                course, modules, is_kids=is_kids, country=country, mentor_policy=mentor_policy
+            )
             model = (
                 _str(
                     getattr(self.claude_service, "model", None)
@@ -783,7 +817,9 @@ class StoryBibleService:
             logger.warning(
                 "Story bible answers unusable: defaults stored", course_id=str(course.id)
             )
-        content = normalise_bible(raw, is_kids=is_kids, modules=modules, country=country)
+        content = normalise_bible(
+            raw, is_kids=is_kids, modules=modules, country=country, mentor_policy=mentor_policy
+        )
         bible = StoryBible.of(content)
         if row is not None:
             row.content, row.digest, row.model = content, bible.digest, model
@@ -816,6 +852,7 @@ class StoryBibleService:
         *,
         is_kids: bool,
         country: str,
+        mentor_policy: str | None = None,
     ) -> dict[str, Any]:
         """A usable answer, in at most :data:`MAX_CALLS` calls.
 
@@ -829,7 +866,9 @@ class StoryBibleService:
         from app.ai.usage_context import ai_usage_context
         from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
 
-        system, user = build_bible_messages(course, modules, is_kids=is_kids, country=country)
+        system, user = build_bible_messages(
+            course, modules, is_kids=is_kids, country=country, mentor_policy=mentor_policy
+        )
         with ai_usage_context(
             FEATURE_STORY_GENERATION, course_id=getattr(course, "id", None), only_if_unset=True
         ):

@@ -333,6 +333,58 @@ describe("scene plan", () => {
   });
 });
 
+describe("a story with no mentor (#2710)", () => {
+  const NO_MENTOR: CastMember[] = [
+    CONTRACT_CAST[0],
+    CONTRACT_CAST[1],
+    { id: "family", role: "family", name: "Mariam", kind: "adult", art: "family" },
+    CONTRACT_CAST[3],
+  ];
+  const actors = buildActors(course(NO_MENTOR), "boy");
+  const chapters: Chapter[] = [
+    {
+      id: "ch1",
+      title: { en: "One", fr: "Un" },
+      scenes: [
+        { id: "s1", place: "market", steps: [{ type: "narrate", en: "At the market.", fr: "Au marché." }] },
+        { id: "s2", place: "market", cast: ["hero", "friend"], steps: [{ type: "concept", en: ["Row"], fr: ["Ligne"] }] },
+      ],
+    },
+  ];
+
+  it("has nobody who is the mentor, and still dresses everyone differently", () => {
+    expect([...actors.values()].some((actor) => actor.isMentor)).toBe(false);
+    const tops = [...actors.values()].filter((a) => a.figure !== "gecko").map((a) => a.look.top);
+    expect(new Set(tops).size).toBe(tops.length);
+  });
+
+  it("puts a scene nobody speaks in on the hero and the first grown-up there is", () => {
+    const plan = planSteps(chapters, chapters, actors);
+    expect(plan[0].cast).toEqual(["hero", "family"]);
+  });
+
+  it("has the card presented by a friend when no grown-up is on stage", () => {
+    expect(presenterOf(["hero", "friend"], actors)).toBe("friend");
+    expect(presenterOf(["hero", "family"], actors)).toBe("family");
+    expect(reactorOf(["friend", "hero"], actors)).toBe("hero");
+  });
+
+  it("plays a say line of a friend with no mentor in the cast", () => {
+    const plan = planSteps(
+      [
+        {
+          id: "c",
+          title: { en: "C", fr: "C" },
+          scenes: [{ id: "s", place: "market", steps: [{ type: "say", who: "friend", en: "How do you know?", fr: "Comment le sais-tu ?" }] }],
+        },
+      ],
+      chapters,
+      actors,
+    );
+    expect(plan[0].cast).toContain("friend");
+  });
+});
+
 describe("places", () => {
   it("knows the older catalog's places", () => {
     expect(placeTheme("mango_farm")).toBe("farm");

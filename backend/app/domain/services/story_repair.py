@@ -1741,6 +1741,9 @@ class _Cast:
         alias = _WHO_ALIASES.get(key)
         if alias in self.ids:
             return alias
+        if alias == MENTOR_ID and MENTOR_ID not in self.ids and FRIEND_ID in self.ids:
+            # A story with no mentor (#2710): a line the model gave the teacher is the friend's.
+            return FRIEND_ID
         for member in self.members:
             names = {
                 _as_str(member.get("name")).lower(),
@@ -1966,7 +1969,10 @@ def _figure_step(ctx: LessonStoryContext, raw: dict[str, Any]) -> dict[str, Any]
         ref = refs[int(_as_str(wanted)) - 1]
     else:
         source_id = _as_str(
-            _get(raw.get("params"), "source_image_id") or raw.get("source_image_id")
+            _get(raw.get("params"), "source_image_id")
+            or raw.get("source_image_id")
+            or _get(raw.get("params"), "generated_image_id")
+            or raw.get("generated_image_id")
         )
         ref = (
             next((r for r in refs if _as_str(r.get("id")) == source_id), None)
@@ -1975,7 +1981,12 @@ def _figure_step(ctx: LessonStoryContext, raw: dict[str, Any]) -> dict[str, Any]
         )
     if ref is None:
         return None
-    params: dict[str, Any] = {"source_image_id": _as_str(ref.get("id"))}
+    # A lesson illustration (#2709) is told apart by its own key.
+    params: dict[str, Any] = {
+        ("generated_image_id" if ref.get("generated") else "source_image_id"): _as_str(
+            ref.get("id")
+        )
+    }
     if ref.get("figure_number"):
         params["figure_number"] = _as_str(ref.get("figure_number"))
     alt = text_object({"en": ref.get("alt_text_en"), "fr": ref.get("alt_text_fr")})
@@ -2319,7 +2330,7 @@ def _flat(scenes: list[dict[str, Any]]) -> Iterator[tuple[dict[str, Any], int, d
 
 def repeat_keys(step: dict[str, Any]) -> set[tuple[str, str]]:
     """The repetition keys of a story line (none for a short one or a non-line)."""
-    if step.get("type") not in ("narrate", "say") or step.get("frame"):
+    if step.get("type") not in ("narrate", "say") or step.get("frame") or step.get("leadin"):
         return set()
     keys = {(lang, line_key(step.get(lang))) for lang in LANGS if isinstance(step.get(lang), str)}
     return {key for key in keys if len(key[1]) >= MIN_REPEAT_LENGTH}
@@ -3168,6 +3179,12 @@ def _assemble(
         if recapped:
             built = [q for q in built if q.doc["id"] not in recapped]
         if ctx.is_v4 and story_checks:
+            if isinstance((ctx.plan or {}).get("cast_policy"), dict):
+                # A NEW plan (#2710): a question with no line before it gets a code
+                # lead-in, never a paid repair call. A legacy plan is checked as before.
+                from app.domain.services.story_leadins import add_leadins
+
+                add_leadins(scenes, ctx.unit_number)
             story = check_story(
                 ctx, scenes, _question_facts(built), builder_issue, fallback_cards=fallback_cards
             )
