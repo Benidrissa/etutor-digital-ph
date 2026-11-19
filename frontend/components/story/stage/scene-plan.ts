@@ -78,6 +78,14 @@ export function shotFor(
   return undefined;
 }
 
+/**
+ * The shot the scene's own layers (backdrop and cast) play. An `insert` is a
+ * picture drifting inside its panel: the scene behind it stays still.
+ */
+export function sceneShotOf(shot: Shot | undefined): Exclude<Shot, "insert"> | undefined {
+  return shot === "insert" ? undefined : shot;
+}
+
 /** At most this many on stage: beyond, a 320px stage gets crowded. */
 const MAX_ON_STAGE = 4;
 
