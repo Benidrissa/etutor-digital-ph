@@ -1140,7 +1140,11 @@ def _figure_lines(ctx: LessonStoryContext) -> str:
         return "FIGURES: none."
     rows = ["FIGURES you may show:"]
     for number, ref in enumerate(refs, start=1):
-        kind = clean_text(ref.get("figure_kind") or ref.get("image_type")) or "figure"
+        kind = (
+            "illustration"
+            if ref.get("generated")
+            else clean_text(ref.get("figure_kind") or ref.get("image_type")) or "figure"
+        )
         en = clean_text(ref.get("caption_en") or ref.get("caption")) or ref.get("figure_number")
         fr = clean_text(ref.get("caption_fr") or ref.get("caption")) or en
         rows.append(f"FIGURE {number} [{kind}]: {en} | {fr}")

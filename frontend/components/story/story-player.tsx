@@ -47,6 +47,7 @@ import {
   personalizeStory,
   type StoryLanguage,
 } from "@/lib/story-course/personalize";
+import { figureLanguage, figureUrl } from "@/lib/story-course/media";
 import { chapterLocalId } from "@/lib/story-course/progress";
 import type { Prop, Step, StoryCourse } from "@/lib/story-course/types";
 
@@ -175,12 +176,6 @@ function writeEmbeddedBilingual(on: boolean): void {
   } catch {
     // Not remembered; the toggle still works for this visit.
   }
-}
-
-/** A source figure is served in the lesson's languages only. */
-function figureLanguage(target: string, home: string): "fr" | "en" {
-  if (target === "fr" || target === "en") return target;
-  return home === "fr" ? "fr" : "en";
 }
 
 /** A step's own text in one language: a line (narrate/say) or rows (concept). */
@@ -779,6 +774,11 @@ export function StoryPlayer({
     if (nextProp && !savesData()) {
       const picture = pictureFor(nextProp, propMedia?.[nextProp.id], figureLang);
       if (picture) urls.push(picture.src);
+    }
+    // The next stimulus may be a figure or an illustration of its own (a `show image`).
+    if (nextStep?.type === "show" && nextStep.visual === "image" && !savesData()) {
+      const url = figureUrl(nextStep.params, figureLang);
+      if (url) urls.push(url);
     }
     return urls.join("\n");
   })();

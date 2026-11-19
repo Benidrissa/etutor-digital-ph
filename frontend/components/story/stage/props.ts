@@ -299,7 +299,7 @@ function trim(
 /* Tokens and pictures                                                         */
 /* -------------------------------------------------------------------------- */
 
-const MEDIA_PATH = /^\/api\/v1\/(story-art|story-props|source-images)\/[0-9a-f][0-9a-f-]{7,63}\/data(\?[\w=&.-]*)?$/i;
+const MEDIA_PATH = /^\/api\/v1\/(story-art|story-props|source-images|images)\/[0-9a-f][0-9a-f-]{7,63}\/data(\?[\w=&.-]*)?$/i;
 
 /** Only the app's own story media is ever put in an `<img>`. */
 export function sameOriginMedia(value: unknown): string | undefined {
@@ -391,6 +391,12 @@ export function tokenFor(prop: Prop, media: PropMedia | undefined, placement: Pr
   return { kind: "label" };
 }
 
+/** A lesson illustration's credit: made with AI, but the course's own (#2709). */
+export const ILLUSTRATION_CREDIT: PropPicture["credit"] = {
+  kind: "course_illustration",
+  text: { en: "Course illustration (AI)", fr: "Illustration du cours (IA)" },
+};
+
 /** A course figure's credit line, in both languages. */
 function courseCredit(prop: Prop): PropPicture["credit"] {
   const figure = prop.figure;
@@ -420,6 +426,17 @@ export function pictureFor(prop: Prop, media: PropMedia | undefined, lang: "fr" 
     };
   }
   const figure = prop.figure;
+  if (figure?.generated_image_id && /^[0-9a-f-]{8,64}$/i.test(figure.generated_image_id)) {
+    return {
+      src: `/api/v1/images/${figure.generated_image_id}/data`,
+      width: 4,
+      height: 3,
+      alt: figure.alt ?? prop.label,
+      caption: figure.caption,
+      via: "lesson_illustration",
+      credit: ILLUSTRATION_CREDIT,
+    };
+  }
   if (figure?.source_image_id && /^[0-9a-f-]{8,64}$/i.test(figure.source_image_id)) {
     return {
       src: `/api/v1/source-images/${figure.source_image_id}/data?lang=${lang}`,
@@ -456,15 +473,7 @@ export function licenseLabel(code: string | undefined): string | undefined {
   return code;
 }
 
-/** The learner asked to save data, or the link is 2G: no large or eager photos. */
-export function savesData(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const connection = (navigator as Navigator & {
-    connection?: { saveData?: boolean; effectiveType?: string };
-  }).connection;
-  if (!connection) return false;
-  return !!connection.saveData || connection.effectiveType === "slow-2g" || connection.effectiveType === "2g";
-}
+export { savesData } from "@/lib/story-course/media";
 
 /** A prop's label in one language, for alt text and name tags. */
 export function propLabel(prop: Prop, lang: string, fallback: string): string {

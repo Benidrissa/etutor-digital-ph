@@ -885,6 +885,8 @@ def generate_module_story_task(
                     figure_storage=S3StorageService(),
                     # #2698: course questions asked in the story's voice.
                     stem_judge=_stem_judge(),
+                    # #2709: the course-figure search of the asset catalogue.
+                    asset_retriever=retriever,
                 )
                 record = await service.get_or_generate_module_story(
                     uuid.UUID(module_id),

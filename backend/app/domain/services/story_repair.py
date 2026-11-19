@@ -1966,7 +1966,10 @@ def _figure_step(ctx: LessonStoryContext, raw: dict[str, Any]) -> dict[str, Any]
         ref = refs[int(_as_str(wanted)) - 1]
     else:
         source_id = _as_str(
-            _get(raw.get("params"), "source_image_id") or raw.get("source_image_id")
+            _get(raw.get("params"), "source_image_id")
+            or raw.get("source_image_id")
+            or _get(raw.get("params"), "generated_image_id")
+            or raw.get("generated_image_id")
         )
         ref = (
             next((r for r in refs if _as_str(r.get("id")) == source_id), None)
@@ -1975,7 +1978,12 @@ def _figure_step(ctx: LessonStoryContext, raw: dict[str, Any]) -> dict[str, Any]
         )
     if ref is None:
         return None
-    params: dict[str, Any] = {"source_image_id": _as_str(ref.get("id"))}
+    # A lesson illustration (#2709) is told apart by its own key.
+    params: dict[str, Any] = {
+        ("generated_image_id" if ref.get("generated") else "source_image_id"): _as_str(
+            ref.get("id")
+        )
+    }
     if ref.get("figure_number"):
         params["figure_number"] = _as_str(ref.get("figure_number"))
     alt = text_object({"en": ref.get("alt_text_en"), "fr": ref.get("alt_text_fr")})

@@ -419,6 +419,7 @@ class SemanticRetriever:
         rag_collection_id: str | None = None,
         min_similarity: float = 0.3,
         session: AsyncSession | None = None,
+        exclude_noise: bool = False,
     ) -> list[dict]:
         """
         Semantic search directly on source_images.embedding.
@@ -430,6 +431,9 @@ class SemanticRetriever:
             rag_collection_id: Optional filter by RAG collection ID
             min_similarity: Minimum cosine similarity threshold
             session: Database session
+            exclude_noise: Apply the same ``figure_kind`` exclusions as
+                ``get_linked_images`` (body text, decoration, stock
+                thumbnails), and return ``image_hash`` and ``figure_kind``
 
         Returns:
             List of image metadata dicts (no binary data)
@@ -448,10 +452,22 @@ class SemanticRetriever:
 
             async with async_session_factory() as session:
                 return await self._search_source_images(
-                    query_embedding, top_k, source, rag_collection_id, min_similarity, session
+                    query_embedding,
+                    top_k,
+                    source,
+                    rag_collection_id,
+                    min_similarity,
+                    session,
+                    exclude_noise,
                 )
         return await self._search_source_images(
-            query_embedding, top_k, source, rag_collection_id, min_similarity, session
+            query_embedding,
+            top_k,
+            source,
+            rag_collection_id,
+            min_similarity,
+            session,
+            exclude_noise,
         )
 
     async def _search_source_images(
@@ -462,6 +478,7 @@ class SemanticRetriever:
         rag_collection_id: str | None,
         min_similarity: float,
         session: AsyncSession,
+        exclude_noise: bool = False,
     ) -> list[dict]:
         """Execute cosine similarity search on source_images table."""
         embedding_literal = "[" + ",".join(str(x) for x in query_embedding) + "]"
@@ -478,6 +495,17 @@ class SemanticRetriever:
             where_clauses.append("rag_collection_id = :rag_collection_id")
             params["rag_collection_id"] = rag_collection_id
 
+        if exclude_noise:
+            # The exclusions of get_linked_images: body text and decoration are
+            # never figures, a small photo is a stock thumbnail. NULL kinds stay.
+            excluded = ", ".join(f"'{kind}'" for kind in _EXCLUDED_KINDS)
+            thumbs = ", ".join(f"'{kind}'" for kind in _STOCK_THUMB_KINDS)
+            where_clauses.append(f"(figure_kind IS NULL OR figure_kind NOT IN ({excluded}))")
+            where_clauses.append(
+                f"NOT (figure_kind IN ({thumbs}) AND (width IS NULL OR width <= "
+                f"{_STOCK_THUMB_MAX_WIDTH}))"
+            )
+
         where_sql = " AND ".join(where_clauses)
 
         query_str = f"""
@@ -487,6 +515,7 @@ class SemanticRetriever:
                 image_type, page_number, chapter, section, surrounding_text,
                 storage_key, storage_url, format, width, height, file_size_bytes,
                 original_format, alt_text_fr, alt_text_en, semantic_tags, created_at,
+                figure_kind, image_hash, caption_fr, caption_en,
                 1 - ({vec_expr}) as similarity
             FROM source_images
             WHERE {where_sql}
@@ -532,8 +561,13 @@ class SemanticRetriever:
                 alt_text_en=row.alt_text_en,
                 semantic_tags=row.semantic_tags,
                 created_at=row.created_at,
+                figure_kind=row.figure_kind,
+                image_hash=row.image_hash,
+                caption_fr=row.caption_fr,
+                caption_en=row.caption_en,
             )
             meta = img.to_meta_dict()
+            meta["image_hash"] = row.image_hash
             meta["similarity"] = float(row.similarity)
             image_dicts.append(meta)
 

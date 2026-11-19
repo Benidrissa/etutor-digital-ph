@@ -172,6 +172,9 @@ class PlanRequest:
     previous: dict[str, Any] | None = None
     #: The rows the plan is made from: ``{"lessons": {unit id: row id}, "quizzes": {...}}``.
     pins: dict[str, Any] = field(default_factory=dict)
+    #: #2709: the course's own pictures the plan may name (``story_assets``). Not
+    #: part of the plan's digests: a catalogue change never re-plans a module.
+    catalogue: dict[str, Any] | None = None
 
     @property
     def units(self) -> list[str]:
@@ -756,6 +759,17 @@ def _rally(
     return rally
 
 
+_FIGURE_REF = re.compile(r"^A\d{1,2}$")
+
+
+def _plan_prop_kind(item: dict[str, Any]) -> str:
+    """ "figure" only with a catalogue number ("A1", #2709); "real" or "sticker" otherwise."""
+    kind = str(item.get("kind")).lower()
+    if kind == "figure" and _FIGURE_REF.match(_str(item.get("figure"), 8)):
+        return "figure"
+    return "real" if kind in ("real", "photo", "figure") else "sticker"
+
+
 def _props(raw: Any, units: list[str], gaps: list[str]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in raw if isinstance(raw, list) else []:
@@ -775,12 +789,14 @@ def _props(raw: Any, units: list[str], gaps: list[str]) -> list[dict[str, Any]]:
             "en": en,
             "fr": fr,
             "query": _str(item.get("query"), 60) or en,
-            "kind": "real" if str(item.get("kind")).lower() in ("real", "photo") else "sticker",
+            "kind": _plan_prop_kind(item),
             "at": str(item.get("at") or "ground").lower(),
             "size": str(item.get("size") or "").lower() or None,
             "planted": planted if planted in units else units[0],
             "paid_off": str(item.get("paid_off") or "rally"),
         }
+        if prop["kind"] == "figure":
+            prop["figure"] = _str(item.get("figure"), 8)
         emoji = _str(item.get("emoji"), 12)
         if is_one_emoji(emoji):
             prop["emoji"] = emoji
