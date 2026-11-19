@@ -242,7 +242,7 @@ def test_story_too_thin(cut):
         if cut == "ratio":
             for scene in s["scenes"]:
                 scene["steps"] = [
-                    st for i, st in enumerate(scene["steps"]) if st["type"] != "say" or i % 3
+                    st for i, st in enumerate(scene["steps"]) if st["type"] != "say" or i % 3 == 0
                 ]
         elif cut == "gap":
             steps = steps_of(s, 2)

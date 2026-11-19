@@ -919,10 +919,30 @@ def _bible_block_v4(ctx: LessonStoryContext) -> str:
         "=== THE BIBLE (the same in every chapter) ===\n"
         'CAST — use these ids in "who" and in a scene\'s "cast":\n'
         + "\n".join(rows)
+        + _cast_policy_note(ctx.plan)
         + '\nPLACES — use these ids in a scene\'s "place":\n'
         + "\n".join(places)
         + ("\nLOCAL DETAILS you may use:\n" + "\n".join(facts) if facts else "")
     )
+
+
+def _cast_policy_note(plan: dict[str, Any] | None) -> str:
+    """What the plan's mentor policy (#2710) tells the screenwriter; nothing for a legacy plan."""
+    policy = plan.get("cast_policy") if isinstance(plan, dict) else None
+    mentor = policy.get("mentor") if isinstance(policy, dict) else None
+    if mentor == "none":
+        return (
+            "\nNO MENTOR: nobody plays the teacher or the supervisor. A line the example or the"
+            ' rules give to a teacher is the friend\'s: the friend doubts ("how do you know?")'
+            " and asks, never explains. No line hands a question over to a grown-up."
+        )
+    if mentor == "cameo":
+        return (
+            "\nMENTOR CAMEO: the mentor speaks only in the opening or the closing scene of the"
+            " story, a line or two. He never explains the lesson and never hands a question over;"
+            " the friend does the doubting."
+        )
+    return ""
 
 
 def _plan_props_line(plan: dict[str, Any], lang: str) -> list[str]:

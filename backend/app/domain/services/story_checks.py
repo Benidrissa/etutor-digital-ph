@@ -29,19 +29,33 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.api.v1.schemas.story_course import ValidationIssue
+from app.domain.services.story_metrics import french_in
 from app.domain.services.story_props import fold
 
 #: What a teaching moment is made of; a prop's close-up is part of the story.
-TEACHING = ("concept", "show", "game", "photo", "ask")
+#: (#2710: a figure or demo the characters look at (``show``) is story, not a
+#: teaching moment, so a story that shows more and talks less is not too thin.)
+TEACHING = ("concept", "game", "photo", "ask")
 LINE_TYPES = ("say", "narrate")
+#: What tells the story: a line, or a figure the characters look at.
+STORY_TYPES = ("say", "narrate", "show")
 
-#: Below this share of story lines, a chapter is too thin (the rally: 0.5).
-MIN_STORY_RATIO = 0.6
-MIN_RALLY_STORY_RATIO = 0.5
-#: Story lines between two teaching moments.
-MIN_GAP = 3
-#: Story lines of a lesson chapter: at least max(14, 6 × beats); a rally 12.
-MIN_LINES, LINES_PER_BEAT, MIN_RALLY_LINES = 14, 6, 12
+#: Below this share of story beats, a chapter is too thin (the rally: 0.4).
+#: Was 0.6 / 0.5, counting lines only (#2710).
+MIN_STORY_RATIO = 0.5
+MIN_RALLY_STORY_RATIO = 0.4
+#: Story beats (lines, figures, demos) between two teaching moments (was 3).
+MIN_GAP = 2
+#: Story beats of a lesson chapter: at least max(10, 4 × beats); a rally 8
+#: (was 14, 6 × beats and 12).
+MIN_LINES, LINES_PER_BEAT, MIN_RALLY_LINES = 10, 4, 8
+
+#: Lines for 7-14 year-olds (#2710), as warnings only: a line of at most this
+#: many words, a card of at most this many (rows and title), and at most this
+#: many lines in a row without a figure, a card or a question.
+KIDS_LINE_WORDS = 12
+KIDS_CARD_WORDS = 20
+MAX_LINE_RUN = 6
 
 _META_RE = re.compile(
     r"\b(?:le[cç]ons?|chapitres?|modules?|quiz|lessons?|chapters?)\b"
@@ -205,7 +219,8 @@ def check_story(
         before = (
             plain[first - 1] if first > 0 and plain[first - 1].scene == plain[first].scene else None
         )
-        if before is None or before.type != "say":
+        # A short line from any cast member, or a lead-in the code wrote (#2710).
+        if before is None or not (before.type == "say" or before.step.get("leadin")):
             lead_ins_missing += 1
             issue(
                 "ask_not_set_up",
@@ -240,11 +255,11 @@ def check_story(
 
     # -- how much of it is story --------------------------------------------
     counted = [f for f in flat if not _is_situation(f.step) and not _is_closeup(f.step)]
-    story_lines = sum(1 for f in counted if f.type in LINE_TYPES)
+    story_lines = sum(1 for f in counted if f.type in STORY_TYPES)
     ratio = story_lines / len(counted) if counted else 0.0
     spans = moments(flat)
     gaps = [
-        sum(1 for f in flat[a_end + 1 : b_start] if f.type in LINE_TYPES)
+        sum(1 for f in flat[a_end + 1 : b_start] if f.type in STORY_TYPES)
         for (_a, a_end), (b_start, _b) in zip(spans, spans[1:], strict=False)
     ]
     min_gap = min(gaps) if gaps else None
@@ -253,17 +268,18 @@ def check_story(
     floor_ratio = MIN_RALLY_STORY_RATIO if ctx.is_rally else MIN_STORY_RATIO
     thin: list[str] = []
     if ratio < floor_ratio:
-        thin.append(f"only {story_lines} story lines in {len(counted)} steps")
+        thin.append(f"only {story_lines} story beats in {len(counted)} steps")
     if min_gap is not None and min_gap < MIN_GAP:
-        thin.append(f"only {min_gap} story line(s) between two teaching moments")
+        thin.append(f"only {min_gap} story beat(s) between two teaching moments")
     if story_lines < floor_lines:
-        thin.append(f"{story_lines} story lines, at least {floor_lines} are needed")
+        thin.append(f"{story_lines} story beats, at least {floor_lines} are needed")
     if thin:
         issue(
             "story_too_thin",
             "scenes",
-            "; ".join(thin) + ". Add story (reactions, a joke, what happens next), with at least"
-            f" {MIN_GAP} lines between two teaching moments",
+            "; ".join(thin) + ". Add story (reactions, a joke, what happens next, a figure the"
+            f" characters look at), with at least {MIN_GAP} story beats between two teaching"
+            " moments",
         )
 
     # -- the ending ----------------------------------------------------------
@@ -380,6 +396,7 @@ def check_story(
         longest = max(longest, streak)
     if says and (longest >= 3 or len(mentor) / len(says) > 0.35):
         lint("mentor_lectures", "scenes", "the mentor does most of the talking")
+    _kids_and_language_lints(ctx, flat, lint, report)
     hero = [f for f in says if f.step.get("who") == "hero"]
     if says and len(hero) / len(says) < 0.25:
         lint("hero_too_quiet", "scenes", "{child} says less than a quarter of the lines")
@@ -410,6 +427,7 @@ def check_story(
                 )
 
     report.quality = {
+        **report.quality,
         "story_lines": story_lines,
         "steps": len(counted),
         "ratio": round(ratio, 2),
@@ -422,6 +440,74 @@ def check_story(
         "names_leaked": names_leaked,
     }
     return report
+
+
+def _kids_and_language_lints(ctx: Any, flat: list[_Flat], lint: Any, report: StoryReport) -> None:
+    """The register of a story for 7-14 year-olds, and French in an English text (#2710).
+
+    Warnings only: they are written into the chapter's checks, never worth a
+    repair call. The numbers go into ``story_quality``.
+    """
+    target = ctx.target
+    # The kids' register is asked of NEW plans only (those with a cast policy): a
+    # story told from an older plan is judged as it always was.
+    new_plan = isinstance((getattr(ctx, "plan", None) or {}).get("cast_policy"), dict)
+    kids = bool(getattr(ctx, "is_kids", False)) and new_plan
+    long_lines = long_cards = leaks = run = longest = 0
+    for item in flat:
+        step = item.step
+        run = run + 1 if item.type in LINE_TYPES else 0
+        longest = max(longest, run)
+        if run == MAX_LINE_RUN + 1 and kids:
+            lint(
+                "line_run_long",
+                item.path,
+                f"more than {MAX_LINE_RUN} lines in a row: show a figure, a card or a question",
+            )
+        if kids:
+            if (
+                item.type in LINE_TYPES
+                and len(str(step.get(target) or "").split()) > KIDS_LINE_WORDS
+            ):
+                long_lines += 1
+                if long_lines <= 10:
+                    lint(
+                        "line_too_long_for_kids",
+                        item.path,
+                        f"a line of more than {KIDS_LINE_WORDS} words: cut it in two",
+                    )
+            if item.type == "concept" and not _is_situation(step):
+                title = (step.get("title") or {}).get(target, "")
+                words = len(str(title).split()) + sum(
+                    len(str(row).split()) for row in step.get(target) or []
+                )
+                if words > KIDS_CARD_WORDS:
+                    long_cards += 1
+                    lint(
+                        "card_too_long_for_kids",
+                        item.path,
+                        f"a card of {words} words: at most {KIDS_CARD_WORDS}, with one new word",
+                    )
+        if item.type in LINE_TYPES or item.type == "concept":
+            english = step.get("en")
+            texts = english if isinstance(english, list) else [english]
+            found = [w for t in texts for w in french_in(t)]
+            if found:
+                leaks += 1
+                lint(
+                    "lang_integrity",
+                    item.path,
+                    "the English text looks French (" + ", ".join(sorted(set(found))[:4]) + ")",
+                )
+    if new_plan:
+        report.quality.update(
+            {
+                "say_run_max": longest,
+                "kids_long_lines": long_lines,
+                "kids_long_cards": long_cards,
+                "lang_leaks": leaks,
+            }
+        )
 
 
 def _texts(step: dict[str, Any]) -> list[str]:
