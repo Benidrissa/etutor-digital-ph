@@ -1,0 +1,2223 @@
+{
+  "library_version": 1,
+  "_comment": [
+    "The shared story prop library (#2714): generic CC0 decor props.",
+    "Built by fetch_poly_pizza.py from wishlist.json (every model re-verified on its Poly Pizza page: Licence CC0 1.0, creator Quaternius or Kenney),",
+    "rendered by render.mjs + postprocess.py; the output is committed in backend/app/data/story_library. Bump library_version when entries change."
+  ],
+  "entries": [
+    {
+      "id": "bucket",
+      "kind": "sticker",
+      "file": "models/bucket.glb",
+      "label": {
+        "en": "a bucket",
+        "fr": "un seau"
+      },
+      "tags": [
+        "pail",
+        "water"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/83obI9bNun",
+        "site": "Poly Pizza",
+        "title": "Bucket",
+        "sha256_original": "bdf24cde2e74d8995a2dd4e2f70f6f759e644f1ed5f151e2e9fa2f65fb1fcf0d",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "chair",
+      "kind": "sticker",
+      "file": "models/chair.glb",
+      "label": {
+        "en": "a chair",
+        "fr": "une chaise"
+      },
+      "tags": [
+        "seat",
+        "furniture"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/iMNqRzPwwe",
+        "site": "Poly Pizza",
+        "title": "Chair",
+        "sha256_original": "bdc6aeeb64524bbdccba2f079e6485e2a372aed1c428d976d5da67aadcf18b7a",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "table",
+      "kind": "sticker",
+      "file": "models/table.glb",
+      "label": {
+        "en": "a table",
+        "fr": "une table"
+      },
+      "tags": [
+        "desk",
+        "furniture"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/rAEBvfb1FT",
+        "site": "Poly Pizza",
+        "title": "Small Table",
+        "sha256_original": "fd3c98a8293913697b3942d74897263d27352bd1ec4513aa3489f6e1470e59f9",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bench",
+      "kind": "sticker",
+      "file": "models/bench.glb",
+      "label": {
+        "en": "a bench",
+        "fr": "un banc"
+      },
+      "tags": [
+        "seat",
+        "furniture"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/jLxjFxFRpw",
+        "site": "Poly Pizza",
+        "title": "Bench",
+        "sha256_original": "9e923fef29388cca35f8eb473e95bc5ef32fea733682e9e54b6b944e3c055204",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bed",
+      "kind": "sticker",
+      "file": "models/bed.glb",
+      "label": {
+        "en": "a bed",
+        "fr": "un lit"
+      },
+      "tags": [
+        "sleep",
+        "furniture"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/sn8az3odMR",
+        "site": "Poly Pizza",
+        "title": "Bed Single",
+        "sha256_original": "23c5c32096840f3dd347b1c68029d2f50e2af468ccd38daa33b494f1943b3dc8",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "lamp",
+      "kind": "sticker",
+      "file": "models/lamp.glb",
+      "label": {
+        "en": "a lamp",
+        "fr": "une lampe"
+      },
+      "tags": [
+        "light"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/8LiDIfXVLi",
+        "site": "Poly Pizza",
+        "title": "Lamp Round Floor",
+        "sha256_original": "66c669325a563ec4d9843a4c1e5a9f96c30abad13d0db710b4c00306e9cfbdc8",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "candle",
+      "kind": "sticker",
+      "file": "models/candle.glb",
+      "label": {
+        "en": "a candle",
+        "fr": "une bougie"
+      },
+      "tags": [
+        "light",
+        "flame"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/AnzHB44wlW",
+        "site": "Poly Pizza",
+        "title": "Candles",
+        "sha256_original": "2cd72a19212e44baca9d36665e5c6c1650df7c6cf9ada9a2aa9637f6a6510a4e",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "mug",
+      "kind": "sticker",
+      "file": "models/mug.glb",
+      "label": {
+        "en": "a mug",
+        "fr": "une tasse"
+      },
+      "tags": [
+        "cup",
+        "drink"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/fis2ugeLbn",
+        "site": "Poly Pizza",
+        "title": "Mug",
+        "sha256_original": "266fb62b9483c0805b10d3ebcc87361345208dbe26ac6d0c6fe50f773bc9c487",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "cup",
+      "kind": "sticker",
+      "file": "models/cup.glb",
+      "label": {
+        "en": "a cup",
+        "fr": "un gobelet"
+      },
+      "tags": [
+        "mug",
+        "drink"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/aSF8ANEIsX",
+        "site": "Poly Pizza",
+        "title": "Cup",
+        "sha256_original": "28594dce6e5ff4b5ae34dd201645c2fea6d63b4b8f9c42984c45d21b89e948c2",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "plate",
+      "kind": "sticker",
+      "file": "models/plate.glb",
+      "label": {
+        "en": "a plate",
+        "fr": "une assiette"
+      },
+      "tags": [
+        "dish",
+        "meal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/JyOqlmg0O8",
+        "site": "Poly Pizza",
+        "title": "Plate",
+        "sha256_original": "c1333ee34e76d616ad6b800d9e8e22e6a3307fce79de2fc5159e836aa70902e6",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bowl",
+      "kind": "sticker",
+      "file": "models/bowl.glb",
+      "label": {
+        "en": "a bowl",
+        "fr": "un bol"
+      },
+      "tags": [
+        "dish",
+        "meal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/cXIpPoXb1U",
+        "site": "Poly Pizza",
+        "title": "Bowl",
+        "sha256_original": "52006a9c9e055fbb10c616fa281d32ae1c961881cfe93fefa3e539a249d80d3c",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "pot",
+      "kind": "sticker",
+      "file": "models/pot.glb",
+      "label": {
+        "en": "a cooking pot",
+        "fr": "une marmite"
+      },
+      "tags": [
+        "cooking",
+        "kitchen"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/jAUb3FoCN7",
+        "site": "Poly Pizza",
+        "title": "Cooking Pot",
+        "sha256_original": "3836f63ea0a1135d1dbb6f8a942af6a1bc27912c21d5112c1820e88c64779995",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bottle",
+      "kind": "sticker",
+      "file": "models/bottle.glb",
+      "label": {
+        "en": "a bottle",
+        "fr": "une bouteille"
+      },
+      "tags": [
+        "water",
+        "drink"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/FAHsHFXfTf",
+        "site": "Poly Pizza",
+        "title": "Bottle",
+        "sha256_original": "7245e26241cac72d63aa6ad9efb02b32c1d13ff2dd8648401ab14494b5d181f6",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "pan",
+      "kind": "sticker",
+      "file": "models/pan.glb",
+      "label": {
+        "en": "a frying pan",
+        "fr": "une poele"
+      },
+      "tags": [
+        "cooking",
+        "kitchen"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/f9my9iJZMv",
+        "site": "Poly Pizza",
+        "title": "Pan",
+        "sha256_original": "9dd43116c063db40bdf367935b9a47e0ae464f5ebdca7a83b8035bb597f9d94a",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "radio",
+      "kind": "sticker",
+      "file": "models/radio.glb",
+      "label": {
+        "en": "a radio",
+        "fr": "une radio"
+      },
+      "tags": [
+        "music",
+        "news"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/TPqvwkyWdV",
+        "site": "Poly Pizza",
+        "title": "Radio",
+        "sha256_original": "9e5c7934f44ee538446e6f54cbe9c09d4e49a7e78ee2e7f16d4cc7483c43e710",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "telephone",
+      "kind": "sticker",
+      "file": "models/telephone.glb",
+      "label": {
+        "en": "a telephone",
+        "fr": "un telephone"
+      },
+      "tags": [
+        "call",
+        "mobile"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/k2kgBepoMU",
+        "site": "Poly Pizza",
+        "title": "Phone",
+        "sha256_original": "7fcaf1ebff050a793f4083e5c4daacd4a7708a4938a97ac2b33b3677e9e0c2e8",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "television",
+      "kind": "sticker",
+      "file": "models/television.glb",
+      "label": {
+        "en": "a television",
+        "fr": "une television"
+      },
+      "tags": [
+        "tv",
+        "screen"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/aSmz6H8aeu",
+        "site": "Poly Pizza",
+        "title": "Television Vintage",
+        "sha256_original": "9328f7156abb65be1d576e1dee5bdc46b45700b5eedd01207bd647cbc44f6dee",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "computer",
+      "kind": "sticker",
+      "file": "models/computer.glb",
+      "label": {
+        "en": "a computer",
+        "fr": "un ordinateur"
+      },
+      "tags": [
+        "laptop",
+        "screen"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/V5Qo141OcB",
+        "site": "Poly Pizza",
+        "title": "Computer Screen",
+        "sha256_original": "be4d698aa13793ed97f425028d633ef899d04c2ad8c89fe36932e5e7810e154e",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "backpack",
+      "kind": "sticker",
+      "file": "models/backpack.glb",
+      "label": {
+        "en": "a backpack",
+        "fr": "un sac a dos"
+      },
+      "tags": [
+        "school",
+        "bag"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/vF7TuXCPDH",
+        "site": "Poly Pizza",
+        "title": "Backpack",
+        "sha256_original": "404af15a4bc0a955d9d8133d16de7a4b900663f3a11f5364624ab8e7e9b6f68a",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "door",
+      "kind": "sticker",
+      "file": "models/door.glb",
+      "label": {
+        "en": "a door",
+        "fr": "une porte"
+      },
+      "tags": [
+        "entrance"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/a948jjnuaL",
+        "site": "Poly Pizza",
+        "title": "Door",
+        "sha256_original": "38c80d7012c4f930cbae01fdd9bf2a0d25d4dd70aeb687e32e37b01a35c72248",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "ladder",
+      "kind": "sticker",
+      "file": "models/ladder.glb",
+      "label": {
+        "en": "a ladder",
+        "fr": "une echelle"
+      },
+      "tags": [
+        "climb"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/h2xOIRr1OP",
+        "site": "Poly Pizza",
+        "title": "Ladder",
+        "sha256_original": "55afc5f0385aa934640f893d5e7aa46b9ba9535824a4a6847e560db578d4abbd",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "box",
+      "kind": "sticker",
+      "file": "models/box.glb",
+      "label": {
+        "en": "a box",
+        "fr": "une boite"
+      },
+      "tags": [
+        "container",
+        "package"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/HvjissDrdr",
+        "site": "Poly Pizza",
+        "title": "Box",
+        "sha256_original": "83d88c4c255f868b8fd77c6dc80b666aefd17b07223b12644ac046ebe32727a8",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "crate",
+      "kind": "sticker",
+      "file": "models/crate.glb",
+      "label": {
+        "en": "a crate",
+        "fr": "une caisse"
+      },
+      "tags": [
+        "box",
+        "wooden"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/YAghI6GBls",
+        "site": "Poly Pizza",
+        "title": "Cube Crate",
+        "sha256_original": "e0c4c5946b53ba314ec6e22bdb5d3329e4a2f0950b3c477a88e0d456d85baea8",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "barrel",
+      "kind": "sticker",
+      "file": "models/barrel.glb",
+      "label": {
+        "en": "a barrel",
+        "fr": "un tonneau"
+      },
+      "tags": [
+        "cask",
+        "container"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/ONdghDBByN",
+        "site": "Poly Pizza",
+        "title": "Barrel",
+        "sha256_original": "bc2fe12bd6f04492ea22d89394324c18e32c77afe85194d1319c16585777963a",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "shovel",
+      "kind": "sticker",
+      "file": "models/shovel.glb",
+      "label": {
+        "en": "a shovel",
+        "fr": "une pelle"
+      },
+      "tags": [
+        "dig",
+        "tool"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/oNBQSf87ZJ",
+        "site": "Poly Pizza",
+        "title": "Shovel",
+        "sha256_original": "768f33c6bcd41e65208c7f0513d2a7010313fa44a932b4f5327a5bc66d22149b",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "pickaxe",
+      "kind": "sticker",
+      "file": "models/pickaxe.glb",
+      "label": {
+        "en": "a pickaxe",
+        "fr": "une pioche"
+      },
+      "tags": [
+        "tool",
+        "dig"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/UHZH2OoWCS",
+        "site": "Poly Pizza",
+        "title": "Pickaxe",
+        "sha256_original": "6cb24971eef0ce55cc2468155c47db9a93bf55ff811b4640ced59a51bab53378",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "fishing_rod",
+      "kind": "sticker",
+      "file": "models/fishing_rod.glb",
+      "label": {
+        "en": "a fishing rod",
+        "fr": "une canne a peche"
+      },
+      "tags": [
+        "fish",
+        "river"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/0YAR0Lg58p",
+        "site": "Poly Pizza",
+        "title": "Fishing Rod",
+        "sha256_original": "6d5bd9d93d74b61c68bd053f8b94f5d594df998938d1a71d38119e2832f8fdb5",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "first_aid_kit",
+      "kind": "sticker",
+      "file": "models/first_aid_kit.glb",
+      "label": {
+        "en": "a first-aid kit",
+        "fr": "une trousse de secours"
+      },
+      "tags": [
+        "medical",
+        "health",
+        "kit"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/Hp80p6148W",
+        "site": "Poly Pizza",
+        "title": "First Aid Kit",
+        "sha256_original": "6d665861ec5f79224ed1c99e5eb685015e053b3f73b1216def773a1afa9fd816",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "apple",
+      "kind": "sticker",
+      "file": "models/apple.glb",
+      "label": {
+        "en": "an apple",
+        "fr": "une pomme"
+      },
+      "tags": [
+        "fruit"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/o4Of5itnxB",
+        "site": "Poly Pizza",
+        "title": "Apple",
+        "sha256_original": "1676ad60c8e33f3c19f6b16643c486d79f97cbd57c78ad1661ce0039519873d1",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "banana",
+      "kind": "sticker",
+      "file": "models/banana.glb",
+      "label": {
+        "en": "a banana",
+        "fr": "une banane"
+      },
+      "tags": [
+        "fruit"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/5Z07I9KMob",
+        "site": "Poly Pizza",
+        "title": "Banana",
+        "sha256_original": "e218e6db680fbb56907282306b8a578b5e34f15fd5e5fa1e7f90d9ca7285796b",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "orange",
+      "kind": "sticker",
+      "file": "models/orange.glb",
+      "label": {
+        "en": "an orange",
+        "fr": "une orange"
+      },
+      "tags": [
+        "fruit",
+        "citrus"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/UnygaDfm1J",
+        "site": "Poly Pizza",
+        "title": "Orange",
+        "sha256_original": "bce43d672f18d9403868a05bb5ae6b25d8466945d9bfbb8a03156afb7ca9ddc3",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "lemon",
+      "kind": "sticker",
+      "file": "models/lemon.glb",
+      "label": {
+        "en": "a lemon",
+        "fr": "un citron"
+      },
+      "tags": [
+        "fruit",
+        "citrus"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/MSMJRlLpuL",
+        "site": "Poly Pizza",
+        "title": "Lemon",
+        "sha256_original": "18afa34cab83cf4415e2a8344f526e22637f5896bd93bb75cf06ea3bf467473c",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "pineapple",
+      "kind": "sticker",
+      "file": "models/pineapple.glb",
+      "label": {
+        "en": "a pineapple",
+        "fr": "un ananas"
+      },
+      "tags": [
+        "fruit"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/VFFBOLXqB2",
+        "site": "Poly Pizza",
+        "title": "Pineapple",
+        "sha256_original": "92b2bd24305128ab570b1ae6321572cf466e39a87dfe8c29dca84f6e15870c37",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "coconut",
+      "kind": "sticker",
+      "file": "models/coconut.glb",
+      "label": {
+        "en": "a coconut",
+        "fr": "une noix de coco"
+      },
+      "tags": [
+        "fruit",
+        "palm"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/ufT2tXnLFc",
+        "site": "Poly Pizza",
+        "title": "Coconut Half",
+        "sha256_original": "3bb9a52efdb70c76d6b660cf7f398c6e4dbfcbd13b9380db8e3688387a473c86",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "strawberry",
+      "kind": "sticker",
+      "file": "models/strawberry.glb",
+      "label": {
+        "en": "a strawberry",
+        "fr": "une fraise"
+      },
+      "tags": [
+        "fruit",
+        "berry"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/xT1XIhtdju",
+        "site": "Poly Pizza",
+        "title": "Strawberry",
+        "sha256_original": "019945f29f49a5224703e11fd1eb3b3025933d9dbe078d9e674828ad9b631549",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "carrot",
+      "kind": "sticker",
+      "file": "models/carrot.glb",
+      "label": {
+        "en": "a carrot",
+        "fr": "une carotte"
+      },
+      "tags": [
+        "vegetable",
+        "root"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/59muuwqSsq",
+        "site": "Poly Pizza",
+        "title": "Carrot",
+        "sha256_original": "86329db7e0bbab3f99a9ee4652045d491a93b50416c36a030fe9f7e950bfe8a5",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "tomato",
+      "kind": "sticker",
+      "file": "models/tomato.glb",
+      "label": {
+        "en": "a tomato",
+        "fr": "une tomate"
+      },
+      "tags": [
+        "vegetable"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/TZWJgWJs8V",
+        "site": "Poly Pizza",
+        "title": "Tomato",
+        "sha256_original": "b4ed2aa318696043497cf7b8a44e0ee316d9ae77c64494176b5325e4d0389559",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "corn",
+      "kind": "sticker",
+      "file": "models/corn.glb",
+      "label": {
+        "en": "an ear of corn",
+        "fr": "un epi de mais"
+      },
+      "tags": [
+        "maize",
+        "cereal",
+        "crop"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/IhhB7kGaAQ",
+        "site": "Poly Pizza",
+        "title": "Corn",
+        "sha256_original": "fb3731a9814a2bdaeef2b15642119f03bcacbc48d96b5e05df5904aeebee7395",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "wheat",
+      "kind": "sticker",
+      "file": "models/wheat.glb",
+      "label": {
+        "en": "wheat",
+        "fr": "du ble"
+      },
+      "tags": [
+        "cereal",
+        "crop",
+        "grain"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/lPspzfC8Pu",
+        "site": "Poly Pizza",
+        "title": "Wheat",
+        "sha256_original": "b91e74eafc42666e7effe60f346fcbb211bfacad1e0c68476cf354d2727671f9",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "cabbage",
+      "kind": "sticker",
+      "file": "models/cabbage.glb",
+      "label": {
+        "en": "a cabbage",
+        "fr": "un chou"
+      },
+      "tags": [
+        "vegetable"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/6urnIRBhzr",
+        "site": "Poly Pizza",
+        "title": "Cabbage",
+        "sha256_original": "9786001e8bebad152f84b92ea01994d6cafe12d9e5c46c7737e9a1078c60d8a6",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "pepper",
+      "kind": "sticker",
+      "file": "models/pepper.glb",
+      "label": {
+        "en": "a pepper",
+        "fr": "un piment"
+      },
+      "tags": [
+        "vegetable",
+        "chili"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/fh3RxFIH3j",
+        "site": "Poly Pizza",
+        "title": "Pepper Green",
+        "sha256_original": "65967854336cfe7a3d24cb9988b5d1c8ef5f5fde6a7262770bf64b2dcc42c6e0",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "pumpkin",
+      "kind": "sticker",
+      "file": "models/pumpkin.glb",
+      "label": {
+        "en": "a pumpkin",
+        "fr": "une citrouille"
+      },
+      "tags": [
+        "vegetable",
+        "squash"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/bvLvqnU1jX",
+        "site": "Poly Pizza",
+        "title": "Pumpkin",
+        "sha256_original": "af4ae31ba704f8b05b69bec18726468feaf527a221e929bbfdf11d6b4c26bd0b",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "eggplant",
+      "kind": "sticker",
+      "file": "models/eggplant.glb",
+      "label": {
+        "en": "an eggplant",
+        "fr": "une aubergine"
+      },
+      "tags": [
+        "vegetable"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/QV0aZsjWPc",
+        "site": "Poly Pizza",
+        "title": "Eggplant",
+        "sha256_original": "ea841bdd7b4ca76831015138852df4f046c9b38de21447a99416078ddc0f8f92",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "mushroom",
+      "kind": "sticker",
+      "file": "models/mushroom.glb",
+      "label": {
+        "en": "a mushroom",
+        "fr": "un champignon"
+      },
+      "tags": [
+        "fungus"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/db1tjMhmiA",
+        "site": "Poly Pizza",
+        "title": "Mushroom",
+        "sha256_original": "bd77010f2d3844ec82b9f026e576f53b5b0e4abadf3ec7c5cbadef5864ac7e71",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bread",
+      "kind": "sticker",
+      "file": "models/bread.glb",
+      "label": {
+        "en": "a slice of bread",
+        "fr": "une tranche de pain"
+      },
+      "tags": [
+        "slice",
+        "food"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/luo9BHRaax",
+        "site": "Poly Pizza",
+        "title": "Bread",
+        "sha256_original": "2de0f2a1195f5f4e2c516f94702cddde849be653121c68ac8dff3895483775ba",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "cheese",
+      "kind": "sticker",
+      "file": "models/cheese.glb",
+      "label": {
+        "en": "a piece of cheese",
+        "fr": "un morceau de fromage"
+      },
+      "tags": [
+        "food",
+        "dairy"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/Z4BmZzAdcv",
+        "site": "Poly Pizza",
+        "title": "Cheese Cut",
+        "sha256_original": "74122d6fe27b8d5cdae880d2be661cac7f94a649cdc25e9723047c6b010395af",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "fish",
+      "kind": "sticker",
+      "file": "models/fish.glb",
+      "label": {
+        "en": "a fish",
+        "fr": "un poisson"
+      },
+      "tags": [
+        "river",
+        "sea"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/BEcU9rjiAq",
+        "site": "Poly Pizza",
+        "title": "Fish",
+        "sha256_original": "9607de8de8a0ac2d857f271272e70e6d8d3fd19852d979c2cfbe9eafe1e4fcc5",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "cow",
+      "kind": "sticker",
+      "file": "models/cow.glb",
+      "label": {
+        "en": "a cow",
+        "fr": "une vache"
+      },
+      "tags": [
+        "cattle",
+        "farm",
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/5XSc2Fka3F",
+        "site": "Poly Pizza",
+        "title": "Cow",
+        "sha256_original": "5bdb18da23e114c717a8739e7defc75b6bf3d1dd54e928c141a0286bf14aa4a8",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "sheep",
+      "kind": "sticker",
+      "file": "models/sheep.glb",
+      "label": {
+        "en": "a sheep",
+        "fr": "un mouton"
+      },
+      "tags": [
+        "farm",
+        "animal",
+        "wool"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/C39AUXUUes",
+        "site": "Poly Pizza",
+        "title": "Sheep",
+        "sha256_original": "91aedec323b54d42b802b065b2f5005daea527b0a379a9f3fe90f3258f3c2382",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "pig",
+      "kind": "sticker",
+      "file": "models/pig.glb",
+      "label": {
+        "en": "a pig",
+        "fr": "un cochon"
+      },
+      "tags": [
+        "farm",
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/TNvG3QUFlp",
+        "site": "Poly Pizza",
+        "title": "Pig",
+        "sha256_original": "4bb5fc230a35db446fa2ea043f77dfc077f0b21d6e59d0235b15f01d01b05525",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "horse",
+      "kind": "sticker",
+      "file": "models/horse.glb",
+      "label": {
+        "en": "a horse",
+        "fr": "un cheval"
+      },
+      "tags": [
+        "farm",
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/qvTrSG9pZF",
+        "site": "Poly Pizza",
+        "title": "Horse",
+        "sha256_original": "fae7a7ec91e0d6a33554efb896fac9c4e8c632644183bcb8cc962f673d3ce609",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "cat",
+      "kind": "sticker",
+      "file": "models/cat.glb",
+      "label": {
+        "en": "a cat",
+        "fr": "un chat"
+      },
+      "tags": [
+        "pet",
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/qKICY6xla2",
+        "site": "Poly Pizza",
+        "title": "Cat",
+        "sha256_original": "842c5f96c480b9a7800994345ed83be5e9ba5fc8e18be633f2b7cfe09cf8fef7",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "frog",
+      "kind": "sticker",
+      "file": "models/frog.glb",
+      "label": {
+        "en": "a frog",
+        "fr": "une grenouille"
+      },
+      "tags": [
+        "amphibian",
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/9Z2V8fpazF",
+        "site": "Poly Pizza",
+        "title": "Frog",
+        "sha256_original": "92dc96c90e7228676f8c43dc7711ba5ed5505029ebb2f6d4ad198d9e35bdbfe0",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "snake",
+      "kind": "sticker",
+      "file": "models/snake.glb",
+      "label": {
+        "en": "a snake",
+        "fr": "un serpent"
+      },
+      "tags": [
+        "reptile",
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/x9x0viZs8V",
+        "site": "Poly Pizza",
+        "title": "Snake",
+        "sha256_original": "70b4af1088dec939e167b07c0a5e69992a4851beac8bd24a9da1189b65ae101c",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "zebra",
+      "kind": "sticker",
+      "file": "models/zebra.glb",
+      "label": {
+        "en": "a zebra",
+        "fr": "un zebre"
+      },
+      "tags": [
+        "animal",
+        "savanna"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/iclPBR6SBZ",
+        "site": "Poly Pizza",
+        "title": "Zebra",
+        "sha256_original": "12c48d4d2e8fe43cf686a7debb613a51a805efbb0b1eee9a3d38328a9d516c9b",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "palm_tree",
+      "kind": "sticker",
+      "file": "models/palm_tree.glb",
+      "label": {
+        "en": "a palm tree",
+        "fr": "un palmier"
+      },
+      "tags": [
+        "tree",
+        "plant"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/A6cKJYFsIb",
+        "site": "Poly Pizza",
+        "title": "Palm Tree",
+        "sha256_original": "ae8c66e5e2206c5efd12c2cf96b9064f643076c2d8bac5f3c5f457b2ee6491ca",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bush",
+      "kind": "sticker",
+      "file": "models/bush.glb",
+      "label": {
+        "en": "a bush",
+        "fr": "un buisson"
+      },
+      "tags": [
+        "plant",
+        "shrub"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/ooG6CkLyE8",
+        "site": "Poly Pizza",
+        "title": "Bush",
+        "sha256_original": "917de9eee116cd439637abeca201ac0a823cb534c4618e15dcbca34d3a916782",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "cactus",
+      "kind": "sticker",
+      "file": "models/cactus.glb",
+      "label": {
+        "en": "a cactus",
+        "fr": "un cactus"
+      },
+      "tags": [
+        "plant",
+        "desert"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/HsEJgRLQWX",
+        "site": "Poly Pizza",
+        "title": "Cactus",
+        "sha256_original": "a4e4a3be9eb522874ce888c87216f48988da7c3cb8febcfef49c82b2adab351f",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "rock",
+      "kind": "sticker",
+      "file": "models/rock.glb",
+      "label": {
+        "en": "a rock",
+        "fr": "un rocher"
+      },
+      "tags": [
+        "stone",
+        "boulder"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/OQvi8PIZ40",
+        "site": "Poly Pizza",
+        "title": "Rocks",
+        "sha256_original": "f2085fb5edfe6ec33b7fe9dd8969fdc016900c18649b94c9ba703d8413cdcd97",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "log",
+      "kind": "sticker",
+      "file": "models/log.glb",
+      "label": {
+        "en": "a log",
+        "fr": "une buche"
+      },
+      "tags": [
+        "wood",
+        "trunk"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/L4E32Wee6C",
+        "site": "Poly Pizza",
+        "title": "Wood Log",
+        "sha256_original": "7c3489a6d7f39025dc86278f17ba005a62466061067a385fec88a61f79d03844",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "stump",
+      "kind": "sticker",
+      "file": "models/stump.glb",
+      "label": {
+        "en": "a tree stump",
+        "fr": "une souche"
+      },
+      "tags": [
+        "wood"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/nFvEbUX6LE",
+        "site": "Poly Pizza",
+        "title": "Tree Stump with Moss",
+        "sha256_original": "194f67985d88a6e4a0857971772a292ab517306c3f6c7820a7302bba4ee40803",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "hut",
+      "kind": "sticker",
+      "file": "models/hut.glb",
+      "label": {
+        "en": "a hut",
+        "fr": "une case"
+      },
+      "tags": [
+        "home",
+        "building"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/4MJWbyd6vw",
+        "site": "Poly Pizza",
+        "title": "Hut",
+        "sha256_original": "78276f984382c03465d1a4050a31f145484876f00b73d59e9ec2de64f0ae6f71",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "well",
+      "kind": "sticker",
+      "file": "models/well.glb",
+      "label": {
+        "en": "a well",
+        "fr": "un puits"
+      },
+      "tags": [
+        "water",
+        "village"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/QlqncKYxXb",
+        "site": "Poly Pizza",
+        "title": "Well",
+        "sha256_original": "8e5158984421cfd8ec5040a318a2627911a6dcd7e4b43172bdd7d36f367ad3db",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "windmill",
+      "kind": "sticker",
+      "file": "models/windmill.glb",
+      "label": {
+        "en": "a windmill",
+        "fr": "un moulin a vent"
+      },
+      "tags": [
+        "wind",
+        "mill"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/52yaPyaAAG",
+        "site": "Poly Pizza",
+        "title": "Tower Windmill",
+        "sha256_original": "a547212fff5b4c99b34ccea01adbc1dc8d820b83affbd006f1cf856cc14d98bd",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "barn",
+      "kind": "sticker",
+      "file": "models/barn.glb",
+      "label": {
+        "en": "a barn",
+        "fr": "une grange"
+      },
+      "tags": [
+        "farm",
+        "building"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/vSqQNA7ez6",
+        "site": "Poly Pizza",
+        "title": "Barn",
+        "sha256_original": "c7e19b37ecc74f24e121c822116b125f7a7eea6473943650ca05faca3ebdebc3",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "fence",
+      "kind": "sticker",
+      "file": "models/fence.glb",
+      "label": {
+        "en": "a fence",
+        "fr": "une cloture"
+      },
+      "tags": [
+        "farm",
+        "garden"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/e02PFKKhbr",
+        "site": "Poly Pizza",
+        "title": "Fence",
+        "sha256_original": "0c35f9fb6b9ff69501463834e3f6cf7d565979aa4caae19445344d87400c70c8",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bridge",
+      "kind": "sticker",
+      "file": "models/bridge.glb",
+      "label": {
+        "en": "a bridge",
+        "fr": "un pont"
+      },
+      "tags": [
+        "river",
+        "crossing"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/j4KsIuJYnq",
+        "site": "Poly Pizza",
+        "title": "Small Bridge",
+        "sha256_original": "055ec4fa6c401f655641894ee4b0bd360c28b7907bc00183ef3b1eabd6fc0890",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "tent",
+      "kind": "sticker",
+      "file": "models/tent.glb",
+      "label": {
+        "en": "a tent",
+        "fr": "une tente"
+      },
+      "tags": [
+        "camp"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/5Q7qIrfDxA",
+        "site": "Poly Pizza",
+        "title": "Tent",
+        "sha256_original": "2f3519156ebbd28ab47a3d8600cecfcbbea63cc25eba044effa154b280d87d48",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "signpost",
+      "kind": "sticker",
+      "file": "models/signpost.glb",
+      "label": {
+        "en": "a signpost",
+        "fr": "un panneau"
+      },
+      "tags": [
+        "sign",
+        "direction"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/3U2lj1gpeH",
+        "site": "Poly Pizza",
+        "title": "Signpost",
+        "sha256_original": "22dfa49158f1912622190d4e3c46d40f320e77fe742994e5b1f2839c75163697",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "police_car",
+      "kind": "sticker",
+      "file": "models/police_car.glb",
+      "label": {
+        "en": "a police car",
+        "fr": "une voiture de police"
+      },
+      "tags": [
+        "car",
+        "vehicle",
+        "police"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/BwwnUrWGmV",
+        "site": "Poly Pizza",
+        "title": "Police Car",
+        "sha256_original": "2ad6705f58bae2acf806eddb28acd9fc2ff6dc65a726575be5c180631b3132d0",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "truck",
+      "kind": "sticker",
+      "file": "models/truck.glb",
+      "label": {
+        "en": "a truck",
+        "fr": "un camion"
+      },
+      "tags": [
+        "vehicle",
+        "transport"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/cXw6oiFtZ8",
+        "site": "Poly Pizza",
+        "title": "Truck",
+        "sha256_original": "a5d107b5b06f8ca2d8d7e66ae6309f2e1a25cac577c5db8ebb661b3f0ca5ed8f",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "taxi",
+      "kind": "sticker",
+      "file": "models/taxi.glb",
+      "label": {
+        "en": "a taxi",
+        "fr": "un taxi"
+      },
+      "tags": [
+        "vehicle",
+        "transport"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/x43lOScTpN",
+        "site": "Poly Pizza",
+        "title": "Taxi",
+        "sha256_original": "14b2f982f8a501565702ecb56f917c82e9abae914fa3f76d2f622a8670598af1",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "boat",
+      "kind": "sticker",
+      "file": "models/boat.glb",
+      "label": {
+        "en": "a boat",
+        "fr": "un bateau"
+      },
+      "tags": [
+        "river",
+        "sea",
+        "transport"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/BgSZXwmm7k",
+        "site": "Poly Pizza",
+        "title": "Sail Boat",
+        "sha256_original": "dd0d959f66c058e2afcfc01227f80b83347b5105d324690596a0c0eb6e65fb95",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "coin",
+      "kind": "sticker",
+      "file": "models/coin.glb",
+      "label": {
+        "en": "a coin",
+        "fr": "une piece"
+      },
+      "tags": [
+        "money"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/QHZtj94fvh",
+        "site": "Poly Pizza",
+        "title": "Coin",
+        "sha256_original": "7b4e95e9f9ec58e4ca0334759ceb7dc63ac0db4666dc443d0f07058298569944",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "key",
+      "kind": "sticker",
+      "file": "models/key.glb",
+      "label": {
+        "en": "a key",
+        "fr": "une cle"
+      },
+      "tags": [
+        "lock"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/bg6e1lfNsO",
+        "site": "Poly Pizza",
+        "title": "Key",
+        "sha256_original": "2d447d3dbf30b91f8ff074e1c50773bb87270dde627c198339ec3021edcc0201",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "flag",
+      "kind": "sticker",
+      "file": "models/flag.glb",
+      "label": {
+        "en": "a flag",
+        "fr": "un drapeau"
+      },
+      "tags": [
+        "banner"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/FuOkF3WBrx",
+        "site": "Poly Pizza",
+        "title": "Flag",
+        "sha256_original": "ac75a6cb5328baf68fb1cad86204191f9717e20cfcccc600b3f10c4a1d260cbd",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "bell",
+      "kind": "sticker",
+      "file": "models/bell.glb",
+      "label": {
+        "en": "a bell",
+        "fr": "une cloche"
+      },
+      "tags": [
+        "ring",
+        "school"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/cILuaO115Y",
+        "site": "Poly Pizza",
+        "title": "Bell",
+        "sha256_original": "017f9ac626bc5a33a051caf5f4ccba841b6ca35c40a6143e71640c011603a18e",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "campfire",
+      "kind": "sticker",
+      "file": "models/campfire.glb",
+      "label": {
+        "en": "a campfire",
+        "fr": "un feu de camp"
+      },
+      "tags": [
+        "fire",
+        "flame"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/i6UFAevfcu",
+        "site": "Poly Pizza",
+        "title": "Campfire",
+        "sha256_original": "253660be472f72fb6c93d8deb6ee58759885049fd859bbad972444ee82511ede",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "guitar",
+      "kind": "sticker",
+      "file": "models/guitar.glb",
+      "label": {
+        "en": "a guitar",
+        "fr": "une guitare"
+      },
+      "tags": [
+        "music",
+        "instrument"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/5Fp8gpomrb",
+        "site": "Poly Pizza",
+        "title": "Guitar",
+        "sha256_original": "7122adbbad2c126cf56c1398514415c40655551d718548262b717d3123f57d99",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "sofa",
+      "kind": "sticker",
+      "file": "models/sofa.glb",
+      "label": {
+        "en": "a sofa",
+        "fr": "un canape"
+      },
+      "tags": [
+        "couch",
+        "furniture"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/X5kQPKzAWp",
+        "site": "Poly Pizza",
+        "title": "Sofa",
+        "sha256_original": "0a81a9e0532f1ccb51a39d6a71bbc3fa2506dac22fa762b58194ed4741c2f5a0",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "fridge",
+      "kind": "sticker",
+      "file": "models/fridge.glb",
+      "label": {
+        "en": "a fridge",
+        "fr": "un refrigerateur"
+      },
+      "tags": [
+        "kitchen",
+        "cold"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/8sjRm8fnHh",
+        "site": "Poly Pizza",
+        "title": "Kitchen Fridge",
+        "sha256_original": "65437d539065381839fdfdff5ea10b7133d28e762e38ff1b6d7e3723f798e408",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "toilet",
+      "kind": "sticker",
+      "file": "models/toilet.glb",
+      "label": {
+        "en": "a toilet",
+        "fr": "des toilettes"
+      },
+      "tags": [
+        "sanitation",
+        "hygiene"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/WAu50yGFVt",
+        "site": "Poly Pizza",
+        "title": "Toilet",
+        "sha256_original": "c81348cadc00f84f8cd5df3db31e872280a6b969feb993f45b385ff491ead29b",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "solar_panel",
+      "kind": "sticker",
+      "file": "models/solar_panel.glb",
+      "label": {
+        "en": "a solar panel",
+        "fr": "un panneau solaire"
+      },
+      "tags": [
+        "energy",
+        "power"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/ah89Y79JdT",
+        "site": "Poly Pizza",
+        "title": "Solar Panel",
+        "sha256_original": "2e7d429ad216bb8d2ac08d6d11c4d56359264ee1067d8b32726c387f284dd2ff",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "stool",
+      "kind": "sticker",
+      "file": "models/stool.glb",
+      "label": {
+        "en": "a stool",
+        "fr": "un tabouret"
+      },
+      "tags": [
+        "seat",
+        "furniture"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/TvaOenUAni",
+        "site": "Poly Pizza",
+        "title": "Stool",
+        "sha256_original": "f17ca68ee52a5c5f8dcb2b919ac580483ecbb53da26c2d1dcde4f97c7c409c6d",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "shelf",
+      "kind": "sticker",
+      "file": "models/shelf.glb",
+      "label": {
+        "en": "a shelf",
+        "fr": "une etagere"
+      },
+      "tags": [
+        "furniture",
+        "storage"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/TDgvIuorcX",
+        "site": "Poly Pizza",
+        "title": "Shelf Tall",
+        "sha256_original": "e57a99b889abb509aee0773adac4a3d6cbddca742f0f7fad614a06408200bb29",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "window",
+      "kind": "sticker",
+      "file": "models/window.glb",
+      "label": {
+        "en": "a window",
+        "fr": "une fenetre"
+      },
+      "tags": [
+        "glass",
+        "house"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/n88WAcjzTv",
+        "site": "Poly Pizza",
+        "title": "Window Small",
+        "sha256_original": "08a621c03caf8a1dec0b384b1779a9b651fa22a723d9e3eac0d7368318209cbb",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "pine_tree",
+      "kind": "sticker",
+      "file": "models/pine_tree.glb",
+      "label": {
+        "en": "a pine tree",
+        "fr": "un pin"
+      },
+      "tags": [
+        "tree",
+        "forest"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/79gmlLnweB",
+        "site": "Poly Pizza",
+        "title": "Pine",
+        "sha256_original": "240e6f60c5b106a892c80490d7c710f20ef902b328b5e173c0a567334e4df972",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "traffic_light",
+      "kind": "sticker",
+      "file": "models/traffic_light.glb",
+      "label": {
+        "en": "a traffic light",
+        "fr": "un feu tricolore"
+      },
+      "tags": [
+        "street",
+        "road"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/lg9AKWejnF",
+        "site": "Poly Pizza",
+        "title": "Traffic Light",
+        "sha256_original": "948cae85241d59b35bde0e585e6da6894055da791efa37a06cd75eac82786079",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "water_tower",
+      "kind": "sticker",
+      "file": "models/water_tower.glb",
+      "label": {
+        "en": "a water tower",
+        "fr": "un chateau d'eau"
+      },
+      "tags": [
+        "water",
+        "village"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/tMK8bhapAK",
+        "site": "Poly Pizza",
+        "title": "Water Tower",
+        "sha256_original": "d340f6c9d872bdd2eb8cba3f1192c1a745910eddd99fadcf90294cf61c5d141d",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "silo",
+      "kind": "sticker",
+      "file": "models/silo.glb",
+      "label": {
+        "en": "a silo",
+        "fr": "un silo"
+      },
+      "tags": [
+        "farm",
+        "grain"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/5GhLrv5Ce3",
+        "site": "Poly Pizza",
+        "title": "Silo",
+        "sha256_original": "5894991c0371129fa12b858181b60dfb2c732494c07fa2a5b3afbba0f25d4e1d",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "hay_bale",
+      "kind": "sticker",
+      "file": "models/hay_bale.glb",
+      "label": {
+        "en": "a hay bale",
+        "fr": "une botte de foin"
+      },
+      "tags": [
+        "farm",
+        "straw"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/Yu8TOERkpw",
+        "site": "Poly Pizza",
+        "title": "Hay",
+        "sha256_original": "a7b39cae2cbd0839647c23c597a4ff64cb3a1086529e78c0169614f4a42655ed",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "can",
+      "kind": "sticker",
+      "file": "models/can.glb",
+      "label": {
+        "en": "a tin can",
+        "fr": "une boite de conserve"
+      },
+      "tags": [
+        "tin",
+        "food"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/YnowJvWqxE",
+        "site": "Poly Pizza",
+        "title": "Can",
+        "sha256_original": "66ea638e8c12f1c9efca4f6081ff864e689c5499ae654ecc86c7940256ea21ee",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "spoon",
+      "kind": "sticker",
+      "file": "models/spoon.glb",
+      "label": {
+        "en": "a spoon",
+        "fr": "une cuillere"
+      },
+      "tags": [
+        "kitchen",
+        "cutlery"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/eqvrf6TrB6",
+        "site": "Poly Pizza",
+        "title": "Spoon",
+        "sha256_original": "083c09f6d86f7aa0d82254e347e158838ab2b272aca509275546d5477e172776",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "fork",
+      "kind": "sticker",
+      "file": "models/fork.glb",
+      "label": {
+        "en": "a fork",
+        "fr": "une fourchette"
+      },
+      "tags": [
+        "kitchen",
+        "cutlery"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/S590GNguL2",
+        "site": "Poly Pizza",
+        "title": "Utensil Fork",
+        "sha256_original": "c5747dad86ba5c4dd5cb0c0f928ad0d47614ed84d8d87ed1ea0b091ecece2233",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "llama",
+      "kind": "sticker",
+      "file": "models/llama.glb",
+      "label": {
+        "en": "a llama",
+        "fr": "un lama"
+      },
+      "tags": [
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/JxVJ9rfWGy",
+        "site": "Poly Pizza",
+        "title": "Llama",
+        "sha256_original": "2c4e4eb34348409edfe6ee87ad0260b9e6b6dec96902a979e3a9d9c181224bf2",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "deer",
+      "kind": "sticker",
+      "file": "models/deer.glb",
+      "label": {
+        "en": "a deer",
+        "fr": "un cerf"
+      },
+      "tags": [
+        "animal",
+        "forest"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/T6Cs7tmMHJ",
+        "site": "Poly Pizza",
+        "title": "Deer",
+        "sha256_original": "fabf360b22eaccccd056ee99d698a9562d15aa245821f96e4fbad6db3751604e",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "whale",
+      "kind": "sticker",
+      "file": "models/whale.glb",
+      "label": {
+        "en": "a whale",
+        "fr": "une baleine"
+      },
+      "tags": [
+        "sea",
+        "animal"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/JGFwp6xWgk",
+        "site": "Poly Pizza",
+        "title": "Whale",
+        "sha256_original": "153d6814c67039378fce22d4c347ed35d7febf2bedac866de91cf9b5dd7945f2",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "paddle",
+      "kind": "sticker",
+      "file": "models/paddle.glb",
+      "label": {
+        "en": "a paddle",
+        "fr": "une pagaie"
+      },
+      "tags": [
+        "boat",
+        "river"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/XLwljDJQZ7",
+        "site": "Poly Pizza",
+        "title": "Raft Paddle",
+        "sha256_original": "077215574dd537a1951e4faaeb0ed9742545388530d460d426d10ba3a2238a94",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "cake",
+      "kind": "sticker",
+      "file": "models/cake.glb",
+      "label": {
+        "en": "a cake",
+        "fr": "un gateau"
+      },
+      "tags": [
+        "food",
+        "party"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/38GEFBlOXw",
+        "site": "Poly Pizza",
+        "title": "Cake Birthday",
+        "sha256_original": "1542c71c41c779fe9fb10ed874f7e9ca38d9877f9fd0a8af793077e90b6af35c",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    },
+    {
+      "id": "donut",
+      "kind": "sticker",
+      "file": "models/donut.glb",
+      "label": {
+        "en": "a donut",
+        "fr": "un beignet"
+      },
+      "tags": [
+        "food",
+        "snack"
+      ],
+      "source": {
+        "author": "Quaternius",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/UQRRrsP3wj",
+        "site": "Poly Pizza",
+        "title": "Donut",
+        "sha256_original": "cb8d0edad3f280cf4157d5b7253b6ac6355a5cf86ca8c018bd5ac9c722719728",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+      }
+    },
+    {
+      "id": "honey",
+      "kind": "sticker",
+      "file": "models/honey.glb",
+      "label": {
+        "en": "a honey jar",
+        "fr": "un pot de miel"
+      },
+      "tags": [
+        "food",
+        "bee"
+      ],
+      "source": {
+        "author": "Kenney",
+        "license": "CC0-1.0",
+        "page": "https://poly.pizza/m/p92t5dG8Zd",
+        "site": "Poly Pizza",
+        "title": "Honey",
+        "sha256_original": "2a01edf476a57cf02333a471445c3c5c128a924983d81d379ba0a2f1d6ca916f",
+        "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+      }
+    }
+  ]
+}
