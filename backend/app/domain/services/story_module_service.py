@@ -86,6 +86,13 @@ from app.domain.models.module import Module
 from app.domain.models.module_unit import ModuleUnit
 from app.domain.models.story_course import StoryCourseRecord
 from app.domain.services import story_repair as repair
+from app.domain.services.story_assets import (
+    build_catalogue,
+    figures_for_unit,
+    load_catalogue,
+    rebind_document,
+    save_catalogue,
+)
 from app.domain.services.story_bible import (
     DEFAULTED,
     BibleModule,
@@ -601,6 +608,32 @@ async def module_story_is_fresh(
     return await _rally_quizzes_unchanged(session, record.source_rows)
 
 
+async def _bind_catalogue(session: AsyncSession, module_id: uuid.UUID, doc: dict[str, Any]) -> None:
+    """Bind the merged story's props to the module's saved catalogue (#2709).
+
+    A re-merge rebuilds the document from its chapters: the binding is
+    applied again from the saved catalogue, deterministically, so it
+    survives. Never fails the merge.
+    """
+    try:
+        # A savepoint: a missing table or a failed write rolls back to here,
+        # never the merge's own transaction.
+        async with session.begin_nested():
+            catalogue = await load_catalogue(session, module_id)
+            if not catalogue or not catalogue.get("entries"):
+                return
+            result = rebind_document(
+                doc, catalogue["entries"], binding=catalogue.get("binding") or {}
+            )
+            if result.bound:
+                catalogue["binding"] = {**(catalogue.get("binding") or {}), **result.bound}
+                await save_catalogue(session, module_id, catalogue)
+    except Exception as exc:
+        logger.warning(
+            "Story asset binding skipped", module_id=str(module_id), error=str(exc)[:300]
+        )
+
+
 # --------------------------------------------------------------------------
 # Figures that still exist (#2681: dead figures are never offered)
 # --------------------------------------------------------------------------
@@ -735,6 +768,8 @@ class _Run:
     lesson_rows: dict[uuid.UUID, GeneratedContent] = field(default_factory=dict)
     quiz_rows: dict[uuid.UUID, GeneratedContent] = field(default_factory=dict)
     figures: dict[uuid.UUID, list[dict[str, Any]] | None] = field(default_factory=dict)
+    #: #2709: the module's catalogue of the course's own pictures (``None``: not built).
+    catalogue: dict[str, Any] | None = None
     request: PlanRequest | None = None
     plan: EpisodePlan | None = None
     told: list[str] = field(default_factory=list)
@@ -805,6 +840,7 @@ class ModuleStoryService:
         max_repair_calls: int = MAX_REPAIR_CALLS,
         figure_storage: Any = None,
         stem_judge: Any = None,
+        asset_retriever: Any = None,
     ) -> None:
         if concurrency < 1:
             raise ValueError("concurrency must be at least 1")
@@ -823,6 +859,9 @@ class ModuleStoryService:
         self.stem_judge = stem_judge
         #: ``object_exists(key)`` of the figure binaries; ``None``: not checked.
         self.figure_storage = figure_storage
+        #: #2709: a ``SemanticRetriever`` for the course-figure search of the
+        #: asset catalogue (embeddings); ``None``: the lessons' own figures only.
+        self.asset_retriever = asset_retriever
 
     async def get_or_generate_module_story(
         self,
@@ -997,9 +1036,11 @@ class ModuleStoryService:
         run.check_deadline()
         async with session_factory() as session:
             await self._read_sources(run, session, units, pins)
+            run.catalogue = await self._build_catalogue(run, session, lessons)
             run.request = self._plan_request(
                 run, ctx, units, previous_module, course=course, module_info=module_info
             )
+            run.request.catalogue = run.catalogue
             plan_prompt = _system_prompt("plan", course, language, country, module_title)
             run.plan = await self.plans.get_or_create(
                 session, run.request, system_prompt=plan_prompt, force=force_regenerate
@@ -1007,7 +1048,14 @@ class ModuleStoryService:
             run.count("plan", run.plan.calls)
             if not force_regenerate:
                 run.packs_kept = await stored_packs(session, module_id, language)
-            if self.figure_storage is not None:
+            if run.catalogue is not None:
+                # #2709: the chapters are offered the catalogue (the lessons' own
+                # figures first), not only what their lesson cites.
+                for unit in lessons:
+                    run.figures[unit.module_unit_id] = figures_for_unit(
+                        run.catalogue, unit.module_unit_id
+                    )
+            elif self.figure_storage is not None:
                 for unit in lessons:
                     row = run.lesson_rows[unit.module_unit_id]
                     refs = [
@@ -1256,6 +1304,60 @@ class ModuleStoryService:
             content_id=str(getattr(quiz, "id", "")),
         )
 
+    async def _build_catalogue(
+        self, run: _Run, session: AsyncSession, lessons: Sequence[StoryUnit]
+    ) -> dict[str, Any] | None:
+        """The module's catalogue of the course's pictures, built and saved (#2709).
+
+        Code only: no model call (an embedding search, at most). Never fails
+        the story: on any error the chapters are offered what their lessons cite.
+        """
+        if self.figure_storage is None:
+            return None
+        try:
+            async with session.begin_nested():
+                from app.domain.models.course import Course  # noqa: PLC0415
+
+                course = await session.get(Course, run.course_id) if run.course_id else None
+                units = [
+                    {
+                        "unit_id": u.module_unit_id,
+                        "unit_number": u.unit_number,
+                        "title": u.title,
+                        "lesson_id": run.lesson_rows[u.module_unit_id].id,
+                        "content": run.lesson_rows[u.module_unit_id].content or {},
+                    }
+                    for u in lessons
+                ]
+                catalogue = await build_catalogue(
+                    session,
+                    module_id=run.module_id,
+                    course_source=course.rag_collection_id if course is not None else None,
+                    course_id=run.course_id,
+                    units=units,
+                    storage=self.figure_storage,
+                    retriever=self.asset_retriever,
+                    previous=await load_catalogue(session, run.module_id),
+                )
+                await save_catalogue(session, run.module_id, catalogue)
+            await session.commit()
+            logger.info(
+                "Story asset catalogue built",
+                module_id=str(run.module_id),
+                entries=len(catalogue["entries"]),
+                gaps=len(catalogue["gaps"]),
+            )
+            return catalogue
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Story asset catalogue unavailable; chapters use their lessons' figures",
+                module_id=str(run.module_id),
+                error=str(exc)[:300],
+            )
+            return None
+
     async def _read_sources(
         self,
         run: _Run,
@@ -1434,7 +1536,7 @@ class ModuleStoryService:
             beat_digest=plan.beat_digest(unit.unit_number, run.request),
             figures=run.figures.get(unit.module_unit_id),
             # The plan's props; the chapters told before add theirs (_neighbours).
-            known_props=plan_props(plan.plan),
+            known_props=plan_props(plan.plan, run.catalogue),
         )
 
     def _mcqs(self, run: _Run, refs: list[str]) -> list[repair.QuizMcq]:
@@ -1730,7 +1832,7 @@ class ModuleStoryService:
                 next_doc = _usable_doc(rows.get(after.module_unit_id))
                 if next_doc is not None:
                     chapter.next_scene = scene_summary(next_doc, lang, last=False)
-        known = plan_props(run.plan.plan)
+        known = plan_props(run.plan.plan, run.catalogue)
         seen = {p["id"] for p in known}
         for u in earlier:
             doc = docs.get(u.unit_number)
@@ -2029,6 +2131,7 @@ class ModuleStoryService:
                 **{**ctx.__dict__, "episode_title": plan.plan.get("episode_title")}
             )
             doc = assemble_module_story(ctx, sources, rally_doc)
+            await _bind_catalogue(session, ctx.module_id, doc)
             report = validate_module_story(doc)
             doc["checks"] = report.checks.model_dump(mode="json")
             entries: list[dict[str, Any]] = [

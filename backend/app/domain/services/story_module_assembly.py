@@ -771,6 +771,7 @@ def _merge_props(merged: list[dict[str, Any]], doc: dict[str, Any]) -> None:
             same["chapters"] = sorted({*same.get("chapters", []), *prop.get("chapters", [])})
             if not same.get("figure") and prop.get("figure"):
                 same["figure"] = copy.deepcopy(prop["figure"])
+                same["kind"], same["educational"] = "figure", True
             continue
         new_id, n = prop["id"], 2
         while any(p["id"] == new_id for p in merged):

@@ -9,6 +9,8 @@ import {
 import { prewarmPage } from "./prewarm";
 import { apiFetch } from "@/lib/api";
 import type { ModuleUnitsResponse } from "@/lib/api";
+import { savesData, storyFigureUrls } from "@/lib/story-course/media";
+import type { StoryCourse } from "@/lib/story-course/types";
 import {
   isStoryDocument,
   isStoryGenerating,
@@ -447,11 +449,36 @@ async function downloadModuleStory(
       content: data,
       cachedAt: Date.now(),
     });
+    await warmStoryFigures(data, signal);
     return "stored";
   } catch (err: unknown) {
     // Non-fatal, like any other content that could not be stored.
     console.warn(`Failed to store the story of module ${moduleId}:`, err);
     return "none";
+  }
+}
+
+/** At most this many figures are fetched for one story (a module has a handful). */
+const MAX_STORY_FIGURES = 24;
+
+/**
+ * Fetch the course figures and lesson illustrations the story shows (#2709),
+ * so the service worker has them for offline play. Only on this explicit
+ * download, never when the learner saves data, and never fatal: a picture
+ * that cannot be fetched is a close-up without its picture, as before.
+ * `no-cors`: a lesson illustration may be redirected to a CDN, which comes
+ * back opaque and is cached as such.
+ */
+async function warmStoryFigures(story: StoryCourse, signal: AbortSignal): Promise<void> {
+  if (savesData()) return;
+  for (const url of storyFigureUrls(story).slice(0, MAX_STORY_FIGURES)) {
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    try {
+      await fetch(url, { signal, mode: "no-cors" });
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      console.warn(`Failed to fetch a story figure (${url}):`, err);
+    }
   }
 }
 

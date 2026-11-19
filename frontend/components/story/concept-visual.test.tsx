@@ -43,6 +43,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("ConceptVisual — lesson illustrations (#2709)", () => {
+  const id = "22222222-2222-4222-8222-222222222222";
+
+  it("draws an illustration from its own endpoint, credited as made with AI", () => {
+    renderVisual({
+      visual: "image",
+      params: { generated_image_id: id, alt: { en: "Two tables", fr: "Deux tables" } },
+      caption: "Les tables de Shepard",
+      language: "fr",
+    });
+    const image = screen.getByRole("img", { name: "Deux tables" });
+    expect(image.getAttribute("src")).toContain(`/api/v1/images/${id}/data`);
+    expect(screen.getByText("Les tables de Shepard")).toBeTruthy();
+    expect(screen.getByText("Illustration du cours (IA)")).toBeTruthy();
+  });
+
+  it("says so, with its caption, when the illustration cannot load", () => {
+    renderVisual({
+      visual: "image",
+      params: { generated_image_id: id },
+      caption: "Les tables de Shepard",
+      language: "fr",
+    });
+    fireEvent.error(document.querySelector("img")!);
+    expect(document.querySelector("[data-figure-failed]")).toBeTruthy();
+    expect(screen.getByText("Les tables de Shepard")).toBeTruthy();
+  });
+
+  it("draws nothing for a step that names no picture", () => {
+    const { container } = renderVisual({ visual: "image", params: {}, language: "fr" });
+    expect(container.textContent).toBe("");
+  });
+});
+
 describe("ConceptVisual — source figures (X4)", () => {
   it("draws an image step with the lesson's SourceImage, in the learner's language", () => {
     renderVisual({

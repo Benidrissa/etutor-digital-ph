@@ -176,6 +176,14 @@ def rally_range(request: PlanRequest) -> tuple[int, int]:
     return min(3, top), top
 
 
+def _figures_block(request: PlanRequest) -> str:
+    """The course's own pictures the module may use (#2709), built by code before this call."""
+    from app.domain.services.story_assets import plan_figures_block  # noqa: PLC0415
+
+    block = plan_figures_block(request.catalogue)
+    return f"=== COURSE FIGURES ===\n{block}" if block else ""
+
+
 def build_plan_user_message(request: PlanRequest) -> str:
     """The plan call's user message (design §2)."""
     n = len(request.lessons)
@@ -224,7 +232,9 @@ def build_plan_user_message(request: PlanRequest) -> str:
         ),
         '- "props": at most 4; each is planted in one chapter ("planted": its unit) and paid'
         ' off later ("paid_off": a later unit or "rally"); "query" is 2 to 5 English words a'
-        ' picture search needs; "kind" is "real" or "sticker". "en" and "fr" are the name'
+        ' picture search needs; "kind" is "real" or "sticker" — or "figure" with "figure": "A1"'
+        " when a COURSE FIGURES entry shows this very thing (then use it: the course owns the picture). "
+        '"en" and "fr" are the name'
         ' tag: a short noun with its article, at most 4 words and 40 characters ("the'
         ' jar", "le bocal"), never a description ("le bocal fermé avec quelque chose de'
         ' gris" is wrong).',
@@ -256,6 +266,7 @@ def build_plan_user_message(request: PlanRequest) -> str:
             request_line,
             _bible_block(request),
             _fact_sheets(request),
+            _figures_block(request),
             _questions(request),
             "=== OUTPUT ===\nReturn ONE JSON object with exactly these keys:\n"
             + output
