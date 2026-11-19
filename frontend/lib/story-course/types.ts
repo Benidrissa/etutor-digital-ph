@@ -126,6 +126,8 @@ export interface PropFigure {
   /** ...or a lesson illustration made with AI (generated_images, #2709): one of the two. */
   generated_image_id?: string;
   figure_number?: string;
+  /** Ask for the original picture, not the `?lang=` variant (a page capture, or a variant of unknown size). */
+  original?: boolean;
   /** source_images.image_hash: finds the figure again after a re-index changes its id. */
   image_hash?: string;
   alt?: TextObject;
