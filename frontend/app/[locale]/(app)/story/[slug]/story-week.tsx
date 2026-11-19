@@ -9,11 +9,16 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 
-import { StoryPlayer } from "@/components/story/story-player";
 import { getStoryCourse } from "@/lib/story-course/api";
 import type { StoryCourse } from "@/lib/story-course/types";
+
+// The player loads on demand (#2738): the skeleton shows while the story is
+// fetched and while the player's chunk comes.
+const StoryPlayer = lazy(() =>
+  import("@/components/story/story-player").then((m) => ({ default: m.StoryPlayer })),
+);
 
 const cacheKey = (slug: string) => `story-course:${slug}`;
 
@@ -79,18 +84,24 @@ export function StoryWeek({ slug }: { slug: string }) {
     );
   }
 
-  if (!course) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-8" aria-busy="true">
-        <div className="h-8 w-2/3 animate-pulse rounded bg-gray-200" />
-        <div className="mt-4 space-y-3">
-          {[0, 1, 2, 3].map((key) => (
-            <div key={key} className="h-16 animate-pulse rounded-lg bg-gray-200" />
-          ))}
-        </div>
-      </main>
-    );
-  }
+  if (!course) return <StoryWeekSkeleton />;
 
-  return <StoryPlayer course={course} />;
+  return (
+    <Suspense fallback={<StoryWeekSkeleton />}>
+      <StoryPlayer course={course} />
+    </Suspense>
+  );
+}
+
+function StoryWeekSkeleton() {
+  return (
+    <main className="mx-auto max-w-2xl px-4 py-8" aria-busy="true">
+      <div className="h-8 w-2/3 animate-pulse rounded bg-gray-200" />
+      <div className="mt-4 space-y-3">
+        {[0, 1, 2, 3].map((key) => (
+          <div key={key} className="h-16 animate-pulse rounded-lg bg-gray-200" />
+        ))}
+      </div>
+    </main>
+  );
 }

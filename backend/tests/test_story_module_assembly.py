@@ -35,7 +35,7 @@ from app.domain.services import story_module_assembly as assembly
 from app.domain.services import story_repair as repair
 from app.domain.services.story_bible import StoryBible, doc_cast, doc_facts, doc_places
 from app.domain.services.story_course_validator import validate_story_course
-from app.domain.services.story_metrics import ASSET_CODES
+from app.domain.services.story_metrics import ASSET_CODES, PICTURE_CODES
 from app.domain.services.story_module_assembly import (
     ChapterSource,
     ModuleStoryContext,
@@ -46,6 +46,9 @@ from app.domain.services.story_module_assembly import (
     validate_module_story,
 )
 from tests import test_story_screenplay_module as screenplay
+
+# #2708 and #2750: the document-level warnings of a module story, named (never a blanket).
+DOCUMENT_CODES = ASSET_CODES | PICTURE_CODES
 
 FIXTURES = Path(__file__).parent / "fixtures"
 MODULE_FIXTURE = FIXTURES / "module_story_chapters.json"
@@ -328,10 +331,10 @@ def test_the_fixture_module_validates_with_zero_errors_and_zero_warnings(fixture
     doc = assemble(fixture, language)
     report = validate_module_story(doc)
     assert report.ok, [e.model_dump() for e in report.errors]
-    others = [w for w in report.warnings if w.code not in ASSET_CODES]  # #2708
+    others = [w for w in report.warnings if w.code not in DOCUMENT_CODES]  # #2708
     assert report.errors == [] and others == [], [w.model_dump() for w in others]
     direct = validate_story_course(StoryCourse.model_validate(json.loads(json.dumps(doc))))
-    assert direct.ok and [w for w in direct.warnings if w.code not in ASSET_CODES] == []
+    assert direct.ok and [w for w in direct.warnings if w.code not in DOCUMENT_CODES] == []
     # 3 + 3 + 3 course questions and 2 of the packs' own, then the rally's 3.
     assert report.checks.questions == len(doc["questions"]) == 9 + 2 + 3
 
@@ -734,7 +737,7 @@ def test_an_unusable_chapter_becomes_a_placeholder(fixture, spoil):
     report = validate_module_story(module)
     assert report.ok, [e.model_dump() for e in report.errors]
     # Chapter 1.2 holds the episode's one game: until it is ready, a warning.
-    assert {w.code for w in report.warnings} - ASSET_CODES <= {"missing_minigame"}
+    assert {w.code for w in report.warnings} - DOCUMENT_CODES <= {"missing_minigame"}
 
 
 @pytest.mark.parametrize("spoil", SPOILERS[:2] + SPOILERS[4:], ids=lambda f: f.__name__.strip("_"))

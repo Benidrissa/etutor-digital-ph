@@ -16,9 +16,11 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.domain.services.story_poe import is_bet, stimulus_gaps
+from app.api.v1.schemas.story_course import DRAWN_VISUALS
+from app.domain.services.story_poe import is_bet, is_demo, stimulus_gaps
 from app.domain.services.story_props import fold
 
 LINE_TYPES = ("say", "narrate")
@@ -29,6 +31,21 @@ ASSET_CODES = frozenset(
 )
 #: #2711: only a story with a stimulus on its questions, or told with bets, can raise these.
 POE_CODES = frozenset({"stimulus_not_shown", "few_acts"})
+#: #2750, "the picture carries the idea": warnings on module stories, never a repair
+#: trigger (calibrated first) and never part of what ``outcome_rank`` counts.
+PICTURE_CODES = frozenset(
+    {"card_without_picture", "beat_out_of_order", "line_run_over_3", "demo_number_not_in_facts"}
+)
+
+#: The longest run of lines the learner may read with nothing changing on screen (#2750).
+MAX_LINES_WITHOUT_CHANGE = 3
+#: What a step's ``cues`` (#2739) may do that the learner sees: a move or a costume
+#: change breaks a run of lines. Read loosely: no cue contract is merged yet.
+VISIBLE_CUES = frozenset(
+    {"move", "walk", "enter", "exit", "turn", "costume", "pose", "mood", "camera", "frame"}
+)
+#: What a cue may be called when it points at a machine part or a prop (#2740).
+POINTING_CUES = frozenset({"highlight", "point"})
 
 #: A line that points at something: "look", "regardez", "voici"...
 DEIXIS_RE = re.compile(
@@ -90,6 +107,7 @@ class Step:
     index: int
     step: dict[str, Any]
     path: str
+    scene: int = 0
 
     @property
     def type(self) -> str:
@@ -106,7 +124,7 @@ def _steps(doc: dict[str, Any]) -> list[Step]:
                     f"chapters[{chapter.get('id')}].scenes[{scene.get('id', s_index)}]"
                     f".steps[{t_index}]"
                 )
-                out.append(Step(c_index, position, step, path))
+                out.append(Step(c_index, position, step, path, s_index))
                 position += 1
     return out
 
@@ -268,17 +286,54 @@ class Finding:
     message: str
 
 
-def dangling_deixis(doc: dict[str, Any]) -> list[Finding]:
-    """A "look / regardez / voici" line with no ``show`` within two steps."""
-    out: list[Finding] = []
+def _cue_names(step: dict[str, Any]) -> set[str]:
+    """The kinds of the cues of ``step`` (``cues`` of #2739), read loosely: strings or dicts."""
+    cues = step.get("cues")
+    names: set[str] = set()
+    for cue in cues if isinstance(cues, list) else []:
+        if isinstance(cue, str):
+            names.add(cue.lower())
+        elif isinstance(cue, dict):
+            for key in ("type", "kind", "op", "do"):
+                if isinstance(cue.get(key), str):
+                    names.add(cue[key].lower())
+    return names
+
+
+def _has_cues(step: dict[str, Any]) -> bool:
+    cues = step.get("cues")
+    return isinstance(cues, list) and bool(cues)
+
+
+def _points_at_something(step: dict[str, Any]) -> bool:
+    """A prop in the step's ``props`` or a highlight cue (#2740)."""
+    props = step.get("props")
+    return (isinstance(props, list) and bool(props)) or bool(_cue_names(step) & POINTING_CUES)
+
+
+def _by_chapter(doc: dict[str, Any]) -> dict[int, list[Step]]:
     chapters: dict[int, list[Step]] = {}
     for item in _steps(doc):
         chapters.setdefault(item.chapter, []).append(item)
-    for items in chapters.values():
+    return chapters
+
+
+def dangling_deixis(doc: dict[str, Any]) -> list[Finding]:
+    """A "look / regardez / voici" line with nothing pointed at.
+
+    A chapter with no cue is judged as before: a ``show`` within two steps. A
+    chapter with at least one step carrying ``cues`` (#2750) also accepts a prop
+    in the line's ``props`` or a machine highlight.
+    """
+    out: list[Finding] = []
+    for items in _by_chapter(doc).values():
+        with_cues = any(_has_cues(i.step) for i in items)
         for position, item in enumerate(items):
             if item.type not in LINE_TYPES:
                 continue
             if not any(DEIXIS_RE.search(str(item.step.get(lang) or "")) for lang in ("en", "fr")):
+                continue
+            if with_cues and _points_at_something(item.step):
                 continue
             near = items[max(position - DEIXIS_WINDOW, 0) : position + DEIXIS_WINDOW + 1]
             if not any(n.type == "show" for n in near):
@@ -288,6 +343,220 @@ def dangling_deixis(doc: dict[str, Any]) -> list[Finding]:
                         item.path,
                         "this line says to look at something but nothing is shown within"
                         f" {DEIXIS_WINDOW} steps",
+                    )
+                )
+    return out
+
+
+# -- "The picture carries the idea" (#2750) ------------------------------------------
+
+
+def _is_card(step: dict[str, Any]) -> bool:
+    return step.get("type") == "concept" and not _is_situation(step)
+
+
+def _taught(step: dict[str, Any]) -> set[int]:
+    value = step.get("teaches")
+    values = value if isinstance(value, list) else [value]
+    out = set()
+    for v in values:
+        if isinstance(v, str) and v.strip().isdigit():
+            v = int(v.strip())
+        if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+            out.add(v)
+    return out
+
+
+def _is_picture(doc: dict[str, Any], step: dict[str, Any]) -> bool:
+    """A ``show`` of a figure, a demo or another drawn visual, or a close-up that has art."""
+    if step.get("type") != "show":
+        return False
+    visual = step.get("visual")
+    if visual == "prop":
+        prop = (step.get("params") or {}).get("prop")
+        return bool(prop) and has_art(doc, str(prop))
+    return visual == "image" or is_demo(step) or visual in DRAWN_VISUALS
+
+
+def card_without_picture(doc: dict[str, Any]) -> list[Finding]:
+    """A concept card with no picture of its own or shown since the previous card.
+
+    An approximation: it knows a picture is there, not which idea it shows.
+    """
+    out: list[Finding] = []
+    for items in _by_chapter(doc).values():
+        seen = False
+        for item in items:
+            if _is_picture(doc, item.step):
+                seen = True
+            elif _is_card(item.step):
+                if not (item.step.get("media") or seen):
+                    out.append(
+                        Finding(
+                            "card_without_picture",
+                            item.path,
+                            f"the card {item.step.get('id')!r} has no picture before it",
+                        )
+                    )
+                seen = False
+    return out
+
+
+def beat_out_of_order(doc: dict[str, Any]) -> list[Finding]:
+    """A bet after its card, or its demo before the bet or after the card.
+
+    Only in a chapter with at least one bet. A bet is matched to a card by the
+    idea number in ``teaches``; a bet or a card with no match is not reported.
+    The demo is the first demo ``show`` after the bet before the next question,
+    else the step right before the bet.
+    """
+    out: list[Finding] = []
+    for items in _by_chapter(doc).values():
+        if not any(is_bet(i.step) for i in items):
+            continue
+        for at, item in enumerate(items):
+            if not is_bet(item.step):
+                continue
+            ideas = _taught(item.step)
+            card_at = next(
+                (n for n, c in enumerate(items) if _is_card(c.step) and ideas & _taught(c.step)),
+                None,
+            )
+            if card_at is None:
+                continue
+            problem = None
+            if at > card_at:
+                problem = "the bet comes after the card that names its idea"
+            else:
+                demo_at = None
+                for n in range(at + 1, len(items)):
+                    if items[n].type == "ask":
+                        break
+                    if is_demo(items[n].step):
+                        demo_at = n
+                        break
+                if demo_at is None and at > 0 and is_demo(items[at - 1].step):
+                    problem = "the demo of the bet comes before the bet"
+                elif demo_at is not None and demo_at > card_at:
+                    problem = "the demo of the bet comes after the card"
+            if problem:
+                out.append(Finding("beat_out_of_order", item.path, problem))
+    return out
+
+
+def line_run_over_3(doc: dict[str, Any]) -> list[Finding]:
+    """More than 3 ``say`` or ``narrate`` steps in a row with nothing changing on screen.
+
+    A ``show``, a card, a question, a game or a scene change ends the run; so
+    does a line whose ``cues`` move or change an actor (that line starts a new run).
+    """
+    out: list[Finding] = []
+    for items in _by_chapter(doc).values():
+        run = 0
+        scene = None
+        for item in items:
+            if item.scene != scene:
+                run, scene = 0, item.scene
+            if item.type not in LINE_TYPES:
+                run = 0
+                continue
+            run = 1 if _cue_names(item.step) & VISIBLE_CUES else run + 1
+            if run == MAX_LINES_WITHOUT_CHANGE + 1:
+                out.append(
+                    Finding(
+                        "line_run_over_3",
+                        item.path,
+                        f"more than {MAX_LINES_WITHOUT_CHANGE} lines in a row with nothing"
+                        " changing on screen",
+                    )
+                )
+    return out
+
+
+_NUMBER_RE = re.compile(
+    r"\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?:[.,]\d+)?"  # 4 305 892 176 or 1 234,5
+    r"|\d+(?:[.,]\d{3})+(?![\d])"  # 4,305,892 or 4.305.892
+    r"|\d+(?:[.,]\d+)?"  # 4,5 or 45
+)
+
+
+def _decimal(token: str) -> Decimal | None:
+    token = re.sub(r"[ \u00a0\u202f]", "", token)
+    if re.fullmatch(r"\d+(?:[.,]\d{3})+", token):
+        token = re.sub(r"[.,]", "", token)
+    try:
+        return Decimal(token.replace(",", ".")).normalize()
+    except InvalidOperation:  # pragma: no cover - the regex only yields numbers
+        return None
+
+
+def numbers_in(text: str) -> set[Decimal]:
+    """The numbers written in ``text``: spaces and thousands separators removed, 4,5 read 4.5."""
+    return {d for m in _NUMBER_RE.findall(text) if (d := _decimal(m)) is not None}
+
+
+def _fact_numbers(step: dict[str, Any]) -> list[Decimal]:
+    """Only the numbers a demo states as facts: ``compare`` values, ``timeline`` ``at``."""
+    params = step.get("params") if isinstance(step.get("params"), dict) else {}
+    raw: list[Any] = []
+    if step.get("visual") == "compare":
+        raw = list(params.get("values") or []) if isinstance(params.get("values"), list) else []
+    elif step.get("visual") == "timeline":
+        events = params.get("events")
+        raw = (
+            [e.get("at") for e in events if isinstance(e, dict)] if isinstance(events, list) else []
+        )
+    out = []
+    for value in raw:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        out.append(Decimal(str(value)).normalize())
+    return out
+
+
+def _reference_text(doc: dict[str, Any], items: list[Step]) -> str:
+    """The chapter's cards and its questions' prompt, choices and explanation (not the bets')."""
+    questions = {q.get("id"): q for q in doc.get("questions") or [] if isinstance(q, dict)}
+    bet_refs = {i.step.get("ref") for i in items if is_bet(i.step)}
+    parts: list[str] = []
+    for item in items:
+        step = item.step
+        if item.type == "concept":
+            parts += _texts([step.get("title"), step.get("en"), step.get("fr")])
+        elif item.type == "ask" and step.get("ref") not in bet_refs:
+            question = questions.get(step.get("ref")) or {}
+            parts += _texts([question.get("prompt"), question.get("explanation")])
+            for choice in question.get("choices") or []:
+                if isinstance(choice, dict):
+                    parts += _texts([choice.get("en"), choice.get("fr")])
+    return " ".join(parts)
+
+
+def demo_number_not_in_facts(doc: dict[str, Any]) -> list[Finding]:
+    """A demo whose fact numbers are written nowhere in its chapter's cards and questions.
+
+    A chapter with no card and no question to compare with is not judged. A
+    number spelled out in words is not read (approximate).
+    """
+    out: list[Finding] = []
+    for items in _by_chapter(doc).values():
+        demos = [i for i in items if is_demo(i.step) and _fact_numbers(i.step)]
+        if not demos:
+            continue
+        reference = _reference_text(doc, items)
+        if not reference.strip():
+            continue
+        known = numbers_in(reference)
+        for item in demos:
+            missing = [n for n in _fact_numbers(item.step) if n not in known]
+            if missing:
+                out.append(
+                    Finding(
+                        "demo_number_not_in_facts",
+                        item.path,
+                        "the demo shows "
+                        + ", ".join(f"{n:f}" for n in missing)
+                        + ", which is not in the chapter's cards or questions",
                     )
                 )
     return out
@@ -456,4 +725,8 @@ def all_findings(doc: dict[str, Any]) -> list[Finding]:
         *lang_integrity(doc),
         *stimulus_not_shown(doc),
         *few_acts(doc),
+        *card_without_picture(doc),
+        *beat_out_of_order(doc),
+        *line_run_over_3(doc),
+        *demo_number_not_in_facts(doc),
     ]

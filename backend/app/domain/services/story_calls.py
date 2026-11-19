@@ -242,11 +242,15 @@ async def structured_call(
     kind: str,
     max_tokens: int | None = None,
     repair: bool = False,
+    repair_of: str | None = None,
 ) -> Any:
     """One model call of ``kind``: its ``max_tokens`` (or ``max_tokens``), under its timeout.
 
     The run's counters (:class:`~app.ai.usage_context.UsageTally`) count it as
     ``kind``, or as ``repair`` when ``repair`` (the limits are the kind's).
+    The AI usage ledger (#2735) records the kind a repair repairs, flagged
+    ``is_repair``: ``kind`` when ``repair``, or ``repair_of`` for a retry that
+    keeps its kind in the counters (the plan's repair, the bible's retry).
 
     Raises :class:`StoryCallTimeout` past the timeout (or when no time is
     left), with its reason; :class:`TruncatedResponse` for an answer cut at
@@ -258,10 +262,11 @@ async def structured_call(
     client = bounded(service, kind, max_tokens)
     scope = asyncio.timeout(timeout)
     label = REPAIR_KIND if repair else kind
+    repairs = repair_of or (kind if repair else None)
     note_call(label)
     try:
         async with scope:
-            with ai_usage_context(call_kind=label):
+            with ai_usage_context(call_kind=label, repair_of=repairs):
                 answer = await client.generate_structured_content(
                     system, user, "story", max_retries=0
                 )
