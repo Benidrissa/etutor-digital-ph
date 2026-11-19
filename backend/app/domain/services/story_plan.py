@@ -1471,7 +1471,12 @@ class StoryPlanService:
             calls += 1
             try:
                 raw = await structured_call(
-                    self.claude_service, system_prompt, prompt, kind="plan", max_tokens=max_tokens
+                    self.claude_service,
+                    system_prompt,
+                    prompt,
+                    kind="plan",
+                    max_tokens=max_tokens,
+                    repair_of="plan" if attempt > 0 else None,
                 )
             except SoftTimeLimitExceeded:
                 raise

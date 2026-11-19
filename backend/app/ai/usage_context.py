@@ -26,8 +26,11 @@ class AiCallContext:
     course_id: uuid.UUID | None = None
     module_id: uuid.UUID | None = None
     #: What the call is for inside its feature (#2713: a story's "slots", "repair"...).
-    #: Not a ledger column: it feeds the run's :class:`UsageTally`.
+    #: It feeds the run's :class:`UsageTally`, which counts a repair under ``repair``.
     call_kind: str | None = None
+    #: The kind this call repairs or retries (#2735). The ledger columns
+    #: ``call_kind`` / ``is_repair`` come from it; the tally never reads it.
+    repair_of: str | None = None
 
 
 _context: ContextVar[AiCallContext | None] = ContextVar("ai_call_context", default=None)
@@ -68,6 +71,7 @@ def set_ai_context(
             course_id=course_id or current.course_id,
             module_id=module_id or current.module_id,
             call_kind=current.call_kind,
+            repair_of=current.repair_of,
         )
     )
 
@@ -81,6 +85,7 @@ def ai_usage_context(
     module_id: uuid.UUID | None = None,
     only_if_unset: bool = False,
     call_kind: str | None = None,
+    repair_of: str | None = None,
 ) -> Iterator[None]:
     """Merge the given fields into the current context for the ``with`` block.
 
@@ -100,6 +105,7 @@ def ai_usage_context(
             course_id=course_id or current.course_id,
             module_id=module_id or current.module_id,
             call_kind=call_kind or current.call_kind,
+            repair_of=repair_of or current.repair_of,
         )
     )
     try:

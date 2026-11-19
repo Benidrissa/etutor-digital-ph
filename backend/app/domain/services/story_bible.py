@@ -882,7 +882,13 @@ class StoryBibleService:
             message = user
             for attempt in range(self.MAX_CALLS):
                 try:
-                    raw = await structured_call(self.claude_service, system, message, kind="bible")
+                    raw = await structured_call(
+                        self.claude_service,
+                        system,
+                        message,
+                        kind="bible",
+                        repair_of="bible" if attempt > 0 else None,
+                    )
                 except SoftTimeLimitExceeded:
                     raise
                 except StoryCallTimeout as exc:
