@@ -687,6 +687,26 @@ def _stem_judge() -> object | None:
         return None
 
 
+def _story_writer() -> object | None:
+    """The model that writes chapter screenplays, rallies and slot lines (#2713).
+
+    ``ai-model-story`` when an admin picked one, else ``None``: the content model
+    (nothing changes until a cheaper one is chosen). The bible, the plan and the
+    practice packs stay on the content model; the stem judge has its own.
+    """
+    try:
+        from app.ai.claude_service import ClaudeService
+        from app.domain.services.story_calls import story_model
+
+        model = story_model()
+        return ClaudeService(model=model) if model else None
+    except Exception as exc:
+        logger.warning(
+            "Story writing model not available; the content model is used", error=str(exc)[:200]
+        )
+        return None
+
+
 def _continue_module_story(
     module_id: str,
     language: str,
@@ -885,6 +905,8 @@ def generate_module_story_task(
                     figure_storage=S3StorageService(),
                     # #2698: course questions asked in the story's voice.
                     stem_judge=_stem_judge(),
+                    # #2713: the cheaper model of story writing and repair, if chosen.
+                    story_service=_story_writer(),
                     # #2709: the course-figure search of the asset catalogue.
                     asset_retriever=retriever,
                 )

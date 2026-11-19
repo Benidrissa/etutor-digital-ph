@@ -74,7 +74,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
-from app.ai.usage_context import ai_usage_context
+from app.ai.usage_context import ai_usage_context, current_tally, usage_tally
 from app.api.v1.schemas.story_course import StoryCourse
 from app.domain.models.ai_usage_event import (
     FEATURE_LESSON_GENERATION,
@@ -103,7 +103,13 @@ from app.domain.services.story_bible import (
     find_bible_digest,
     mission_for,
 )
-from app.domain.services.story_calls import StoryCallTimeout, run_deadline
+from app.domain.services.story_calls import (
+    SLOTS,
+    StoryCallTimeout,
+    builder_variant,
+    repair_budget,
+    run_deadline,
+)
 from app.domain.services.story_from_lesson_service import (
     MAX_REPAIR_CALLS,
     ModuleStoryBinding,
@@ -116,6 +122,7 @@ from app.domain.services.story_from_lesson_service import (
     select_unit_content_row,
     upsert_story_course,
 )
+from app.domain.services.story_leadins import leadin_keys
 from app.domain.services.story_module_assembly import (
     MODULE_ASSEMBLER_VERSION,
     ChapterSource,
@@ -837,10 +844,11 @@ class ModuleStoryService:
         quiz_service: Any,
         *,
         concurrency: int = DEFAULT_CONCURRENCY,
-        max_repair_calls: int = MAX_REPAIR_CALLS,
+        max_repair_calls: int | None = None,
         figure_storage: Any = None,
         stem_judge: Any = None,
         asset_retriever: Any = None,
+        story_service: Any = None,
     ) -> None:
         if concurrency < 1:
             raise ValueError("concurrency must be at least 1")
@@ -849,8 +857,14 @@ class ModuleStoryService:
         self.concurrency = concurrency
         # No lesson service of its own: every missing lesson is made in prep,
         # with its assessment dispatched.
+        #: #2713: ``None``: the admin setting ``story-max-repair-calls`` (read at
+        #: each run); a number (tests, scripts) pins the budget.
+        self.max_repair_calls = max_repair_calls
         self.chapters = StoryFromLessonService(
-            claude_service, lesson_service=None, max_repair_calls=max_repair_calls
+            claude_service,
+            lesson_service=None,
+            max_repair_calls=MAX_REPAIR_CALLS if max_repair_calls is None else max_repair_calls,
+            story_service=story_service,
         )
         self.bibles = StoryBibleService(claude_service)
         self.plans = StoryPlanService(claude_service)
@@ -862,6 +876,10 @@ class ModuleStoryService:
         #: #2709: a ``SemanticRetriever`` for the course-figure search of the
         #: asset catalogue (embeddings); ``None``: the lessons' own figures only.
         self.asset_retriever = asset_retriever
+
+    def _repairs(self) -> int:
+        """Extra calls a pack, screenplay or slot line may be repaired with (#2713)."""
+        return self.max_repair_calls if self.max_repair_calls is not None else repair_budget()
 
     async def get_or_generate_module_story(
         self,
@@ -885,7 +903,7 @@ class ModuleStoryService:
         instead of ending on its soft time limit with nothing stored.
         """
         told: list[str] = []
-        with run_deadline(deadline, clock):
+        with run_deadline(deadline, clock), usage_tally():
             try:
                 return await self._generate_module_story(
                     module_id,
@@ -1149,12 +1167,14 @@ class ModuleStoryService:
         record = await self._merge(
             session_factory, ctx, units, course_id, rally, run.plan, previous_manifest
         )
+        tally = current_tally()
         logger.info(
             "Module story: model calls",
             module_id=str(module_id),
             language=language,
             calls=run.calls,
             total=sum(run.calls.values()),
+            by_kind=tally.summary() if tally is not None else {},
         )
         return record
 
@@ -1600,7 +1620,9 @@ class ModuleStoryService:
                 with ai_usage_context(
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
                 ):
-                    result = await self.chapters.generate_pack(chapter, system_prompt=system_prompt)
+                    result = await self.chapters.generate_pack(
+                        chapter, system_prompt=system_prompt, max_repair_calls=self._repairs()
+                    )
         except SoftTimeLimitExceeded:
             raise
         except StoryCallTimeout as exc:
@@ -1632,7 +1654,7 @@ class ModuleStoryService:
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
                 ):
                     result = await self.chapters.generate_pack(
-                        rally_ctx, system_prompt=system_prompt
+                        rally_ctx, system_prompt=system_prompt, max_repair_calls=self._repairs()
                     )
         except SoftTimeLimitExceeded:
             raise
@@ -1740,9 +1762,7 @@ class ModuleStoryService:
                 with ai_usage_context(
                     FEATURE_STORY_GENERATION, module_id=run.module_id, course_id=run.course_id
                 ):
-                    generation = await self.chapters.generate_story(
-                        chapter, pack["spine"], system_prompt=system_prompt
-                    )
+                    generation = await self._told(chapter, pack, system_prompt)
             except SoftTimeLimitExceeded:
                 raise
             except StoryCallTimeout as exc:
@@ -1787,6 +1807,39 @@ class ModuleStoryService:
                         + (", ".join(sorted({e.code for e in generation.report.errors}))[:200])
                     )
         return docs
+
+    async def _told(
+        self, chapter: repair.LessonStoryContext, pack: dict[str, Any], system_prompt: str
+    ) -> Any:
+        """One chapter's story: built from slots when the admin chose it, else (or
+        when the slots could not make a valid one) written by the model, as ever.
+
+        The slots variant applies to a NEW plan's lesson chapter only (#2713): a
+        plan without a ``cast_policy`` is a legacy one and is told as before.
+        """
+        from app.domain.services.story_poe import is_new_plan
+
+        budget = min(self._repairs(), repair.STORY_REPAIR_CALLS)
+        if builder_variant() == SLOTS and not chapter.is_rally and is_new_plan(chapter.plan):
+            made = await self.chapters.generate_slots_story(
+                chapter, pack["spine"], max_repair_calls=budget
+            )
+            if made is not None and made.report.ok:
+                return made
+            logger.warning(
+                "Story slots did not make a valid chapter; told the classic way",
+                slug=chapter.slug,
+                calls=made.model_calls if made is not None else None,
+            )
+            classic = await self.chapters.generate_story(
+                chapter, pack["spine"], system_prompt=system_prompt, max_repair_calls=budget
+            )
+            if made is not None:
+                classic.model_calls += made.model_calls
+            return classic
+        return await self.chapters.generate_story(
+            chapter, pack["spine"], system_prompt=system_prompt, max_repair_calls=budget
+        )
 
     def _neighbours(
         self,
@@ -1843,8 +1896,14 @@ class ModuleStoryService:
         chapter.known_props = known
         lines: dict[tuple[str, str], str] = {}
         refrains = 0
+        slots = builder_variant() == SLOTS and not chapter.is_rally
+        if slots:
+            # #2713: the slot builder's chapters pick lead-ins no earlier chapter has.
+            chapter.earlier_leadins = set()
         for u in earlier:
             for step in _steps(docs.get(u.unit_number)):
+                if chapter.earlier_leadins is not None:
+                    chapter.earlier_leadins |= leadin_keys(step)
                 if step.get("refrain"):
                     refrains += 1
                     continue
@@ -1888,6 +1947,11 @@ class ModuleStoryService:
             "handoff": chapter.prev_digest,
             "failures": failures,
         }
+        if getattr(generation, "variant", "classic") != "classic":
+            # #2713: which builder made the chapter (a classic one records nothing,
+            # so its stored row is as it ever was) and what its slots cost.
+            source_rows["variant"] = generation.variant
+            source_rows["slots"] = generation.slot_report
         binding = StoryBinding(
             module_id=run.module_id,
             module_unit_id=unit.module_unit_id,
@@ -2062,7 +2126,7 @@ class ModuleStoryService:
                     rally_ctx,
                     pack["spine"],
                     system_prompt=system_prompt,
-                    max_repair_calls=RALLY_REPAIR_CALLS,
+                    max_repair_calls=min(self._repairs(), RALLY_REPAIR_CALLS),
                 )
         except SoftTimeLimitExceeded:
             raise
@@ -2142,6 +2206,7 @@ class ModuleStoryService:
                     "status": _chapter_status(doc, index, source),
                     "chapter_story_id": str(row.id) if row is not None else None,
                     "chapter_updated_at": _iso(row.updated_at) if row is not None else None,
+                    **_variant_of(row),
                 }
                 for index, (unit, source, row) in enumerate(
                     zip(units, sources, chapter_rows, strict=True)
@@ -2156,6 +2221,10 @@ class ModuleStoryService:
             }
             if rally is not None:
                 manifest["rally"] = rally
+            tally = current_tally()
+            if tally is not None and tally.calls:
+                # #2713: the model calls and output tokens of this run, by kind.
+                manifest["model_calls"] = tally.summary()
             statuses = [entry["status"] for entry in entries]
             if not report.ok and "ready" in statuses:
                 # Merged again once at no model cost (its chapters and rally
@@ -2222,6 +2291,13 @@ class ModuleStoryService:
             statuses=statuses,
         )
         return record
+
+
+def _variant_of(row: StoryCourseRecord | None) -> dict[str, str]:
+    """``{"variant": "slots"}`` for a chapter the slot builder made; nothing for a classic one."""
+    source = (row.source_rows or {}) if row is not None else {}
+    variant = source.get("variant") if isinstance(source, dict) else None
+    return {"variant": variant} if isinstance(variant, str) and variant != "classic" else {}
 
 
 def _raise_failures(run: _Run, units: Sequence[StoryUnit]) -> None:

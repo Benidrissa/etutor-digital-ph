@@ -122,10 +122,18 @@ def test_a_figure_is_in_the_course_only_by_its_source():
 def test_an_illustration_belongs_to_a_lesson_of_the_module_or_to_the_module():
     scope = {"lesson_ids": [LESSON], "module_id": MODULE}
     assert sa_.illustration_in_scope(illustration_row(), **scope)
-    assert not sa_.illustration_in_scope(illustration_row(lesson_id=OTHER_LESSON), **scope)
-    # A lesson of another module with this module's id on it is still not ours.
-    assert not sa_.illustration_in_scope(
+    # Drawn for a sibling row of the lesson (its other language): the module is enough.
+    assert sa_.illustration_in_scope(
         illustration_row(lesson_id=OTHER_LESSON, module_id=MODULE), **scope
+    )
+    # Another module's lesson, another module: never ours.
+    assert not sa_.illustration_in_scope(
+        illustration_row(lesson_id=OTHER_LESSON, module_id=OTHER_MODULE), **scope
+    )
+    # No module on the row: only one of this story's own lessons brings it in.
+    assert sa_.illustration_in_scope(illustration_row(module_id=None), **scope)
+    assert not sa_.illustration_in_scope(
+        illustration_row(lesson_id=OTHER_LESSON, module_id=None), **scope
     )
     assert sa_.illustration_in_scope(illustration_row(lesson_id=None), **scope)
     assert not sa_.illustration_in_scope(
@@ -1200,15 +1208,28 @@ def test_alt_text_and_tags_do_not_count_as_evidence():
     )
 
 
-def test_two_props_tied_for_one_picture_bind_neither():
-    twin = _prop(
-        "poster_2",
-        "l'affiche des tables",
-        "the table poster",
-        "Shepard table illusion hand drawn poster",
+def test_two_different_props_tied_for_one_picture_bind_neither():
+    rival = _prop(
+        "banner",
+        "la banderole de l'illusion de Shepard",
+        "the Shepard illusion banner",
+        "Shepard table illusion banner",
     )
     entries = _catalogue({"shepard": STAGING_ASSETS["shepard"]})
-    assert sa_.bind_props([STAGING_PROPS[0], twin], entries) == {}
+    assert sa_.bind_props([STAGING_PROPS[0], rival], entries) == {}
+
+
+def test_the_same_object_declared_in_two_chapters_shares_its_picture():
+    # Staging: chapter 1 declares ``poster`` and the rally ``poster_2``, same
+    # name in both languages. They are one object, not two rivals.
+    first = STAGING_PROPS[0]
+    twin = {**first, "id": "poster_2"}
+    entries = _catalogue({"shepard": STAGING_ASSETS["shepard"]})
+    evidence: dict = {}
+    bound = sa_.bind_props([first, twin], entries, evidence=evidence)
+    assert set(bound) == {"poster", "poster_2"}
+    assert bound["poster"]["asset_id"] == bound["poster_2"]["asset_id"]
+    assert evidence["poster_2"] == evidence["poster"]
 
 
 def test_the_minimum_score_can_be_raised():
