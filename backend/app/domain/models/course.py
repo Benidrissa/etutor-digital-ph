@@ -56,6 +56,7 @@ class Course(Base):
         ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
     )
     syllabus_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    syllabus_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

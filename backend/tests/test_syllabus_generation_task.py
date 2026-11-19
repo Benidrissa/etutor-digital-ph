@@ -498,6 +498,98 @@ class TestSyllabusGenerationTaskUnit:
         mock_summarize.assert_not_called()
         assert result["status"] == "complete"
 
+    def _run_with_real_claude_coro(self, course_id, course_data, agent_instance):
+        """Run the task with _fetch_course mocked but _call_claude executed for real
+        (on a private event loop) against a mocked CourseAgentService, so the
+        kwargs actually passed to generate_course_structure can be inspected."""
+        import asyncio as real_asyncio
+
+        call_count = 0
+
+        def mock_run(coro):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                coro.close()
+                return course_data
+            loop = real_asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(coro)
+            finally:
+                loop.close()
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_cache = MagicMock()
+        mock_cache.get.side_effect = lambda key, default=None: default
+
+        with (
+            patch("asyncio.run", side_effect=mock_run),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("sqlalchemy.create_engine", return_value=MagicMock()),
+            patch("sqlalchemy.orm.Session", return_value=mock_session),
+            patch(
+                "app.domain.services.course_agent_service.CourseAgentService",
+                return_value=agent_instance,
+            ),
+            patch(
+                "app.domain.services.platform_settings_service.SettingsCache.instance",
+                return_value=mock_cache,
+            ),
+        ):
+            return self._run(course_id, 20)
+
+    def test_syllabus_instructions_forwarded_to_agent(self, sample_module_dicts):
+        """The persisted course.syllabus_instructions must reach generate_course_structure."""
+        from unittest.mock import AsyncMock
+
+        course_data = {
+            "title_fr": "Épidémiologie",
+            "title_en": "Epidemiology",
+            "description_fr": "",
+            "description_en": "",
+            "course_hours": 20,
+            "rag_collection_id": None,
+            "domain_slugs": [],
+            "level_slugs": [],
+            "audience_slugs": [],
+            "objectives_json": None,
+            "syllabus_instructions": "Structurer autour de la méthodologie RDQA",
+        }
+        agent_instance = MagicMock()
+        agent_instance.generate_course_structure = AsyncMock(return_value=sample_module_dicts)
+
+        result = self._run_with_real_claude_coro(str(uuid.uuid4()), course_data, agent_instance)
+
+        assert result["status"] == "complete"
+        kwargs = agent_instance.generate_course_structure.call_args.kwargs
+        assert kwargs["syllabus_instructions"] == "Structurer autour de la méthodologie RDQA"
+
+    def test_missing_syllabus_instructions_key_defaults_to_none(self, sample_module_dicts):
+        """A course dict without the key (pre-migration payload) must not break the task."""
+        from unittest.mock import AsyncMock
+
+        course_data = {
+            "title_fr": "Épidémiologie",
+            "title_en": "Epidemiology",
+            "description_fr": "",
+            "description_en": "",
+            "course_hours": 20,
+            "rag_collection_id": None,
+            "domain_slugs": [],
+            "level_slugs": [],
+            "audience_slugs": [],
+        }
+        agent_instance = MagicMock()
+        agent_instance.generate_course_structure = AsyncMock(return_value=sample_module_dicts)
+
+        result = self._run_with_real_claude_coro(str(uuid.uuid4()), course_data, agent_instance)
+
+        assert result["status"] == "complete"
+        kwargs = agent_instance.generate_course_structure.call_args.kwargs
+        assert kwargs["syllabus_instructions"] is None
+
     def test_summary_reused_from_other_course_by_hash(self, sample_module_dicts):
         """If another CourseResource with same hash has a summary, it is reused — zero API call."""
         _CONTEXT_BUDGET_CHARS = 100
