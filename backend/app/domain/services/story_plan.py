@@ -509,8 +509,17 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
     if isinstance(rally, dict):
         games += bool(_str(rally.get("game")))
         refs = entry_refs(rally, rally=True)
-        low = min(MIN_RALLY_REFS, len(request.candidates))
-        high = min(MAX_RALLY_REFS, len(request.candidates))
+        # A NEW plan's rally is smaller when the bank runs out (#2711): it takes
+        # only questions no chapter asks.
+        if request.cast_policy is not None:
+            fresh_refs = fresh_rally_refs(request, chapters)
+            pool = len(fresh_refs)
+            # A re-asked ref is dropped by the normaliser, never worth a repair call.
+            refs = [ref for ref in refs if ref in fresh_refs]
+        else:
+            pool = len(request.candidates)
+        low = min(MIN_RALLY_REFS, pool)
+        high = min(MAX_RALLY_REFS, pool)
         if not low <= len(refs) <= high:
             issues.append(
                 _issue("plan_too_many_questions", "rally.steps", f"the rally takes {low} to {high}")
@@ -728,6 +737,42 @@ def _assign_refs(
             beat["questions"] = kept
 
 
+def _identities(candidate: PlanCandidate) -> set[str]:
+    """What names a course question across quizzes: its content, and its own quiz id.
+
+    The quiz's own question id counts when it is an id (a uuid), not a
+    position (``q1``, ``#2``), which two quizzes share (#2711).
+    """
+    names = {f"key:{candidate.key}"}
+    source = str(candidate.mcq.source_id or "")
+    if len(source) >= 8 and not source.startswith("#"):
+        names.add(f"src:{source}")
+    return names
+
+
+def fresh_rally_refs(request: PlanRequest, chapters: list[dict[str, Any]]) -> list[str]:
+    """The refs the rally may ask: questions no chapter asks, each question once.
+
+    A NEW plan's rally never re-asks a question (#2711): a candidate is left
+    out when its content or its quiz question id is that of one a chapter takes
+    (or of one already listed), whatever its ref.
+    """
+    seen: set[str] = set()
+    for chapter in chapters:
+        for ref in entry_refs(chapter):
+            candidate = request.candidate(ref)
+            if candidate is not None:
+                seen |= _identities(candidate)
+    fresh: list[str] = []
+    for candidate in request.candidates:
+        names = _identities(candidate)
+        if names & seen:
+            continue
+        seen |= names
+        fresh.append(candidate.ref)
+    return fresh
+
+
 def _rally(
     raw: Any,
     chapters: list[dict[str, Any]],
@@ -739,6 +784,8 @@ def _rally(
     units = request.units
     steps = []
     taken: list[str] = []
+    # A NEW plan (#2711): the rally asks only questions no chapter asks.
+    fresh = set(fresh_rally_refs(request, chapters)) if request.cast_policy is not None else None
     for item in raw.get("steps") or []:
         if not isinstance(item, dict):
             continue
@@ -748,6 +795,7 @@ def _rally(
                 isinstance(ref, str)
                 and request.candidate(ref) is not None
                 and ref not in taken
+                and (fresh is None or ref in fresh)
                 and len(taken) < MAX_RALLY_REFS
             ):
                 refs.append(ref)
@@ -763,11 +811,15 @@ def _rally(
     if not steps:
         steps = [{"from_unit": unit, "uses": "", "questions": []} for unit in units]
         gaps.append("rally: no steps; one per chapter")
-    low = min(MIN_RALLY_REFS, len(request.candidates))
+    low = min(MIN_RALLY_REFS, len(fresh if fresh is not None else request.candidates))
     if len(taken) < low:
         in_chapters = {ref for c in chapters for ref in entry_refs(c)}
         pool = [c.ref for c in request.candidates if c.ref not in in_chapters]
-        pool += [c.ref for c in request.candidates if c.ref in in_chapters]
+        if fresh is None:
+            pool += [c.ref for c in request.candidates if c.ref in in_chapters]
+        else:
+            # Never a question a chapter asked, nor a copy of one, nor one twice.
+            pool = [ref for ref in fresh_rally_refs(request, chapters) if ref in set(pool)]
         for ref in pool:
             if len(taken) >= low:
                 break

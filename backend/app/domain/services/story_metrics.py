@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
+from app.domain.services.story_poe import is_bet, stimulus_gaps
 from app.domain.services.story_props import fold
 
 LINE_TYPES = ("say", "narrate")
@@ -26,6 +27,8 @@ LINE_TYPES = ("say", "narrate")
 ASSET_CODES = frozenset(
     {"educational_prop_without_art", "dangling_deixis", "unseen_stimulus", "lang_integrity"}
 )
+#: #2711: only a story with a stimulus on its questions, or told with bets, can raise these.
+POE_CODES = frozenset({"stimulus_not_shown", "few_acts"})
 
 #: A line that points at something: "look", "regardez", "voici"...
 DEIXIS_RE = re.compile(
@@ -225,7 +228,7 @@ def story_metrics(doc: dict[str, Any]) -> dict[str, Any]:
     """The numbers written into ``checks.story_metrics`` and printed by the audit."""
     closeups = closeup_ids(doc)
     cards = card_words(doc)
-    return {
+    out = {
         "say_run_max": say_run_max(doc),
         "closeups": len(closeups),
         "closeups_with_art": sum(1 for pid in closeups if has_art(doc, pid)),
@@ -234,6 +237,25 @@ def story_metrics(doc: dict[str, Any]) -> dict[str, Any]:
         "refrain_count": refrain_count(doc),
         "mentor_share": mentor_share(doc),
     }
+    acts = acts_per_chapter(doc)
+    if acts:
+        # #2711: only a story told with bets has these, so no stored story's
+        # numbers change.
+        out["bets"] = sum(acts)
+        out["acts_per_chapter_min"] = min(acts)
+    return out
+
+
+def acts_per_chapter(doc: dict[str, Any]) -> list[int]:
+    """Bets (predictions) in each chapter of ``doc`` that has at least one; empty if none."""
+    counts: dict[int, int] = {}
+    for item in _steps(doc):
+        if is_bet(item.step):
+            counts[item.chapter] = counts.get(item.chapter, 0) + 1
+    if not counts:
+        return []
+    carded = {i.chapter for i in _steps(doc) if i.type == "concept" and not _is_situation(i.step)}
+    return [counts.get(c, 0) for c in sorted(carded)]
 
 
 # -- Findings (all warnings) -------------------------------------------------------
@@ -340,6 +362,30 @@ def unseen_stimulus(doc: dict[str, Any]) -> list[Finding]:
     return out
 
 
+def stimulus_not_shown(doc: dict[str, Any]) -> list[Finding]:
+    """A question or task whose stimulus picture is not shown before it (#2711)."""
+    return [
+        Finding(
+            "stimulus_not_shown",
+            where,
+            f"the thumbnail of {where} is a picture the story has not shown yet ({picture})",
+        )
+        for where, picture in stimulus_gaps(doc)
+    ]
+
+
+def few_acts(doc: dict[str, Any]) -> list[Finding]:
+    """A chapter of a story told with bets that asks the learner to bet fewer than 3 times."""
+    acts = acts_per_chapter(doc)
+    if not acts:
+        return []
+    return [
+        Finding("few_acts", "chapters", f"{n} bet(s) in a chapter: aim for at least 3")
+        for n in acts
+        if n < 3
+    ][:1]
+
+
 def french_in(text: Any) -> list[str]:
     """The French stopwords of ``text`` when it has two or more distinct ones, else ``[]``."""
     tokens = [t for t in _TOKEN_RE.findall(str(text or "").lower()) if t]
@@ -408,4 +454,6 @@ def all_findings(doc: dict[str, Any]) -> list[Finding]:
         *dangling_deixis(doc),
         *unseen_stimulus(doc),
         *lang_integrity(doc),
+        *stimulus_not_shown(doc),
+        *few_acts(doc),
     ]

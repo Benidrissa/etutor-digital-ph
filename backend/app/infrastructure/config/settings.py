@@ -246,6 +246,10 @@ class Settings(BaseSettings):
     # module story is a few hundred lines; past the cap the player falls back
     # to the browser's own voice.
     story_tts_daily_new_lines_per_user: int = 1500
+    # Story prop library (#2714): import the pack bundled in the image in the
+    # background when the API starts (versioned, idempotent, never blocks or
+    # fails a start). Set STORY_LIBRARY_AUTOSEED=false to leave it to an operator.
+    story_library_autoseed: bool = True
 
     # MinIO / S3-compatible object storage
     minio_endpoint: str = "http://localhost:9000"

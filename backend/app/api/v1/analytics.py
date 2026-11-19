@@ -8,13 +8,20 @@ from typing import Annotated, Any
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.api.deps_local_auth import AuthenticatedUser, get_optional_user, require_role
-from app.domain.models.user import UserRole
+from app.api.deps_local_auth import (
+    AuthenticatedUser,
+    get_current_user,
+    get_optional_user,
+    require_role,
+)
+from app.domain.models.user import User, UserRole
 from app.domain.services.ai_usage_service import AiUsageAnalyticsService
 from app.domain.services.analytics_service import AnalyticsService
+from app.domain.services.story_events import StoryEventsRequest, ingest_story_events
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -106,6 +113,46 @@ async def ingest_batch(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "batch_ingest_failed", "message": "Failed to record events"},
+        )
+
+
+@router.post(
+    "/story-events",
+    response_model=BatchResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"description": "Not signed in"},
+        422: {"description": "An event with a field outside the whitelist"},
+        500: {"description": "Internal error"},
+    },
+)
+async def ingest_story_events_endpoint(
+    request: StoryEventsRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> BatchResponse:
+    """Anonymised story events (#2711): bets, first answers, chapter completions.
+
+    Signed in, so the learner's own opt-out can be read; the rows keep no user
+    and no session, and no free text (the schema refuses any extra field).
+    """
+    try:
+        opted_out = False
+        try:
+            user_id = uuid.UUID(current_user.id)
+            row = (
+                await db.execute(select(User.analytics_opt_out).where(User.id == user_id))
+            ).first()
+            opted_out = bool(row[0]) if row else False
+        except ValueError:
+            opted_out = False
+        accepted = await ingest_story_events(db, request.events, opted_out=opted_out)
+        return BatchResponse(accepted=accepted)
+    except Exception as e:
+        logger.error("Failed to ingest story events", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "story_events_failed", "message": "Failed to record events"},
         )
 
 

@@ -229,6 +229,12 @@ ssh deploy@94.250.201.110 \
 
 ---
 
+## Story mode: bundled prop library and shared stock art (#2714)
+
+- **Prop library: nothing to run.** The backend image carries the CC0 sticker pack (`backend/app/data/story_library`). The API imports it in the background at start (after `alembic upgrade head`, because the deploy recreates the backend), on staging, production and every tenant, whatever the provisioning repository does. It is versioned (`library_version` and the file's sha256), idempotent, and logs instead of failing. Check: `docker logs etutor-backend 2>&1 | grep story_library_seed`, and `SELECT count(*) FROM story_library_assets;`. Turn off with `STORY_LIBRARY_AUTOSEED=false`.
+- **Shared stock art: one reviewed step per stack.** Existing art is never replaced. To seed the stock from a course whose art you like (no AI call), inside the backend container: `python scripts/promote_story_stock.py promote --course <slug>` (dry run), then with `--apply`; `list` to review each image; `approve <id> ... --apply` (or `--all-candidates`) once a human checked it. New courses of the stack then adopt approved stock instead of drawing.
+- A change to the pack is a new `library_version` in `backend/app/data/story_library/library.json` and `infrastructure/asset-foundry/library/manifest.json`; the next deploy re-imports it.
+
 ## Memory references
 
 The following memory entries are load-bearing for prod operations — read them before deviating from the patterns above:

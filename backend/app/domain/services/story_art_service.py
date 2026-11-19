@@ -53,6 +53,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.ai.providers.image_provider import refused_param_in_error
 from app.domain.models.story_art import (
     CHARACTER_POSES,
+    EXTRA_CHARACTER_POSES,
     KIND_CHARACTER,
     KIND_PLACE,
     POSE_BACKDROP,
@@ -62,7 +63,15 @@ from app.domain.models.story_art import (
     StoryArt,
 )
 from app.domain.models.story_course import StoryCourseRecord
+from app.domain.models.story_stock_art import DEFAULT_PACK
 from app.domain.services.image_service import PEOPLE_CONSTRAINT
+from app.domain.services.story_stock_art import (
+    StockImage,
+    find_stock,
+    load_stock_index,
+    stock_poses,
+    stock_row,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -87,6 +96,8 @@ PARAM_RETRY_AFTER = timedelta(minutes=10)
 #: variants and four other cast members at four poses each, plus the places).
 #: Anything beyond is skipped, logged, and left for the next run.
 MAX_IMAGES_PER_RUN = 40
+#: The error of an image left undrawn by the per-course cap of own drawings.
+CUSTOM_CAP_ERROR = "custom_art_cap: the course's own-art cap is reached; stock covers the rest"
 #: Image calls in flight at once.
 CONCURRENCY = 3
 #: Tries per image and run: the first and one retry. The SDK's own retries are
@@ -164,6 +175,12 @@ class ArtItem:
     kind: str
     key: str
     look: str
+    #: The cast role (``hero``, ``friend``, ``mentor``...) and the variant that
+    #: picks a stock image (:mod:`app.domain.services.story_stock_art`): the
+    #: hero's variant id, else the course's audience. Neither is part of what
+    #: an item is (equality, hashing): they only route it to stock.
+    role: str = field(default="", compare=False)
+    variant: str = field(default="", compare=False)
 
     @property
     def digest(self) -> str:
@@ -233,7 +250,7 @@ def collect_looks(documents: Iterable[Any]) -> list[ArtItem]:
     items: list[ArtItem] = []
     seen: set[tuple[str, str]] = set()
 
-    def add(kind: str, key: Any, look: Any) -> None:
+    def add(kind: str, key: Any, look: Any, role: str = "", variant: str = "") -> None:
         if not isinstance(key, str) or not key.strip():
             return
         if not isinstance(look, str) or not look.strip():
@@ -242,12 +259,16 @@ def collect_looks(documents: Iterable[Any]) -> list[ArtItem]:
         if (kind, key) in seen:
             return
         seen.add((kind, key))
-        items.append(ArtItem(kind=kind, key=key, look=normalise_look(look)))
+        items.append(
+            ArtItem(kind=kind, key=key, look=normalise_look(look), role=role, variant=variant)
+        )
 
     for document in documents:
         if not isinstance(document, Mapping):
             continue
         first_name = _learner_first_name(document)
+        audience = document.get("audience")
+        audience = audience.strip().lower() if isinstance(audience, str) else ""
         cast = document.get("cast")
         for member in cast if isinstance(cast, list) else []:
             if not isinstance(member, Mapping):
@@ -255,12 +276,16 @@ def collect_looks(documents: Iterable[Any]) -> list[ArtItem]:
             variants = _variants(member)
             if is_hero(member, first_name) and len(variants) >= 2:
                 for variant in variants:
-                    add(KIND_CHARACTER, f"hero:{variant['id'].strip()}", variant.get("look"))
+                    vid = variant["id"].strip()
+                    add(KIND_CHARACTER, f"hero:{vid}", variant.get("look"), "hero", vid)
                 continue
             look = member.get("look")
-            if len(variants) == 1 and is_hero(member, first_name):
+            hero = is_hero(member, first_name)
+            if len(variants) == 1 and hero:
                 look = variants[0].get("look") or look
-            add(KIND_CHARACTER, member.get("id"), look)
+            role = "hero" if hero else str(member.get("role") or "").strip()
+            variant_id = variants[0]["id"].strip() if len(variants) == 1 and hero else ""
+            add(KIND_CHARACTER, member.get("id"), look, role, variant_id or audience)
         places = document.get("places")
         for place in places if isinstance(places, list) else []:
             if isinstance(place, Mapping):
@@ -333,14 +358,17 @@ async def load_bible_looks(session: AsyncSession, course_id: uuid.UUID) -> Cours
             select(
                 StoryCourseBible.content["cast"],
                 StoryCourseBible.content["places"],
+                StoryCourseBible.content["audience"],
                 StoryCourseBible.model,
             ).where(StoryCourseBible.course_id == course_id)
         )
     ).first()
     if row is None:
         return None
-    cast, places, model = row
-    return collect_course_looks([{"cast": cast, "places": places}], final=model != DEFAULTED)
+    cast, places, audience, model = row
+    return collect_course_looks(
+        [{"cast": cast, "places": places, "audience": audience}], final=model != DEFAULTED
+    )
 
 
 def is_authored_week(record: Any) -> bool:
@@ -452,6 +480,12 @@ async def load_art_rows(session: AsyncSession, course_id: uuid.UUID) -> list[Sto
 
 def art_url(art_id: uuid.UUID | str) -> str:
     return f"/api/v1/story-art/{art_id}/data"
+
+
+def served_art_url(row: Any) -> str:
+    """The URL of a ready row: its stock image's when it adopted one (#2714), else its own."""
+    stock_id = getattr(row, "stock_id", None)
+    return art_url(stock_id if stock_id else row.id)
 
 
 def empty_art(status: ArtStatus = "none") -> dict[str, Any]:
@@ -579,11 +613,18 @@ def build_art_map(
                 ready += 1
                 row = by_item[(item.kind, item.key, pose)]
                 if item.kind == KIND_CHARACTER:
-                    characters.setdefault(item.key, {})[pose] = art_url(row.id)
+                    characters.setdefault(item.key, {})[pose] = served_art_url(row)
                 else:
-                    places[item.key] = art_url(row.id)
+                    places[item.key] = served_art_url(row)
             else:
                 failed += 1
+        if item.kind == KIND_CHARACTER and states[POSE_IDLE] == "ready":
+            # Stock may also hold surprised and sad (never drawn by a run, so
+            # never counted): serve them when the course adopted them.
+            for pose in EXTRA_CHARACTER_POSES:
+                extra = by_item.get((item.kind, item.key, pose))
+                if extra is not None and extra.status == STATUS_READY:
+                    characters.setdefault(item.key, {})[pose] = served_art_url(extra)
     total = ready + failed + outstanding  # failed: failed, or not to be drawn
     status: ArtStatus
     if total and ready == total:
@@ -1022,15 +1063,24 @@ class RunReport:
     ready: int = 0
     failed: int = 0
     skipped: list[str] = field(default_factory=list)
+    #: Images adopted from the shared stock (no image call), and the items
+    #: left undrawn by the course's custom-art cap.
+    adopted: int = 0
+    capped: list[str] = field(default_factory=list)
 
     def as_dict(self, planned: int) -> dict[str, Any]:
-        return {
+        report: dict[str, Any] = {
             "status": "complete",
             "planned": planned,
             "ready": self.ready,
             "failed": self.failed,
             "skipped": self.skipped,
         }
+        if self.adopted:
+            report["adopted"] = self.adopted  # images taken from the shared stock
+        if self.capped:
+            report["capped"] = self.capped  # items left undrawn by the custom-art cap
+        return report
 
 
 def _error_text(exc: BaseException) -> str:
@@ -1054,6 +1104,9 @@ class StoryArtGenerator:
         max_images: int = MAX_IMAGES_PER_RUN,
         concurrency: int = CONCURRENCY,
         retry_failed: bool = False,
+        use_stock: bool = True,
+        stock_pack: str = DEFAULT_PACK,
+        custom_cap: int = 0,
         generate: Callable[..., Awaitable[tuple[bytes, str]]] | None = None,
         edit: Callable[..., Awaitable[tuple[bytes, str]]] | None = None,
         sleep: Callable[[float], Awaitable[Any]] | None = None,
@@ -1065,6 +1118,10 @@ class StoryArtGenerator:
         self._max_images = max_images
         self._concurrency = concurrency
         self._retry_failed = retry_failed
+        self._use_stock = use_stock
+        self._stock_pack = stock_pack
+        #: Own drawings one course may hold; 0 is no cap (#2714).
+        self._custom_cap = custom_cap
         self._generate = generate or generate_image
         self._edit = edit or edit_image
         self._sleep = sleep or asyncio.sleep
@@ -1090,8 +1147,11 @@ class StoryArtGenerator:
             retry_failed=self._retry_failed,
             model=self._model,
         )
+        report = RunReport()
+        jobs = await self._adopt_stock(course_id, jobs, report)
+        jobs = await self._apply_custom_cap(course_id, jobs, rows, report)
         kept, skipped = apply_cap(jobs, self._max_images)
-        report = RunReport(skipped=[job.item.key for job in skipped])
+        report.skipped = [job.item.key for job in skipped]
         if skipped:
             logger.warning(
                 "story_art.cap_reached",
@@ -1122,6 +1182,124 @@ class StoryArtGenerator:
                 )
         logger.info("story_art.run_finished", course_id=str(course_id), **report.as_dict(planned))
         return report.as_dict(planned)
+
+    # -- shared stock (#2714) -------------------------------------------------------
+
+    async def _adopt_stock(
+        self, course_id: uuid.UUID, jobs: list[ArtJob], report: RunReport
+    ) -> list[ArtJob]:
+        """Give each job the shared stock covers; return the jobs still to draw.
+
+        Only a whole item is adopted (an idle drawn again, or a place), never
+        a pose beside the course's own idle. Best effort: any failure here
+        leaves the jobs to be drawn, as before the stock existed.
+        """
+        if not self._use_stock or not jobs:
+            return jobs
+        try:
+            async with self._session_factory() as session:
+                index = await load_stock_index(session, self._stock_pack)
+        except Exception as exc:
+            logger.warning("story_art.stock_unavailable", error=_error_text(exc))
+            return jobs
+        if not index:
+            return jobs
+        remaining: list[ArtJob] = []
+        for job in jobs:
+            item = job.item
+            images = (
+                find_stock(index, item.kind, item.key, item.role, item.variant, item.look)
+                if job.idle_row_id is None
+                else None
+            )
+            if images is None or not await self._store_stock(course_id, item, images):
+                remaining.append(job)
+                continue
+            report.adopted += len(stock_poses(item.kind, images))
+            logger.info(
+                "story_art.stock_adopted",
+                course_id=str(course_id),
+                key=item.key,
+                poses=stock_poses(item.kind, images),
+            )
+        return remaining
+
+    async def _store_stock(
+        self, course_id: uuid.UUID, item: ArtItem, images: Mapping[str, StockImage]
+    ) -> bool:
+        """Replace the item's rows with rows adopting ``images``, in one transaction."""
+        poses = stock_poses(item.kind, images)
+        try:
+            async with self._session_factory() as session:
+                await session.execute(
+                    delete(StoryArt).where(
+                        StoryArt.course_id == course_id,
+                        StoryArt.kind == item.kind,
+                        StoryArt.key == item.key,
+                    )
+                )
+                for pose in poses:
+                    session.add(
+                        stock_row(
+                            course_id,
+                            item.kind,
+                            item.key,
+                            pose,
+                            item.digest,
+                            images[pose],
+                            ART_VERSION,
+                        )
+                    )
+                await session.commit()
+        except Exception as exc:
+            logger.error(
+                "story_art.stock_store_failed",
+                course_id=str(course_id),
+                key=item.key,
+                error=_error_text(exc),
+            )
+            return False
+        return True
+
+    async def _apply_custom_cap(
+        self, course_id: uuid.UUID, jobs: list[ArtJob], rows: list[Any], report: RunReport
+    ) -> list[ArtJob]:
+        """Hold back the drawings beyond the course's cap of own images.
+
+        With a cap (``story-art-max-custom-images``, 0 for none, the default,
+        as before the stock), a course keeps at most that many ready images of
+        its own (rows that adopted stock do not count). A job that does not
+        fit is stored as a final failure, :data:`CUSTOM_CAP_ERROR`, so no view
+        says it is being drawn; an operator's run with ``retry_failed`` draws
+        it, ignoring the cap. Whole jobs only, as the run's own cap.
+        """
+        if self._custom_cap <= 0 or self._retry_failed or not jobs:
+            return jobs
+        replaced = {(job.item.kind, job.item.key) for job in jobs}
+        own = sum(
+            1
+            for row in rows
+            if row.status == STATUS_READY
+            and not getattr(row, "stock_id", None)
+            and (row.kind, row.key) not in replaced
+        )
+        kept: list[ArtJob] = []
+        for job in jobs:
+            if own + job.cost <= self._custom_cap:
+                own += job.cost
+                kept.append(job)
+                continue
+            report.capped.append(job.item.key)
+            for pose in job.poses:
+                await self._store_failed(course_id, job.item, pose, Failure(error=CUSTOM_CAP_ERROR))
+        if report.capped:
+            logger.warning(
+                "story_art.custom_cap_reached",
+                course_id=str(course_id),
+                cap=self._custom_cap,
+                capped=report.capped,
+            )
+        return kept
 
     # -- one item -----------------------------------------------------------------
 

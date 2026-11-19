@@ -321,7 +321,10 @@ class _LooksSession:
     """Answers the bible query and the published-weeks query; records both."""
 
     def __init__(self, bible: tuple | None = None, weeks: list[tuple] | None = None) -> None:
-        self.bible = bible
+        # (cast, places, model), as before #2714; the audience sits before the model.
+        self.bible = (
+            (*bible[:2], None, bible[2]) if bible is not None and len(bible) == 3 else bible
+        )
         #: (cast, places[, learner]) per published week, newest first.
         self.weeks = [week if len(week) == 3 else (*week, None) for week in weeks or []]
         self.statements: list[str] = []
@@ -2343,7 +2346,7 @@ class TestTask:
     def test_a_run_uses_the_image_setting_and_holds_then_releases_the_key(self, task_wiring):
         result = run_task(str(COURSE_ID), dedup_key=KEY)
         assert result == {"status": "complete", "planned": 0}
-        task_wiring.cache.get.assert_called_once_with("ai-model-image", OPENAI_IMAGE_MODEL)
+        task_wiring.cache.get.assert_any_call("ai-model-image", OPENAI_IMAGE_MODEL)
         assert task_wiring.generator_cls.call_args.kwargs["model"] == "gemini-2.5-flash-image"
         assert task_wiring.generator_cls.call_args.kwargs["retry_failed"] is False
         task_wiring.generator.run.assert_awaited_once_with(COURSE_ID)
@@ -2503,8 +2506,9 @@ class TestMigration:
 
     def test_columns_match_the_model(self, recorded):
         columns = {e.name: e for e in recorded.tables["story_art"] if isinstance(e, sa.Column)}
+        # ``stock_id`` came with migration 114 (#2714).
         model = StoryArt.__table__.columns
-        assert set(columns) == {c.name for c in model}
+        assert set(columns) == {c.name for c in model} - {"stock_id"}
         dialect = sa.dialects.postgresql.dialect()
         for name, column in columns.items():
             assert column.nullable == model[name].nullable, name
@@ -2541,7 +2545,16 @@ class TestMigration:
 
         migration = checks(recorded.tables["story_art"])
         model = checks(StoryArt.__table__.constraints)
+        # Migration 114 (#2714) widened the pose check for the stock's extra poses.
+        assert model.pop("ck_story_art_pose").startswith(
+            "pose IN ('idle', 'talk', 'happy', 'think'"
+        )
+        assert (
+            migration.pop("ck_story_art_pose")
+            == "pose IN ('idle', 'talk', 'happy', 'think', 'backdrop')"
+        )
         assert migration == model
+        migration["ck_story_art_pose"] = ""
         assert set(migration) == {"ck_story_art_kind", "ck_story_art_pose", "ck_story_art_status"}
 
     def test_downgrade_drops_the_table(self):

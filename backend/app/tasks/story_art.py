@@ -55,6 +55,36 @@ STORY_ART_MAX_OVERFLOW = 2
 SKIPPED_LOCKED = {"status": "skipped", "reason": "course_run_in_progress"}
 
 
+#: Platform settings of the shared stock art (#2714), read by every run.
+SETTING_USE_STOCK = "story-art-use-stock"
+SETTING_STOCK_PACK = "story-art-stock-pack"
+SETTING_CUSTOM_CAP = "story-art-max-custom-images"
+
+
+def story_art_stock_settings(get) -> dict:
+    """The generator's stock options from the platform settings (``get(key, default)``).
+
+    Defaults keep a stack with no settings (and no stock) behaving as before:
+    stock on (it only matters once an admin approved some), the
+    ``west_africa`` pack, and no cap on a course's own drawings (0).
+    """
+    from app.domain.models.story_stock_art import DEFAULT_PACK
+
+    def number(raw, default: int) -> int:
+        try:
+            return max(int(raw), 0)
+        except (TypeError, ValueError):
+            return default
+
+    use = str(get(SETTING_USE_STOCK, True)).strip().lower() not in ("false", "0", "no", "off")
+    pack = str(get(SETTING_STOCK_PACK, DEFAULT_PACK) or DEFAULT_PACK).strip() or DEFAULT_PACK
+    return {
+        "use_stock": use,
+        "stock_pack": pack,
+        "custom_cap": number(get(SETTING_CUSTOM_CAP, 0), 0),
+    }
+
+
 def story_art_dispatch_key(course_id: uuid.UUID | str) -> str:
     """Redis key holding the id of the task drawing a course's story art."""
     return f"story_art_dispatch:course:{course_id}"
@@ -170,9 +200,13 @@ def generate_story_art(
                         task_id=self.request.id,
                     )
                     return dict(SKIPPED_LOCKED)
-                model = SettingsCache.instance().get("ai-model-image", DEFAULT_IMAGE_MODEL)
+                cache = SettingsCache.instance()
+                model = cache.get("ai-model-image", DEFAULT_IMAGE_MODEL)
                 generator = StoryArtGenerator(
-                    session_factory, model=model, retry_failed=retry_failed
+                    session_factory,
+                    model=model,
+                    retry_failed=retry_failed,
+                    **story_art_stock_settings(cache.get),
                 )
                 return await generator.run(course_uuid)
         finally:

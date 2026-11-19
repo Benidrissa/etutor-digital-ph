@@ -30,6 +30,9 @@ STORY_TABLE_ROOTS = (
     "story_module_plans",
     # #2709: the saved catalogue of the course pictures a story may show.
     "story_asset_catalogues",
+    # #2714: shared stock art (and the seed state) the art runs adopt.
+    "story_stock_art",
+    "story_seed_state",
     # #2681: the lesson figures a chapter may show are checked against these.
     "source_images",
     "generated_content",

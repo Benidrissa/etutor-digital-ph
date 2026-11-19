@@ -20,7 +20,9 @@ export type ActionType =
   | "lesson_complete"
   | "quiz_answer"
   | "flashcard_review"
-  | "case_study_complete";
+  | "case_study_complete"
+  // Anonymised story events (#2711): a bet, a first answer, a finished chapter.
+  | "story_events";
 
 export interface OfflineModule {
   moduleId: string;

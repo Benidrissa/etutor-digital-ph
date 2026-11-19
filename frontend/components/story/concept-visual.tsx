@@ -19,7 +19,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { SourceImage } from "@/components/learning/source-image";
 import { API_BASE } from "@/lib/api";
@@ -33,6 +33,19 @@ import {
   type TreeNode,
 } from "@/lib/story-course/numbers";
 
+// The demo primitives (#2711) are a chunk each, fetched when a story first shows one.
+const DEMOS = {
+  compare: lazy(() => import("./demos/compare")),
+  annotate: lazy(() => import("./demos/annotate")),
+  sort: lazy(() => import("./demos/sort")),
+  timeline: lazy(() => import("./demos/timeline")),
+} as const;
+
+/** Whether `visual` is one of the demo primitives (#2711). */
+export function isDemoVisual(visual: unknown): visual is keyof typeof DEMOS {
+  return typeof visual === "string" && Object.prototype.hasOwnProperty.call(DEMOS, visual);
+}
+
 interface ConceptVisualProps {
   visual: string;
   params?: Record<string, unknown>;
@@ -45,6 +58,10 @@ interface ConceptVisualProps {
    * its own alt text per language and is served per language.
    */
   language?: "fr" | "en";
+  /** A demo (#2711): the learner acted and saw its verdict. */
+  onDone?: (outcome: { correct: boolean }) => void;
+  /** A demo: show its answer state now (#2711). */
+  reveal?: boolean;
 }
 
 const num = (value: unknown, fallback = 0): number => {
@@ -58,7 +75,14 @@ export function ConceptVisual({
   caption,
   label,
   language = "en",
+  onDone,
+  reveal,
 }: ConceptVisualProps) {
+  if (isDemoVisual(visual)) {
+    return (
+      <DemoVisual visual={visual} params={params ?? {}} caption={caption} lang={language} onDone={onDone} reveal={reveal} />
+    );
+  }
   // A prop's close-up (#2681) is drawn by the stage player itself; an older
   // player or an authored week has nothing to show for it.
   if (visual === "prop") return null;
@@ -66,6 +90,39 @@ export function ConceptVisual({
     return <SourceFigure params={params} caption={caption} language={language} />;
   }
   return <DrawnVisual visual={visual} params={params} caption={caption} label={label} />;
+}
+
+function DemoVisual({
+  visual,
+  params,
+  caption,
+  lang,
+  onDone,
+  reveal,
+}: {
+  visual: keyof typeof DEMOS;
+  params: Record<string, unknown>;
+  caption?: string;
+  lang: "fr" | "en";
+  onDone?: (outcome: { correct: boolean }) => void;
+  reveal?: boolean;
+}) {
+  const t = useTranslations("Story");
+  const Demo = DEMOS[visual];
+  return (
+    <figure className="my-2" data-demo={visual}>
+      <Suspense
+        fallback={
+          <p role="status" className="p-4 text-center text-sm text-gray-600">
+            {t("demoLoading")}
+          </p>
+        }
+      >
+        <Demo params={params} lang={lang} onDone={onDone} reveal={reveal} />
+      </Suspense>
+      {caption ? <figcaption className="mt-2 text-center text-sm text-gray-600">{caption}</figcaption> : null}
+    </figure>
+  );
 }
 
 function DrawnVisual({
