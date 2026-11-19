@@ -574,6 +574,7 @@ class PropBook:
 
     def finish(self, scenes: list[dict[str, Any]], *, module_count: int) -> list[dict[str, Any]]:
         """Settle every reference in ``scenes`` and return the chapter's ``props``."""
+        self._bind_figures()
         self._match_lines(scenes)
         self._cap_new(scenes, module_count=module_count)
         for index, scene in enumerate(scenes):
@@ -589,6 +590,30 @@ class PropBook:
                 )
         self._holders(scenes)
         return [self.props[pid] for pid in self._order(scenes) if pid in used]
+
+    def _bind_figures(self) -> None:
+        """An educational prop that names no figure takes the one that shows it (#2709).
+
+        By the words they share (:func:`story_assets.bind_props`), code only:
+        the model need not have thought of the figure. The prop's close-up is
+        then inserted like any other (:meth:`_closeups`).
+        """
+        if not self.figures:
+            return
+        from app.domain.services import story_assets  # noqa: PLC0415 (it imports this module)
+
+        entries = [story_assets.entry_of_ref(ref) for ref in self.figures]
+        taken = {
+            str(f.get("source_image_id") or f.get("generated_image_id"))
+            for p in self.props.values()
+            if (f := p.get("figure"))
+        }
+        for pid, entry in story_assets.bind_props(
+            self.props.values(), entries, taken=taken
+        ).items():
+            prop = self.props[pid]
+            prop["kind"], prop["educational"] = "figure", True
+            prop["figure"] = figure_of(story_assets.ref_of(entry))
 
     def _lines(self, scenes: list[dict[str, Any]]):
         for scene in scenes:
@@ -824,28 +849,8 @@ class PropBook:
         first_line: dict[str, tuple[int, int]],
         step: dict[str, Any] | None,
     ) -> bool:
-        """Put a close-up after a line naming ``pid``, where it breaks nothing.
-
-        Never between a lead-in and its question, nor between a question and
-        its reaction (:func:`_closeup_slot`); never after the chapter's last
-        line, which lands the hook; at most :data:`MAX_CLOSEUPS_PER_SCENE` a
-        scene. ``False`` when no line naming the prop has such a place.
-        """
-        closeup = step or {"type": "show", "visual": "prop", "params": {"prop": pid}}
-        closeup = {k: v for k, v in closeup.items() if k != "_src"}
-        start_scene, _start = first_line[pid]
-        for s_index in range(start_scene, len(scenes)):
-            scene = scenes[s_index]
-            steps = scene["steps"]
-            if sum(1 for s in steps if s.get("visual") == "prop") >= MAX_CLOSEUPS_PER_SCENE:
-                continue
-            for index, line in enumerate(steps):
-                if line.get("type") in LINE_TYPES and pid in (line.get("props") or []):
-                    position = _closeup_slot(steps, index + 1, last=s_index == len(scenes) - 1)
-                    if position is not None:
-                        steps.insert(position, closeup)
-                        return True
-        return False
+        """Put a close-up after a line naming ``pid`` (see :func:`insert_closeup`)."""
+        return insert_closeup(scenes, pid, first_line, step)
 
     def _used(self, scenes: list[dict[str, Any]]) -> set[str]:
         used: set[str] = set()
@@ -882,6 +887,38 @@ class PropBook:
                     prop.pop("holder", None)
 
 
+def insert_closeup(
+    scenes: list[dict[str, Any]],
+    pid: str,
+    first_line: dict[str, tuple[int, int]],
+    step: dict[str, Any] | None,
+) -> bool:
+    """Put a close-up after a line naming ``pid``, where it breaks nothing.
+
+    Never between a lead-in and its question, nor between a question and
+    its reaction (:func:`_closeup_slot`); never after the chapter's last
+    line, which lands the hook; at most :data:`MAX_CLOSEUPS_PER_SCENE` a
+    scene. ``False`` when no line naming the prop has such a place. Pure: it
+    only edits ``scenes``, so a stored story is re-bound with it as well
+    (:mod:`story_assets`, #2709).
+    """
+    closeup = step or {"type": "show", "visual": "prop", "params": {"prop": pid}}
+    closeup = {k: v for k, v in closeup.items() if k != "_src"}
+    start_scene, _start = first_line[pid]
+    for s_index in range(start_scene, len(scenes)):
+        scene = scenes[s_index]
+        steps = scene["steps"]
+        if sum(1 for s in steps if s.get("visual") == "prop") >= MAX_CLOSEUPS_PER_SCENE:
+            continue
+        for index, line in enumerate(steps):
+            if line.get("type") in LINE_TYPES and pid in (line.get("props") or []):
+                position = _closeup_slot(steps, index + 1, last=s_index == len(scenes) - 1)
+                if position is not None:
+                    steps.insert(position, closeup)
+                    return True
+    return False
+
+
 def _asks_or_sets_up(step: dict[str, Any] | None) -> bool:
     """A question, or the situation card that belongs to it."""
     return step is not None and (
@@ -910,7 +947,11 @@ def _closeup_slot(steps: list[dict[str, Any]], start: int, *, last: bool) -> int
 
 def figure_of(ref: dict[str, Any]) -> dict[str, Any]:
     """``prop.figure`` from a lesson figure ref (with its facts, when checked)."""
-    figure: dict[str, Any] = {"source_image_id": _str(ref.get("id"))}
+    if ref.get("generated"):
+        # A lesson illustration (``generated_images``, #2709), not a PDF figure.
+        figure: dict[str, Any] = {"generated_image_id": _str(ref.get("id"))}
+    else:
+        figure = {"source_image_id": _str(ref.get("id"))}
     if ref.get("figure_number"):
         figure["figure_number"] = _str(ref.get("figure_number"))
     if ref.get("image_hash"):
@@ -929,8 +970,15 @@ def figure_of(ref: dict[str, Any]) -> dict[str, Any]:
     return figure
 
 
-def plan_props(plan: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """The episode plan's props in the chapter prop shape, marked ``origin`` "module"."""
+def plan_props(
+    plan: dict[str, Any] | None, catalogue: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """The episode plan's props in the chapter prop shape, marked ``origin`` "module".
+
+    A prop the plan stood for a course figure (``"kind": "figure"``, ``"figure":
+    "A1"``) carries that figure when the catalogue has it (#2709); otherwise it
+    is a real thing.
+    """
     out: list[dict[str, Any]] = []
     for raw in (plan or {}).get("props") or []:
         if not isinstance(raw, dict) or not raw.get("id"):
@@ -941,6 +989,12 @@ def plan_props(plan: dict[str, Any] | None) -> list[dict[str, Any]]:
         if not en or not fr:
             continue
         kind = _str(raw.get("kind")).lower()
+        entry = None
+        if kind == "figure":
+            from app.domain.services import story_assets  # noqa: PLC0415
+
+            entry = story_assets.entry_by_ref(catalogue, raw.get("figure"))
+            kind = "real"
         kind = kind if kind in ("sticker", "real") else "sticker"
         at = _str(raw.get("at")).lower()
         at = at if at in PROP_PLACEMENTS and at != "held" else "ground"
@@ -960,5 +1014,10 @@ def plan_props(plan: dict[str, Any] | None) -> list[dict[str, Any]]:
         }
         if is_one_emoji(_str(raw.get("emoji"))):
             prop["emoji"] = _str(raw.get("emoji"))
+        if entry is not None:
+            from app.domain.services import story_assets  # noqa: PLC0415
+
+            prop["kind"], prop["educational"] = "figure", True
+            prop["figure"] = figure_of(story_assets.ref_of(entry))
         out.append(prop)
     return out

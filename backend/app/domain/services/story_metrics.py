@@ -28,7 +28,7 @@ ASSET_CODES = frozenset(
 )
 
 #: A line that points at something: "look", "regardez", "voici"...
-_DEIXIS_RE = re.compile(
+DEIXIS_RE = re.compile(
     r"\blook\b|\bhere(?:'s| is| are)\b|\bthere it is\b|\bcheck (?:this|it) out\b"
     r"|\bregard(?:e|ez|ons)\b|\bvoici\b|\bvoil[àa]\b|\bvoyez\b|\bregarde-moi\b",
     re.IGNORECASE,
@@ -256,7 +256,7 @@ def dangling_deixis(doc: dict[str, Any]) -> list[Finding]:
         for position, item in enumerate(items):
             if item.type not in LINE_TYPES:
                 continue
-            if not any(_DEIXIS_RE.search(str(item.step.get(lang) or "")) for lang in ("en", "fr")):
+            if not any(DEIXIS_RE.search(str(item.step.get(lang) or "")) for lang in ("en", "fr")):
                 continue
             near = items[max(position - DEIXIS_WINDOW, 0) : position + DEIXIS_WINDOW + 1]
             if not any(n.type == "show" for n in near):

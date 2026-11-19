@@ -52,6 +52,7 @@ from app.domain.models.sms_relay import (
 )
 from app.domain.models.source_image import ImageType, SourceImage, SourceImageChunk
 from app.domain.models.story_art import StoryArt
+from app.domain.models.story_asset import StoryAssetCatalogue
 from app.domain.models.story_audio import StoryLineAudio
 from app.domain.models.story_bible import StoryCourseBible
 from app.domain.models.story_course import StoryCourseRecord, StoryCourseStatus
@@ -141,6 +142,7 @@ __all__ = [
     "SourceImage",
     "SourceImageChunk",
     "StoryArt",
+    "StoryAssetCatalogue",
     "StoryLineAudio",
     "StoryCourseBible",
     "StoryModulePlan",

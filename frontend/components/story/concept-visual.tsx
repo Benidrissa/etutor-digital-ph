@@ -22,6 +22,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { SourceImage } from "@/components/learning/source-image";
+import { API_BASE } from "@/lib/api";
 import {
   divisionLadder,
   factorTree,
@@ -160,7 +161,8 @@ function SourceFigure({
   const t = useTranslations("Story");
   const [failed, setFailed] = useState(false);
   const id = nonEmpty(params?.source_image_id);
-  if (!id) return null;
+  const generatedId = nonEmpty(params?.generated_image_id);
+  if (!id && !generatedId) return null;
   if (failed) {
     return (
       <figure className="my-4" data-figure-failed="">
@@ -177,6 +179,27 @@ function SourceFigure({
     params?.alt && typeof params.alt === "object"
       ? (params.alt as Record<string, unknown>)
       : {};
+  if (!id && generatedId) {
+    // A lesson illustration made with AI (#2709): credited as such.
+    return (
+      <figure className="my-4" data-lesson-illustration="">
+        {/* eslint-disable-next-line @next/next/no-img-element -- same-origin, cached by the service worker */}
+        <img
+          src={`${API_BASE}/api/v1/images/${generatedId}/data`}
+          alt={nonEmpty(alt[language]) ?? caption ?? ""}
+          loading="lazy"
+          decoding="async"
+          className="mx-auto block h-auto max-h-[60vh] w-full max-w-md rounded-lg"
+          onError={() => setFailed(true)}
+        />
+        <figcaption className="mt-2 text-center text-sm text-gray-600">
+          {caption ? <span className="block">{caption}</span> : null}
+          <span className="block text-xs">{t("creditCourseIllustration")}</span>
+        </figcaption>
+      </figure>
+    );
+  }
+  if (!id) return null;
   return (
     <SourceImage
       id={id}

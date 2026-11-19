@@ -61,7 +61,13 @@ export function CreditLine({ credit, target, home }: { credit: MediaCredit; targ
   const t = useTranslations("Story");
   const line =
     text(credit.text, target, home) ||
-    (credit.kind === "generated" ? t("creditDrawing") : credit.kind === "course" ? t("creditCourse") : "");
+    (credit.kind === "generated"
+      ? t("creditDrawing")
+      : credit.kind === "course"
+        ? t("creditCourse")
+        : credit.kind === "course_illustration"
+          ? t("creditCourseIllustration")
+          : "");
   const licenseUrl = safeLink(credit.license_url);
   const pageUrl = safeLink(credit.page_url);
   const license = licenseLabel(credit.license) ?? (credit.license ? t("publicDomain") : undefined);
