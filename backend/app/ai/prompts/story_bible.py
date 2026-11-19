@@ -44,10 +44,29 @@ _KIDS_REGISTER = (
     " friends, the market, the neighbourhood. The mentor is the class teacher; the family"
     " member is a parent, grandparent or older sibling."
 )
+#: The same registers when this course's stories have no mentor (#2710): the
+#: friend is the one who doubts and asks "how do you know?".
+_KIDS_REGISTER_NO_MENTOR = (
+    "The audience is children aged {age_range}. The world is the hero's: home, family, school,"
+    " friends, the market, the neighbourhood. There is no teacher in these stories: the"
+    " children find things out themselves, and the friend is the sceptical one who asks"
+    ' "how do you know?"; the family member is a parent, grandparent or older sibling.'
+)
+_ADULT_REGISTER_NO_MENTOR = (
+    "The audience is adult learners. The world is their work: the workplace, colleagues, the"
+    " field, the community they serve. There is no supervisor in these stories: the friend is"
+    ' a colleague and the sceptical one who asks "how do you know?"; the family member is a'
+    " respected member of the community."
+)
 _ADULT_REGISTER = (
     "The audience is adult learners. The world is their work: the workplace, colleagues, the"
     " field, the community they serve. The friend is a colleague, the mentor a supervisor,"
     " the family member a respected member of the community."
+)
+
+_MENTOR_ROW = (
+    '    {"id": "mentor", "name": "a name", "about": "...", "look": "one English sentence",'
+    ' "voice": {"pitch": 0.85, "rate": 0.95}},\n'
 )
 
 _SCHEMA = """Return this JSON object:
@@ -57,8 +76,7 @@ _SCHEMA = """Return this JSON object:
       "variants": [{{"id": "{v1}", "look": "one English sentence"}}, {{"id": "{v2}", "look": "one English sentence"}}],
       "voice": {{"pitch": 1.4, "rate": 1.0}}}},
     {{"id": "friend", "default_name": "a first name", "about": "...", "look": "one English sentence", "voice": {{"pitch": 1.5, "rate": 1.05}}}},
-    {{"id": "mentor", "name": "a name", "about": "...", "look": "one English sentence", "voice": {{"pitch": 0.85, "rate": 0.95}}}},
-    {{"id": "family", "name": "a name", "about": "...", "look": "one English sentence", "voice": {{"pitch": 0.95, "rate": 0.95}}}},
+{mentor_row}    {{"id": "family", "name": "a name", "about": "...", "look": "one English sentence", "voice": {{"pitch": 0.95, "rate": 0.95}}}},
     {{"id": "margo", "about": "...", "look": "one English sentence describing the cartoon margouillat", "voice": {{"pitch": 1.8, "rate": 1.05}}}}
   ],
   "places": [
@@ -76,7 +94,7 @@ _SCHEMA = """Return this JSON object:
 }}
 
 RULES:
-- "cast": exactly the ids hero, friend, mentor, family, margo. The hero has no name and no single
+- "cast": exactly the ids {cast_ids}. {mentor_rule}The hero has no name and no single
   look: two "variants", "{v1}" and "{v2}", the same person otherwise (same age, same uniform or
   work clothes). Every look is ONE sentence of at most 40 words.
 - "places": {min_places} to {max_places} places where this course's lessons can happen, set in
@@ -104,6 +122,7 @@ def build_bible_messages(
     *,
     is_kids: bool,
     country: str,
+    mentor_policy: str | None = None,
 ) -> tuple[str, str]:
     """``(system prompt, user message)`` for the course's bible."""
     from app.ai.prompts.audience import detect_audience
@@ -113,10 +132,15 @@ def build_bible_messages(
         f"{audience.age_min}-{audience.age_max}" if audience and audience.is_kids else "8-14"
     )
     country_line = f"{country} (West Africa)" if country else "West Africa"
+    no_mentor = mentor_policy == "none"
     system = _SYSTEM.format(
         audience_label=f"children aged {age_range}" if is_kids else "adult professionals",
         country_line=country_line,
-        register=(_KIDS_REGISTER.format(age_range=age_range) if is_kids else _ADULT_REGISTER),
+        register=(
+            (_KIDS_REGISTER_NO_MENTOR if no_mentor else _KIDS_REGISTER).format(age_range=age_range)
+            if is_kids
+            else (_ADULT_REGISTER_NO_MENTOR if no_mentor else _ADULT_REGISTER)
+        ),
     )
     v1, v2 = ("girl", "boy") if is_kids else ("woman", "man")
     title = {
@@ -138,6 +162,19 @@ def build_bible_messages(
             min_places=5,
             max_places=8,
             country_line=country_line,
+            mentor_row="" if no_mentor else _MENTOR_ROW,
+            cast_ids="hero, friend, family, margo"
+            if no_mentor
+            else "hero, friend, mentor, family, margo",
+            mentor_rule=(
+                "There is no mentor: do not write one. "
+                if no_mentor
+                else (
+                    "The mentor only opens or closes episodes and never explains the lesson. "
+                    if mentor_policy == "cameo"
+                    else ""
+                )
+            ),
         )
     )
     return system, user

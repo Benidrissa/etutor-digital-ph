@@ -28,6 +28,8 @@ STORY_TABLE_ROOTS = (
     "story_courses",
     "story_course_bibles",
     "story_module_plans",
+    # #2709: the saved catalogue of the course pictures a story may show.
+    "story_asset_catalogues",
     # #2681: the lesson figures a chapter may show are checked against these.
     "source_images",
     "generated_content",

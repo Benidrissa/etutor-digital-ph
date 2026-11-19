@@ -448,7 +448,10 @@ class StoryCourseValidator:
                     f"{path}.query",
                     f"a query is 1 to {PROP_QUERY_LIMIT} characters",
                 )
-            if prop.kind == "figure" and (prop.figure is None or not prop.figure.source_image_id):
+            if prop.kind == "figure" and (
+                prop.figure is None
+                or not (prop.figure.source_image_id or prop.figure.generated_image_id)
+            ):
                 self._error(
                     "prop_figure_missing", f"{path}.figure", "a figure prop names its figure"
                 )

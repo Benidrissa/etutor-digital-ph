@@ -36,6 +36,15 @@ MODULE = BibleModule(uuid.UUID(int=1), 1, {"en": "What is alive?", "fr": "Qu'est
 OTHER = BibleModule(uuid.UUID(int=2), 2, {"en": "Cells", "fr": "Les cellules"})
 
 
+@pytest.fixture(autouse=True)
+def mentor_always(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the bible's mechanics, with a mentor (#2710: the admin's
+    ``always``); the policy itself is tested in ``test_story_cast_policy.py``."""
+    from app.domain.services import story_bible
+
+    monkeypatch.setattr(story_bible, "_mentor_policy", lambda *_a, **_k: "lead")
+
+
 class FakeClaude:
     def __init__(self, *answers: Any) -> None:
         self.answers = list(answers)

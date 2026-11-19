@@ -142,6 +142,34 @@ describe("service worker story media cache (#2681)", () => {
     );
   });
 
+  it("keeps lesson illustrations (#2709), cache first, in a cache of their own", () => {
+    const path = "/api/v1/images/22222222-2222-4222-8222-222222222222/data";
+    const found = ruleFor(path);
+    expect(found?.handler).toBeInstanceOf(CacheFirst);
+    expect(found?.handler.options.cacheName).toBe("lesson-images-v1");
+    // Not versioned, and never swept as a stale runtime cache.
+    expect(isStaleRuntimeCache("lesson-images-v1")).toBe(false);
+    // Only the picture itself: the image listings stay with the API rule.
+    expect(ruleFor("/api/v1/images/lesson/22222222-2222-4222-8222-222222222222")?.handler.options.cacheName).toMatch(
+      /^api-responses-/,
+    );
+  });
+
+  it("keeps a redirected (opaque) lesson illustration and never an error page", async () => {
+    const path = "/api/v1/images/22222222-2222-4222-8222-222222222222/data";
+    const plugins = (ruleFor(path)?.handler.options as {
+      plugins?: Array<{ cacheWillUpdate?: (arg: { response: Response }) => Promise<Response | null> }>;
+    }).plugins;
+    const keep = plugins?.find((plugin) => plugin.cacheWillUpdate)?.cacheWillUpdate;
+    expect(keep).toBeTypeOf("function");
+    const ok = { status: 200, type: "basic" } as Response;
+    const opaque = { status: 0, type: "opaque" } as Response;
+    expect(await keep!({ response: ok })).toBe(ok);
+    expect(await keep!({ response: opaque })).toBe(opaque);
+    expect(await keep!({ response: { status: 404, type: "basic" } as Response })).toBeNull();
+    expect(await keep!({ response: { status: 302, type: "basic" } as Response })).toBeNull();
+  });
+
   it("bumps the page cache with the service worker", () => {
     expect(PAGES_CACHE_NAME).toBe("pages-v13-story-closeups");
     expect(rule(NetworkFirst).handler.options.cacheName).toBe(PAGES_CACHE_NAME);

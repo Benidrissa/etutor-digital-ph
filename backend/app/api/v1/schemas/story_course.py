@@ -328,7 +328,10 @@ class Chapter(_Loose):
 class PropFigure(_Loose):
     """A course figure the builder resolved (the model writes ``"figure": N``)."""
 
-    source_image_id: str
+    #: A course figure (``source_images``)...
+    source_image_id: str | None = None
+    #: ...or a lesson illustration (``generated_images``, #2709): exactly one of the two.
+    generated_image_id: str | None = None
     figure_number: str | None = None
     #: ``source_images.image_hash``: finds the figure again after a re-index.
     image_hash: str | None = None

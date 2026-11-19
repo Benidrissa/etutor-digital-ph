@@ -69,6 +69,15 @@ _STORY_UNIT_RE = re.compile(r"the IDEAS of lesson (\S+) into the story")
 _PACK_UNIT_RE = re.compile(r"\(lesson (\S+)\) of the episode")
 
 
+@pytest.fixture(autouse=True)
+def mentor_lead(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests are about the pipeline's calls and freshness, with the fixture's mentor
+    (#2710: policy ``lead``); the policy itself is tested in ``test_story_cast_policy.py``."""
+    from app.domain.services import story_bible
+
+    monkeypatch.setattr(story_bible, "_mentor_policy", lambda *_a, **_k: "lead")
+
+
 @pytest.fixture(scope="module")
 def database_url() -> Iterator[str]:
     with scratch_database("story_module") as url:

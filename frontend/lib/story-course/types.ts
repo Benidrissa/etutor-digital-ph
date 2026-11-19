@@ -121,7 +121,10 @@ export type PropSize = "s" | "m" | "l";
 
 /** A course figure the builder resolved (the model writes "figure": N). */
 export interface PropFigure {
-  source_image_id: string;
+  /** A figure of the course's PDF (source_images)... */
+  source_image_id?: string;
+  /** ...or a lesson illustration made with AI (generated_images, #2709): one of the two. */
+  generated_image_id?: string;
   figure_number?: string;
   /** source_images.image_hash: finds the figure again after a re-index changes its id. */
   image_hash?: string;
@@ -156,7 +159,7 @@ export interface Prop {
 }
 
 export interface MediaCredit {
-  kind: "course" | "web" | "generated";
+  kind: "course" | "course_illustration" | "web" | "generated";
   title?: string;
   author?: string;
   author_url?: string;
@@ -185,7 +188,7 @@ export interface PropPicture {
   alt: TextObject;
   caption?: TextObject;
   /** "open_3d": a render of an open-licence 3D model (the shared prop library). */
-  via: "lesson_figure" | "course_figure" | "open_photo" | "open_3d" | "ai_drawing";
+  via: "lesson_figure" | "lesson_illustration" | "course_figure" | "open_photo" | "open_3d" | "ai_drawing";
   credit: MediaCredit;
 }
 
