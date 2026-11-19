@@ -61,6 +61,29 @@ def leadin_step(key: str, offset: int = 0) -> dict[str, Any]:
     return {"type": "narrate", "en": en, "fr": fr, "leadin": True}
 
 
+def leadin_keys(step: dict[str, Any]) -> set[tuple[str, str]]:
+    """``(lang, line key)`` of a lead-in step (none for any other step), as the
+    module validator compares lines."""
+    if not is_leadin(step):
+        return set()
+    from app.domain.services.story_course_validator import line_key
+
+    return {
+        (lang, line_key(step.get(lang))) for lang in ("en", "fr") if isinstance(step.get(lang), str)
+    }
+
+
+def pick_leadin(key: str, avoid: set[tuple[str, str]], offset: int = 0) -> dict[str, Any]:
+    """The lead-in for ``key`` that is not in ``avoid`` (the first of the twelve, in
+    the hash's order, when every one is taken)."""
+    first = leadin_step(key, offset)
+    for shift in range(len(LEADINS)):
+        step = leadin_step(key, offset + shift)
+        if not leadin_keys(step) & avoid:
+            return step
+    return first
+
+
 def is_leadin(step: dict[str, Any] | None) -> bool:
     return bool(step and step.get("leadin"))
 
@@ -73,14 +96,20 @@ def _situation(step: dict[str, Any]) -> bool:
     return step.get("type") == "concept" and str(step.get("id", "")).startswith("situation-")
 
 
-def add_leadins(scenes: list[dict[str, Any]], salt: str) -> int:
+def add_leadins(
+    scenes: list[dict[str, Any]], salt: str, *, avoid: set[tuple[str, str]] | None = None
+) -> int:
     """Put a lead-in before every run of questions that has no line before it.
 
     A run is its questions and their situation cards, in one scene; what comes
     before it (a close-up is seen through) must be a ``say`` line or a lead-in.
     Returns how many were added. Deterministic: the same scenes and ``salt``
-    (the chapter's unit) always give the same lines.
+    (the chapter's unit) always give the same lines. ``avoid`` (#2713, the slot
+    builder's chapters): the keys of the lead-ins earlier chapters already have;
+    one of those, or one already put in this chapter, is never chosen (the module
+    validator refuses a line told twice). ``None``: chosen as ever.
     """
+    taken = set(avoid) if avoid is not None else None
     added = 0
     for scene in scenes:
         out: list[dict[str, Any]] = []
@@ -95,9 +124,12 @@ def add_leadins(scenes: list[dict[str, Any]], salt: str) -> int:
             starts = step.get("type") == "ask" or _situation(step)
             if starts and not in_run:
                 if previous is None or not (previous.get("type") == "say" or is_leadin(previous)):
-                    lead = leadin_step(
-                        f"{salt}:{step.get('ref') or step.get('id') or added}", added
-                    )
+                    key = f"{salt}:{step.get('ref') or step.get('id') or added}"
+                    if taken is None:
+                        lead = leadin_step(key, added)
+                    else:
+                        lead = pick_leadin(key, taken, added)
+                        taken |= leadin_keys(lead)
                     out.append(lead)
                     added += 1
                 in_run = True
