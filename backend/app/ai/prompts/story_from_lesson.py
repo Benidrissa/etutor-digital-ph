@@ -1064,6 +1064,7 @@ def _this_chapter_block(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
         ("OBSTACLE", "obstacle"),
     ):
         lines.append(f"{label}: {clean_text(entry.get(key))}")
+    lines += _journey_lines(ctx)
     for number, beat in enumerate(ctx.beats, start=1):
         lines.append(_beat_line(ctx, number, beat))
     lines.append(f"TURN: {clean_text(entry.get('turn'))}")
@@ -1084,6 +1085,24 @@ def _this_chapter_block(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _journey_lines(ctx: LessonStoryContext) -> list[str]:
+    """The stages this chapter plays and its story question (#2749); nothing for a legacy plan."""
+    from app.domain.services.story_journey import is_linear, stage_lines
+
+    entry = ctx.plan_entry or {}
+    if not is_linear(ctx.plan):
+        return []
+    lines = []
+    stages = stage_lines(entry.get("stages"))
+    if stages:
+        lines.append("HERO'S JOURNEY STAGES this chapter plays, in order:")
+        lines += [f"  {line}" for line in stages]
+    question = clean_text(entry.get("question"))
+    if question:
+        lines.append(f"STORY QUESTION (ask it near the start, answer it by the end): {question}")
+    return lines
+
+
 def _rally_block(ctx: LessonStoryContext) -> str:
     entry = ctx.plan_entry or {}
     lines = ["=== THE RALLY ==="]
@@ -1093,6 +1112,7 @@ def _rally_block(ctx: LessonStoryContext) -> str:
         ("FINAL OBSTACLE", "final_obstacle"),
     ):
         lines.append(f"{label}: {clean_text(entry.get(key))}")
+    lines += _journey_lines(ctx)
     lines.append("STEPS:")
     for step in entry.get("steps") or []:
         if isinstance(step, dict):

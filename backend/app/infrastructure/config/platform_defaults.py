@@ -2683,6 +2683,19 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         allowed_options=["auto", "never", "always"],
     ),
     SettingDef(
+        "story-journey-enabled",
+        "ai",
+        False,
+        "boolean",
+        "Story Hero's Journey (new courses)",
+        (
+            "Whether NEW course story bibles carry a quest and a shadow, and their module"
+            " plans give every chapter a stage of the Hero's Journey and a story question"
+            " (#2749, linear mode). Off by default. Applies to NEW bibles and plans only; a"
+            " story already made is never regenerated."
+        ),
+    ),
+    SettingDef(
         "ai-model-story",
         "ai",
         "content",

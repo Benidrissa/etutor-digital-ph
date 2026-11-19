@@ -488,6 +488,7 @@ def normalise_bible(
     modules: Sequence[BibleModule] = (),
     country: str = "",
     mentor_policy: str | None = None,
+    journey: bool = False,
 ) -> dict[str, Any]:
     """A complete bible from whatever the model wrote; deterministic.
 
@@ -499,6 +500,11 @@ def normalise_bible(
     ``none``, the mentor is left out of the cast. Left ``None``, the content is
     exactly what it was before the policy existed, so a legacy bible re-read or
     rebuilt keeps its digest.
+
+    ``journey`` (#2749) is true only for a NEW bible made with the
+    ``story-journey-enabled`` switch on, and only with a ``mentor_policy``: the
+    content then has ``journey`` (``template``, ``quest``, ``shadow``). False,
+    the content is byte-identical to what it was before.
     """
     raw = raw if isinstance(raw, dict) else {}
     audience = _audience(is_kids)
@@ -514,6 +520,10 @@ def normalise_bible(
     }
     if mentor_policy is not None:
         content["cast_policy"] = {"mentor": mentor_policy}
+        if journey:
+            from app.domain.services.story_journey import bible_journey
+
+            content["journey"] = bible_journey(raw.get("journey"))
     return content
 
 
@@ -739,6 +749,14 @@ def _mentor_policy(course: Any, modules: Sequence[BibleModule], audience: Any) -
     return course_cast_policy(course, modules, audience, override=override)
 
 
+def _journey_enabled() -> bool:
+    """Whether a NEW course bible gets a quest and a shadow (#2749); off by default."""
+    from app.domain.services.platform_settings_service import SettingsCache
+    from app.domain.services.story_journey import SETTING
+
+    return SettingsCache.instance().get(SETTING, False) in (True, "true")
+
+
 class StoryBibleService:
     """Makes a course's bible with one model call, once, and reads it after that."""
 
@@ -790,9 +808,15 @@ class StoryBibleService:
         audience = detect_audience(course)
         is_kids = audience.is_kids
         mentor_policy = _mentor_policy(course, modules, audience)
+        journey = _journey_enabled()
         try:
             raw = await self._call(
-                course, modules, is_kids=is_kids, country=country, mentor_policy=mentor_policy
+                course,
+                modules,
+                is_kids=is_kids,
+                country=country,
+                mentor_policy=mentor_policy,
+                journey=journey,
             )
             model = (
                 _str(
@@ -818,7 +842,12 @@ class StoryBibleService:
                 "Story bible answers unusable: defaults stored", course_id=str(course.id)
             )
         content = normalise_bible(
-            raw, is_kids=is_kids, modules=modules, country=country, mentor_policy=mentor_policy
+            raw,
+            is_kids=is_kids,
+            modules=modules,
+            country=country,
+            mentor_policy=mentor_policy,
+            journey=journey,
         )
         bible = StoryBible.of(content)
         if row is not None:
@@ -853,6 +882,7 @@ class StoryBibleService:
         is_kids: bool,
         country: str,
         mentor_policy: str | None = None,
+        journey: bool = False,
     ) -> dict[str, Any]:
         """A usable answer, in at most :data:`MAX_CALLS` calls.
 
@@ -867,7 +897,12 @@ class StoryBibleService:
         from app.domain.models.ai_usage_event import FEATURE_STORY_GENERATION
 
         system, user = build_bible_messages(
-            course, modules, is_kids=is_kids, country=country, mentor_policy=mentor_policy
+            course,
+            modules,
+            is_kids=is_kids,
+            country=country,
+            mentor_policy=mentor_policy,
+            journey=journey,
         )
         with ai_usage_context(
             FEATURE_STORY_GENERATION, course_id=getattr(course, "id", None), only_if_unset=True
