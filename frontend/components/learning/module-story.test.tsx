@@ -12,7 +12,7 @@ import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } f
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, apiFetch, getModuleDetailWithProgress } from "@/lib/api";
 import { completeLessonUnit } from "@/lib/learning/complete-lesson";
@@ -234,6 +234,14 @@ const GENERATING = "Écriture de l'histoire de ce module…";
 const LEAVE_HINT = "Tu peux quitter cette page et revenir plus tard : l'écriture de l'histoire continue.";
 const CH1_LINE = "Aminata entre dans le centre de santé.";
 const CH2_LINE = "Aminata va au puits.";
+
+// The player is a lazy chunk (#2738). Load its module once, so the tests that
+// run on fake timers meet a chunk that resolves within a flush of the microtask
+// queue and need not wait for a real file read. The hand-over while the chunk is
+// still on its way is checked in app/[locale]/(app)/story/[slug]/story-week.test.tsx.
+beforeAll(async () => {
+  await import("@/components/story/story-player");
+});
 
 beforeEach(() => {
   // Every test starts from empty storage, whatever ran before it.
@@ -542,6 +550,24 @@ describe("ModuleStory — reading", () => {
     expect(within(rows[3]).getByText("Étude de cas 1.4")).toBeInTheDocument();
     // Later chapters are listed but cannot be jumped to.
     expect(within(rows[1]).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("keeps the player, not the skeleton, on screen when the chapter changes (#2738)", async () => {
+    window.localStorage.setItem(
+      storyProgressKey(STORY_ID, USER_ID),
+      JSON.stringify({ v: 1, completedUnits: ["unit-1.1"], points: { "unit-1.1": 2 } }),
+    );
+    loadMock.mockResolvedValue(moduleStory());
+    renderPanel();
+    expect(await screen.findByText(CH2_LINE)).toBeInTheDocument();
+    expect(screen.queryByText("Chargement de l'histoire…")).not.toBeInTheDocument();
+
+    // Replay the finished chapter: the keyed player is replaced at once, with
+    // no frame of the skeleton in between (the Suspense sits outside the key).
+    const index = screen.getByRole("navigation", { name: "Chapitres" });
+    fireEvent.click(within(index).getByRole("button", { name: /Des mains propres/ }));
+    expect(screen.queryByText("Chargement de l'histoire…")).not.toBeInTheDocument();
+    expect(await screen.findByText(CH1_LINE)).toBeInTheDocument();
   });
 
   it("resumes at the first chapter not finished in this browser", async () => {

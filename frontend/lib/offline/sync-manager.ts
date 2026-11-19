@@ -36,6 +36,35 @@ export const PREWARM_V14_RUNS_KEY = 'offline_prewarm_v14_runs';
 export const PREWARM_V14_NEXT_KEY = 'offline_prewarm_v14_next';
 export const PREWARM_V14_MAX_RUNS = 3;
 export const PREWARM_V14_BACKOFF_MS = 5 * 60 * 1000;
+// The v15 prewarm (#2738): the story pages again, for the pages cache renamed
+// with the lazy story player. Same retry rules as v14.
+const PREWARM_V15_DONE_KEY = 'offline_prewarm_v15_done';
+export const PREWARM_V15_RUNS_KEY = 'offline_prewarm_v15_runs';
+export const PREWARM_V15_NEXT_KEY = 'offline_prewarm_v15_next';
+export const PREWARM_V15_MAX_RUNS = 3;
+export const PREWARM_V15_BACKOFF_MS = 5 * 60 * 1000;
+
+interface PrewarmKeys {
+  done: string;
+  runs: string;
+  next: string;
+  maxRuns: number;
+  backoffMs: number;
+}
+const V14_KEYS: PrewarmKeys = {
+  done: PREWARM_V14_DONE_KEY,
+  runs: PREWARM_V14_RUNS_KEY,
+  next: PREWARM_V14_NEXT_KEY,
+  maxRuns: PREWARM_V14_MAX_RUNS,
+  backoffMs: PREWARM_V14_BACKOFF_MS,
+};
+const V15_KEYS: PrewarmKeys = {
+  done: PREWARM_V15_DONE_KEY,
+  runs: PREWARM_V15_RUNS_KEY,
+  next: PREWARM_V15_NEXT_KEY,
+  maxRuns: PREWARM_V15_MAX_RUNS,
+  backoffMs: PREWARM_V15_BACKOFF_MS,
+};
 
 export type SyncStatus =
   | { state: 'idle' }
@@ -120,6 +149,7 @@ class SyncManager {
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
       this.runV14PrewarmMigration();
+      this.runV15PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -141,6 +171,7 @@ class SyncManager {
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
       this.runV14PrewarmMigration();
+      this.runV15PrewarmMigration();
     }
   }
 
@@ -377,7 +408,7 @@ class SyncManager {
    * One-shot migration for users who downloaded a module before SW v14.
    * The v10 bump (the story media cache, #2681/#2682), the v12 bump (the
    * story player fixes, #2688) and the v12 bump (the AI read-aloud voice,
-   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, now `pages-v14-story-figures`. Without this, previously-prewarmed pages, the
+   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, then the v15 bump (lazy story player, #2738) to `pages-v15-story-lazy-player`. Without this, previously-prewarmed pages, the
    * module story page among them, are invisible to the SW and an offline
    * navigation falls through to /offline.html.
    *
@@ -401,12 +432,37 @@ class SyncManager {
   private v14Run: Promise<void> | null = null;
 
   private async prewarmV14(): Promise<void> {
+    return this.prewarmDownloadedPages(V14_KEYS);
+  }
+
+  /**
+   * One-shot migration for users who downloaded a module before SW v15, which
+   * loads the story player on demand and renames the pages cache to
+   * `pages-v15-story-lazy-player` (#2738). Same job and same retry rules as
+   * the v14 one; the player's chunk itself is in the service worker precache.
+   */
+  runV15PrewarmMigration(): Promise<void> {
+    if (!this.v15Run) {
+      // After the v14 run, not beside it: both fill the same pages cache, and
+      // a page the first stored is not fetched again by the second.
+      this.v15Run = this.runV14PrewarmMigration()
+        .then(() => this.prewarmDownloadedPages(V15_KEYS))
+        .finally(() => {
+        this.v15Run = null;
+      });
+    }
+    return this.v15Run;
+  }
+
+  private v15Run: Promise<void> | null = null;
+
+  private async prewarmDownloadedPages(keys: PrewarmKeys): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
-      if (localStorage.getItem(PREWARM_V14_DONE_KEY)) return;
+      if (localStorage.getItem(keys.done)) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-      const runs = Number(localStorage.getItem(PREWARM_V14_RUNS_KEY)) || 0;
-      const notBefore = Number(localStorage.getItem(PREWARM_V14_NEXT_KEY)) || 0;
+      const runs = Number(localStorage.getItem(keys.runs)) || 0;
+      const notBefore = Number(localStorage.getItem(keys.next)) || 0;
       if (Date.now() < notBefore) return;
 
       let retry = false;
@@ -439,15 +495,15 @@ class SyncManager {
         }
       }
       const run = runs + 1;
-      if (!retry || run >= PREWARM_V14_MAX_RUNS) {
-        localStorage.setItem(PREWARM_V14_DONE_KEY, '1');
-        localStorage.removeItem(PREWARM_V14_RUNS_KEY);
-        localStorage.removeItem(PREWARM_V14_NEXT_KEY);
+      if (!retry || run >= keys.maxRuns) {
+        localStorage.setItem(keys.done, '1');
+        localStorage.removeItem(keys.runs);
+        localStorage.removeItem(keys.next);
       } else {
-        localStorage.setItem(PREWARM_V14_RUNS_KEY, String(run));
+        localStorage.setItem(keys.runs, String(run));
         localStorage.setItem(
-          PREWARM_V14_NEXT_KEY,
-          String(Date.now() + PREWARM_V14_BACKOFF_MS * 4 ** (run - 1)),
+          keys.next,
+          String(Date.now() + keys.backoffMs * 4 ** (run - 1)),
         );
       }
     } catch {
