@@ -155,6 +155,9 @@ def build_header(
     entry = bundle.get("plan_entry") or {}
     beats = [b for b in entry.get("beats") or [] if isinstance(b, dict)]
     pack = bundle.get("pack") or {}
+    # A stored pack (``story_courses.source_rows["pack"]``) keeps its questions under ``spine``.
+    if isinstance(pack.get("spine"), dict):
+        pack = pack["spine"]
     sheet = bundle.get("fact_sheet") or {}
     stored_cast = [m.get("id") for m in (bundle.get("stored") or {}).get("cast") or []]
     roles = ["hero", "friend"] + [
@@ -164,10 +167,21 @@ def build_header(
     # quiz questions: the beats' refs first, then the pack's extra questions
     stems: dict[str, str] = {}
     derived = {d.get("ref"): d for d in pack.get("derived") or [] if isinstance(d, dict)}
+    # The stored chapter holds each derived question's wording in both languages.
+    told = {
+        q.get("id"): q.get("prompt")
+        for q in (bundle.get("stored") or {}).get("questions") or []
+        if isinstance(q, dict)
+    }
     for beat in beats:
         for ref in beat.get("questions") or []:
             d = derived.get(ref) or {}
-            stems.setdefault(ref, _pair(d.get("prompt_home") or d.get("prompt"), lang) or ref)
+            stems.setdefault(
+                ref,
+                _pair(told.get(ref), lang)
+                or _pair(d.get("prompt_home") or d.get("prompt"), lang)
+                or ref,
+            )
     for q in pack.get("questions") or []:
         if isinstance(q, dict) and q.get("id"):
             stems.setdefault(q["id"], _pair(q.get("prompt"), lang))
