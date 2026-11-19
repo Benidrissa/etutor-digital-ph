@@ -50,6 +50,10 @@ VISUALS = (
     "timeline",
     "tiles",
     "image",
+    # #2711: the demo primitives (``timeline`` is above).
+    "compare",
+    "annotate",
+    "sort",
     # #2681: the close-up of a prop, ``params.prop`` names it ("Look closely").
     "prop",
 )
@@ -86,7 +90,37 @@ DRAWN_VISUALS: dict[str, dict[str, tuple[bool, str]]] = {
         "a": (True, "a whole number from 2 to 1000"),
         "b": (True, "a whole number from 2 to 1000"),
     },
+    # #2711, the demo primitives: not limited to maths. The verdict is in the
+    # data (``values``, ``expected``, ``bin``, ``at``), never in the pixels.
+    "compare": {
+        "values": (True, "[a, b], two numbers (0 to 100000)"),
+        "labels": (True, '[{"en": ..., "fr": ...}, {"en": ..., "fr": ...}], what each one is'),
+        "scale": (False, '"ruler", "bars" or "score" (default "bars")'),
+        "unit": (False, "a short unit, at most 8 characters, e.g. cm"),
+        "equal": (False, "true when the two are the same (the code checks it against values)"),
+    },
+    "annotate": {
+        "regions": (False, '"halves" or "thirds" of the figure (default "halves")'),
+        "labels": (True, "one {en, fr} label per region, left to right"),
+        "expected": (True, "the 1-based number of the region that holds the answer"),
+    },
+    "sort": {
+        "items": (True, '2 to 6 items: [{"label": {"en": ..., "fr": ...}, "bin": 1}]'),
+        "bins": (
+            True,
+            '2 or 3 boxes: [{"en": ..., "fr": ...}]; an item\'s "bin" is its box number',
+        ),
+    },
+    "timeline": {
+        "events": (True, '2 to 6 events: [{"label": {"en": ..., "fr": ...}, "at": a number}]'),
+    },
 }
+
+#: The four number-theory widgets: what the story prompt offers a maths story
+#: (and a story told from an older plan) as its drawn visuals. The demo
+#: primitives of #2711 are offered to a NEW plan's story, whatever its subject.
+MATHS_VISUALS = ("hundred_square", "factor_tree", "division_ladder", "venn_primes")
+DEMO_VISUALS = ("compare", "annotate", "sort", "timeline")
 
 #: Scene backdrops (A.8). Open via ``art_requests``.
 PLACES = (
@@ -416,6 +450,15 @@ class Question(_Loose):
     parts: list[QuestionPart] = Field(default_factory=list)
     review_of: str | int | None = None
     points: int | None = None
+    #: #2711, a bet (an ungraded prediction): ``points`` is 0 and the story's
+    #: score never counts it. Left out of a dump while unset, so no stored
+    #: question changes.
+    predict: bool | None = Field(default=None, exclude_if=lambda v: v is None)
+    #: #2711: the picture the question is about, shown as a thumbnail
+    #: (``{source_image_id | generated_image_id, alt?, caption?}``).
+    stimulus: dict[str, Any] | None = Field(default=None, exclude_if=lambda v: v is None)
+    #: #2711, a bet: the reaction keyed to it (``{right, wrong}`` text objects).
+    reveal: dict[str, Any] | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class MarkSchemeRow(_Loose):
@@ -452,6 +495,8 @@ class Exercise(_Loose):
     traps: list[Trap] = Field(default_factory=list)
     explanation: TextObject | None = None
     photo_check: PhotoCheck | None = None
+    #: #2711: the picture the task is about, as on a question.
+    stimulus: dict[str, Any] | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 # --- Mini-games, videos, tutor, rewards ------------------------------------

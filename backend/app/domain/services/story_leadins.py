@@ -21,6 +21,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from app.domain.services.story_poe import is_bet
+
 #: ``(en, fr)``. ``{child}`` is the learner's placeholder, as in every line.
 LEADINS: tuple[tuple[str, str], ...] = (
     ("Now {child} has to decide.", "C'est à {child} de décider."),
@@ -85,7 +87,9 @@ def add_leadins(scenes: list[dict[str, Any]], salt: str) -> int:
         previous: dict[str, Any] | None = None
         in_run = False
         for step in scene.get("steps") or []:
-            if _closeup(step):
+            if _closeup(step) or is_bet(step):
+                # A close-up is seen through; a bet (#2711) is set up by the picture
+                # before it and needs no lead-in line.
                 out.append(step)
                 continue
             starts = step.get("type") == "ask" or _situation(step)

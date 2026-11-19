@@ -16,7 +16,10 @@ import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { scoreAttempt, seededShuffle, text } from "@/lib/story-course/answer";
+import { figureLanguage } from "@/lib/story-course/media";
 import type { Question, Rewards, TextObject } from "@/lib/story-course/types";
+
+import { StimulusThumb } from "./stimulus-thumb";
 
 /** How a question was answered: enough to show it again, read-only. */
 export interface QuestionAnswer {
@@ -215,6 +218,8 @@ export function QuestionCard({
       className={className ?? "my-5 rounded-xl border-2 border-teal-200 bg-teal-50/40 p-4"}
       aria-live="polite"
     >
+      {/* #2711: the picture the question is about, still in view while answering. */}
+      <StimulusThumb stimulus={question.stimulus} lang={figureLanguage(target, home)} />
       <Bilingual
         value={question.prompt}
         target={target}

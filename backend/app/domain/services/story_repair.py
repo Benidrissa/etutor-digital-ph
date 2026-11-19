@@ -99,6 +99,17 @@ from app.domain.services.story_course_validator import (
     speaker_label,
     speaker_prefix_pattern,
 )
+from app.domain.services.story_poe import (
+    Bet,
+    attach_card_media,
+    build_bet,
+    figure_of,
+    is_bet,
+    is_new_plan,
+    order_bets,
+    set_stimuli,
+)
+from app.domain.services.story_poe import _is_figure as poe_figure
 
 logger = structlog.get_logger(__name__)
 
@@ -2092,6 +2103,10 @@ class _ScreenplayBuilder:
         self.book = book
         self.prefix = _prefix_re(cast)
         self.concepts = 0
+        #: #2711: the bets of a NEW plan's chapter, and what was wrong with them
+        #: (reported as lints, never as repair issues).
+        self.bets: list[Bet] = []
+        self.bet_lints: list[tuple[str, str]] = []
         self.default_place = default_place(ctx.bible_content, ctx.is_kids)
         self.refrains = ctx.refrains_before
         self.catchphrases = [
@@ -2136,7 +2151,10 @@ class _ScreenplayBuilder:
         steps: list[dict[str, Any]] = []
         for index, raw_step in enumerate(_items(raw.get("steps"))):
             if isinstance(raw_step, dict):
-                built = self.step(raw_step, f"{path}.steps[{index}]")
+                if raw_step.get("type") == "predict" and is_new_plan(self.ctx.plan):
+                    built = self.predict(raw_step, f"{path}.steps[{index}]", steps)
+                else:
+                    built = self.step(raw_step, f"{path}.steps[{index}]")
                 for step in built:
                     step.setdefault("_src", f"{path}.steps[{index}]")
                 steps.extend(built)
@@ -2174,6 +2192,27 @@ class _ScreenplayBuilder:
                 scene["props"] = listed
         scene["steps"] = steps
         return scene
+
+    def predict(
+        self, raw: dict[str, Any], path: str, before: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """A bet and its demo (#2711), or nothing: what is wrong with one is a lint only."""
+        figure: dict[str, Any] = {}
+        for step in reversed(before):
+            if poe_figure(step):
+                figure = figure_of(step)
+                break
+        bet = build_bet(
+            raw,
+            len(self.bets) + 1,
+            image=figure or None,
+            lints=self.bet_lints,
+            path=path,
+        )
+        if bet is None:
+            return []
+        self.bets.append(bet)
+        return [bet.ask, bet.demo]
 
     def _line_props(self, step: dict[str, Any], raw: dict[str, Any], path: str) -> None:
         if self.book is None or raw.get("props") is None:
@@ -2350,15 +2389,15 @@ def joins_ask_runs(steps: list[dict[str, Any]], index: int) -> bool:
 
     Close-ups are seen through (:func:`is_closeup`); removing one joins nothing.
     """
-    if is_closeup(steps[index]):
+    if is_closeup(steps[index]) or is_bet(steps[index]):
         return False
     before = after = 0
     i = index - 1
     while i >= 0 and (steps[i].get("type") == "ask" or is_closeup(steps[i])):
-        before, i = before + (steps[i].get("type") == "ask"), i - 1
+        before, i = before + (steps[i].get("type") == "ask" and not is_bet(steps[i])), i - 1
     i = index + 1
     while i < len(steps) and (steps[i].get("type") == "ask" or is_closeup(steps[i])):
-        after, i = after + (steps[i].get("type") == "ask"), i + 1
+        after, i = after + (steps[i].get("type") == "ask" and not is_bet(steps[i])), i + 1
     return before + after > MAX_ASKS_IN_A_ROW
 
 
@@ -2398,6 +2437,8 @@ def ask_run_excess(steps: list[dict[str, Any]]) -> list[str]:
     excess: list[str] = []
     run = 0
     for step in steps:
+        if is_bet(step):
+            continue  # a bet (#2711) is no scored question: it counts in no run
         if step.get("type") == "ask":
             run += 1
             if run > MAX_ASKS_IN_A_ROW and step.get("ref"):
@@ -2528,7 +2569,7 @@ def _cap_ask_runs(scenes: list[dict[str, Any]]) -> set[str]:
     for scene in scenes:
         kept: list[dict[str, Any]] = []
         for step in scene["steps"]:
-            if is_closeup(step):
+            if is_closeup(step) or is_bet(step):
                 kept.append(step)
                 continue
             if step["type"] == "ask":
@@ -3122,6 +3163,10 @@ def _assemble(
     if scenes:
         _drop_repeated_lines(scenes, set(), ctx.earlier_line_keys)
         scenes = [s for s in scenes if s["steps"]]
+    new_plan = is_new_plan(ctx.plan)
+    # #2711: a bet comes before the card that names its idea, never after.
+    if scenes and builder.bets and order_bets(scenes):
+        builder.bet_lints.append(("bet_moved", "a bet written after its card was moved up"))
     fallback_cards = 0
     if scenes:
         _place_unasked(scenes, built, refs)
@@ -3178,6 +3223,15 @@ def _assemble(
         recapped = _cap_ask_runs(scenes)
         if recapped:
             built = [q for q in built if q.doc["id"] not in recapped]
+        if new_plan and not ctx.is_rally:
+            # #2711: the picture beside each card, and the stimulus of each question.
+            attach_card_media(scenes)
+            set_stimuli(
+                scenes,
+                [q.doc for q in built],
+                exercises,
+                {q.doc["id"]: q.idea for q in built},
+            )
         if ctx.is_v4 and story_checks:
             if isinstance((ctx.plan or {}).get("cast_policy"), dict):
                 # A NEW plan (#2710): a question with no line before it gets a code
@@ -3189,6 +3243,10 @@ def _assemble(
                 ctx, scenes, _question_facts(built), builder_issue, fallback_cards=fallback_cards
             )
             lints, quality = story.lints, story.quality
+            for code, message in builder.bet_lints:
+                lints.append(
+                    ValidationIssue(severity="warning", code=code, path="scenes", message=message)
+                )
         _strip_private(scenes)
         for number, scene in enumerate(scenes, start=1):
             scene["id"] = f"s{number}"
@@ -3201,6 +3259,9 @@ def _assemble(
         )
 
     questions = [q.doc for q in built]
+    # A bet whose ask survived (#2711): its question is part of the document.
+    asked_bets = {step.get("ref") for scene in scenes for step in scene["steps"] if is_bet(step)}
+    questions += [bet.question for bet in builder.bets if bet.question["id"] in asked_bets]
     used_misconceptions: set[str] = set()
     for q in questions:
         used_misconceptions.update(

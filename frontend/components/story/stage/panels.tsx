@@ -263,6 +263,11 @@ interface ChalkboardProps {
    * head of a presenter standing in the middle. Default 82%.
    */
   maxHeight?: number;
+  /**
+   * The picture of the beat (#2711: a figure, an illustration), about 60 % of
+   * the card on a wide stage and above the words on a narrow one.
+   */
+  media?: ReactNode;
   ref?: Ref<SkipHandle>;
 }
 
@@ -276,6 +281,7 @@ export function Chalkboard({
   rowDelays,
   side,
   maxHeight,
+  media,
   ref,
 }: ChalkboardProps) {
   // Tapping the stage while rows are still coming shows them all.
@@ -317,9 +323,59 @@ export function Chalkboard({
       data-side={side}
       style={maxHeight ? ({ "--board-max": `${maxHeight}%` } as CSSProperties) : undefined}
     >
-      {title ? (
-        <Heading className="text-lg font-extrabold leading-tight text-[#fff09a]">{title}</Heading>
-      ) : null}
+      {media ? (
+        <div className="mt-2 grid items-start gap-3 min-[576px]:grid-cols-[3fr_2fr]" data-card-media="">
+          <div className="min-w-0 rounded-lg bg-white p-1 text-gray-900">{media}</div>
+          <div className="min-w-0">
+            {title ? (
+              <Heading className="text-lg font-extrabold leading-tight text-[#fff09a]">{title}</Heading>
+            ) : null}
+            <CardRows
+              rows={rows}
+              rowsLang={rowsLang}
+              homeRows={homeRows}
+              homeLang={homeLang}
+              all={all}
+              rowDelays={rowDelays}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          {title ? (
+            <Heading className="text-lg font-extrabold leading-tight text-[#fff09a]">{title}</Heading>
+          ) : null}
+          <CardRows
+            rows={rows}
+            rowsLang={rowsLang}
+            homeRows={homeRows}
+            homeLang={homeLang}
+            all={all}
+            rowDelays={rowDelays}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+function CardRows({
+  rows,
+  rowsLang,
+  homeRows,
+  homeLang,
+  all,
+  rowDelays,
+}: {
+  rows: string[];
+  rowsLang: string;
+  homeRows: string[];
+  homeLang: string;
+  all: boolean;
+  rowDelays: number[];
+}) {
+  return (
+    <>
       <ul className="mt-2 space-y-2">
         {rows.map((row, index) => (
           <li
@@ -341,7 +397,7 @@ export function Chalkboard({
           </li>
         ))}
       </ul>
-    </section>
+    </>
   );
 }
 

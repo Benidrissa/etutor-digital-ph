@@ -30,6 +30,7 @@ from typing import Any
 
 from app.api.v1.schemas.story_course import ValidationIssue
 from app.domain.services.story_metrics import french_in
+from app.domain.services.story_poe import is_bet
 from app.domain.services.story_props import fold
 
 #: What a teaching moment is made of; a prop's close-up is part of the story.
@@ -199,7 +200,9 @@ def check_story(
 ) -> StoryReport:
     """Record the story codes with ``issue`` and return the lints and the numbers."""
     report = StoryReport()
-    flat = _flat(scenes)
+    # A bet (#2711) is no scored question: it needs no lead-in and no reaction
+    # line, and counts as neither teaching nor story, so the checks do not see it.
+    flat = [f for f in _flat(scenes) if not is_bet(f.step)]
     if not flat:
         return report
 

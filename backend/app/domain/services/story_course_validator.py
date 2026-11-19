@@ -32,6 +32,7 @@ from app.api.v1.schemas.story_course import (
     ART_KEYS,
     CAST_ROLES,
     COPY_SHAPES,
+    DEMO_VISUALS,
     DRAWN_VISUALS,
     LENGTH_LIMITS,
     MAX_CLOSEUPS_PER_SCENE,
@@ -49,6 +50,7 @@ from app.api.v1.schemas.story_course import (
     ValidationReport,
 )
 from app.domain.services import mcq_checks, story_metrics
+from app.domain.services.story_poe import demo_problem
 from app.domain.services.story_props import is_one_emoji
 
 logger = structlog.get_logger(__name__)
@@ -221,6 +223,9 @@ def drawn_visual_problem(visual: str, params: Any) -> str | None:
     spec = DRAWN_VISUALS.get(visual)
     if spec is None:
         return f"{visual!r} is not a visual the player draws: use one of {', '.join(DRAWN_VISUALS)}"
+    if visual in DEMO_VISUALS:
+        # #2711: the demo primitives are checked on their data (values, expected, bin, at).
+        return demo_problem(visual, params)
     params = params if isinstance(params, dict) else {}
     for name, (required, description) in spec.items():
         if required and name not in params:
@@ -824,6 +829,16 @@ class StoryCourseValidator:
                 )
 
     def _check_choices(self, question: Any, path: str) -> None:
+        if question.predict:
+            # A bet (#2711) has no wrong answer to explain: its chips need an
+            # answer that names one of them, and no misconception.
+            if question.type != "choice" or len(question.choices) < 2:
+                self._error("bet_malformed", path, "a bet is a choice question of 2 or 3 chips")
+            elif str(question.answer) not in {c.id for c in question.choices}:
+                self._error(
+                    "choice_answer_unresolved", f"{path}.answer", "the bet's answer names no chip"
+                )
+            return
         if question.type != "choice":
             if question.choices:
                 self._warn(
@@ -1037,6 +1052,12 @@ class StoryCourseValidator:
                     if step.type == "show" and step.visual == "prop":
                         # A close-up does not end a run: the player drops one
                         # it has no picture for.
+                        continue
+                    if step.type == "ask" and (step.model_extra or {}).get("predict"):
+                        # A bet (#2711) is no scored question: it ends no run
+                        # and adds to none.
+                        if step.ref:
+                            asked.append(step.ref)
                         continue
                     flat_types.append(step.type)
                     if step.type == "ask" and step.ref:

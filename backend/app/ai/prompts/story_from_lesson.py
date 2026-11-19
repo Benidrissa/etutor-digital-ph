@@ -26,7 +26,13 @@ from app.ai.prompts.lesson import (
     COUNTRY_NAMES_FR,
     _apply_settings_template,
 )
-from app.api.v1.schemas.story_course import DRAWN_VISUALS, MOODS, ValidationIssue
+from app.api.v1.schemas.story_course import (
+    DRAWN_VISUALS,
+    MATHS_VISUALS,
+    MOODS,
+    ValidationIssue,
+)
+from app.domain.services.story_poe import is_new_plan
 from app.domain.services.story_props import short_label
 from app.domain.services.story_repair import (
     ARC_CLOSES,
@@ -322,6 +328,7 @@ def _schema(ctx: LessonStoryContext, plan: StoryPlan) -> str:
         )
         + "}"
         for name, params in DRAWN_VISUALS.items()
+        if name in MATHS_VISUALS
     )
     en_limit, fr_limit = STORY_LINE_LIMITS["en"], STORY_LINE_LIMITS["fr"]
     title_line = (
@@ -1340,6 +1347,7 @@ def _story_output(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
             )
             + "}"
             for name, params in DRAWN_VISUALS.items()
+            if name in MATHS_VISUALS
         )
         show_rule += (
             ' Or — only when the lesson\'s numbers fit one — a drawn visual, {"type":'
@@ -1425,6 +1433,49 @@ def _story_output(ctx: LessonStoryContext, pack: dict[str, Any]) -> str:
         " or il/elle; in French no adjective or participle agrees with them.\n\n"
         + _PROPS_RULES
         + (_RALLY_PROPS_RULE if ctx.is_rally else "")
+        + _predict_rules(ctx)
+    )
+
+
+_PREDICT_EXAMPLE = """{"type": "predict", "teaches": 1,
+ "en": "Which table is longer?", "fr": "Quelle table est la plus longue ?",
+ "options": [{"en": "The left one", "fr": "Celle de gauche", "is": "a"},
+             {"en": "The right one", "fr": "Celle de droite", "is": "b"},
+             {"en": "Same length", "fr": "Pareilles", "is": "equal"}],
+ "demo": {"visual": "compare",
+          "params": {"values": [12, 12], "unit": "cm", "scale": "ruler",
+                     "labels": [{"en": "left table", "fr": "table de gauche"},
+                                {"en": "right table", "fr": "table de droite"}]}},
+ "react_right": {"en": "You bet right!", "fr": "Bien parié !"},
+ "react_wrong": {"en": "Surprising, isn't it?", "fr": "Surprenant, non ?"}}"""
+
+
+def _predict_rules(ctx: LessonStoryContext) -> str:
+    """The bet of a beat (#2711), asked of the screenwriter of a NEW plan's lesson chapter only."""
+    if ctx.is_rally or not is_new_plan(ctx.plan):
+        return ""
+    return (
+        "\n\nTHE BET (predict, observe, name) — for each IDEA that a FIGURE or a drawn visual"
+        " can show:\n"
+        '- First the real picture is shown (a "show" step with the figure), the characters'
+        " react in a line or two, THEN ONE bet BEFORE the card of that IDEA:\n"
+        f"{_PREDICT_EXAMPLE}\n"
+        '- "options": 2 or 3 short chips (at most 5 words) a learner can bet on without'
+        ' knowing the lesson. "demo" is what the learner then OBSERVES, one of: '
+        '"compare" (two values and their labels: the verdict is read from the numbers; each'
+        ' chip may say which outcome it is with "is": "a", "b" or "equal"), "annotate"'
+        ' (a figure cut in "halves" or "thirds": "labels" one per part, "expected" the number'
+        " of the right part; it sits on the figure just shown; the chips are the labels),"
+        ' "sort" (2 to 6 "items" to put in 2 or 3 "bins", each item says its "bin" number) or'
+        ' "timeline" (2 to 6 "events" with a number "at"). With "compare" or "annotate" the'
+        ' right chip is read from the data; with "sort" or "timeline" give "expected": the'
+        " number of the right chip.\n"
+        '- "react_right" and "react_wrong": at most 12 words each, the story\'s reaction to a'
+        " bet that was right or wrong. Never say the lesson's rule in them.\n"
+        "- The bet is never graded and never gives points. It comes right after the picture"
+        " and before the card; a card is at most 20 words and repeats no line of the dialogue.\n"
+        "- Skip the bet for an IDEA that has no picture or numbers to show (a definition, a"
+        " rule): never invent data. At most one bet per card."
     )
 
 
