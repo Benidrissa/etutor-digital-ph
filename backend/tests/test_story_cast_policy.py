@@ -263,11 +263,6 @@ def test_a_plan_with_no_mentor_names_none_and_says_so():
     assert all("mentor" not in b["cast"] for c in code_plan["chapters"] for b in c["beats"])
     text = build_plan_user_message(request)
     assert "NO MENTOR" in text and '"mentor": "..."' not in text
-    # The model that still writes him is told so (and the plan is repaired once).
-    raw = copy.deepcopy(plan_answer())
-    raw["chapters"][0]["beats"][0]["cast"] = ["hero", "mentor"]
-    issues = [i for i in validate_plan(raw, request) if i.code == "plan_unknown_cast"]
-    assert issues and "no mentor" in issues[0].message
 
 
 def test_a_cameo_mentor_stays_in_the_first_and_the_last_beat_only():
@@ -486,3 +481,23 @@ def test_the_prompts_of_the_chapter_follow_the_policy():
     assert "NO MENTOR" in _cast_policy_note({"cast_policy": {"mentor": "none"}})
     assert "CAMEO" in _cast_policy_note({"cast_policy": {"mentor": "cameo"}})
     assert _cast_policy_note({"cast_policy": {"mentor": "lead"}}) == ""
+
+
+def test_a_model_that_names_the_mentor_in_a_story_without_one_costs_no_repair_call():
+    request = request_with("none")
+    raw = copy.deepcopy(plan_answer())
+    raw["chapters"][0]["beats"][0]["cast"] = ["hero", "mentor"]
+    raw["voices"]["mentor"] = "stern"
+    raw["catchphrases"].append({"who": "mentor", "en": "Hm.", "fr": "Hm."})
+    assert validate_plan(raw, request) == []
+    plan, _gaps = normalise_plan(raw, request)
+    assert all("mentor" not in b["cast"] for c in plan["chapters"] for b in c["beats"])
+    assert "mentor" not in plan["voices"]
+    cameo = request_with("cameo")
+    for chapter in raw["chapters"]:
+        for beat in chapter["beats"]:
+            beat["cast"] = ["hero", "friend", "mentor"]
+    assert validate_plan(raw, cameo) == []
+    # A genuinely unknown id is still an error.
+    raw["chapters"][0]["beats"][0]["cast"] = ["hero", "dragon"]
+    assert any(i.code == "plan_unknown_cast" for i in validate_plan(raw, request))

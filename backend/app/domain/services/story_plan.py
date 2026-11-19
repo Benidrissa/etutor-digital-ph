@@ -365,6 +365,7 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     if not isinstance(raw, dict):
         return [_issue("plan_unreadable", "", "the answer is not one JSON object")]
+    raw = _settle_mentor(raw, request)
     bible = request.bible.content
     places = {p["id"] for p in bible.get("places") or []}
     cast_ids = {m["id"] for m in bible.get("cast") or []}
@@ -897,6 +898,39 @@ def normalise_plan(
             _cameo_only(chapters, cast_ids)
         plan[CAST_POLICY_KEY] = with_policy(request.cast_policy)
     return plan, gaps
+
+
+def _settle_mentor(raw: dict[str, Any], request: PlanRequest) -> dict[str, Any]:
+    """The answer with the mentor settled in code, so he never costs a repair call (#2710).
+
+    ``none``: a mentor in a beat's cast is the friend, and his voice and
+    catchphrases go. ``cameo``: he stays only in the first and the last beat.
+    The same fixes ``normalise_plan`` makes, applied before the checks.
+    """
+    if request.cast_policy not in ("none", CAMEO):
+        return raw
+    out = copy.deepcopy(raw)
+    chapters = [c for c in out.get("chapters") or [] if isinstance(c, dict)]
+    for chapter in chapters:
+        for beat in chapter.get("beats") or []:
+            if not isinstance(beat, dict) or not isinstance(beat.get("cast"), list):
+                continue
+            if request.cast_policy == "none":
+                cast = [FRIEND if c == MENTOR else c for c in beat["cast"]]
+                beat["cast"] = list(dict.fromkeys(cast))
+    if request.cast_policy == CAMEO:
+        for chapter in chapters:
+            chapter["beats"] = [b for b in chapter.get("beats") or [] if isinstance(b, dict)]
+        _cameo_only(chapters, [m["id"] for m in request.bible.content.get("cast") or []])
+    if request.cast_policy == "none":
+        if isinstance(out.get("voices"), dict):
+            out["voices"].pop(MENTOR, None)
+        out["catchphrases"] = [
+            c
+            for c in out.get("catchphrases") or []
+            if not (isinstance(c, dict) and c.get("who") == MENTOR)
+        ]
+    return out
 
 
 def plan_cast_policy(
