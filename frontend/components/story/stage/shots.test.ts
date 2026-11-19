@@ -63,6 +63,10 @@ describe("moodMarkFor", () => {
     const a = art({ idle: "/i.png", surprised: "/s.png" });
     expect(moodMarkFor(a, "hero", "surprised")).toBeUndefined();
     expect(moodMarkFor(a, "hero", "happy")).toBeUndefined();
+    // Stock art with both new poses (#2741): the picture is served, no badge.
+    const both = art({ idle: "/i.png", surprised: "/s.png", sad: "/d.png" });
+    expect(moodMarkFor(both, "hero", "sad")).toBeUndefined();
+    expect(moodMarkFor(both, "hero", "surprised")).toBeUndefined();
     expect(moodMarkFor(undefined, "hero", "sad")).toBeUndefined();
     expect(moodMarkFor(art({}), "hero", "sad")).toBeUndefined();
   });

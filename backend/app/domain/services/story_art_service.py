@@ -160,6 +160,18 @@ POSE_CHANGES: dict[str, str] = {
         "a thoughtful look: the eyes glancing up to one side, the mouth closed, one hand "
         "touching the chin, the other arm relaxed at the side."
     ),
+    # surprised and sad (#2741) are drawn into stock only (``promote_story_stock.py
+    # draw-poses``): a run never draws them (CHARACTER_POSES is unchanged).
+    "surprised": (
+        "wide-open eyes with raised eyebrows and the mouth open in a small round 'oh' of "
+        "surprise, both hands raised to the sides of the face, palms out, no higher than the "
+        "top of the head."
+    ),
+    "sad": (
+        "downcast eyes with the eyebrows slanted up in the middle and the corners of the "
+        "mouth turned down, the shoulders slightly lowered, both arms hanging at the sides "
+        "or the hands loosely clasped in front, no higher than the waist."
+    ),
 }
 
 ArtStatus = Literal["ready", "pending", "partial", "none"]

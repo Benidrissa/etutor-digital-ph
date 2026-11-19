@@ -47,6 +47,7 @@ import {
   PREWARM_V14_BACKOFF_MS,
   PREWARM_V14_MAX_RUNS,
   PREWARM_V14_RUNS_KEY,
+  PREWARM_V15_RUNS_KEY,
   SyncManager,
 } from "./sync-manager";
 
@@ -134,5 +135,24 @@ describe("v14 page prewarm", () => {
     await manager.runV14PrewarmMigration();
     expect(fetched()).toEqual([]);
     expect(window.localStorage.getItem(DONE)).toBeNull();
+  });
+});
+
+describe("v15 page prewarm (#2741)", () => {
+  it("warms the pages once after the v14 run, then is done", async () => {
+    await manager.runV15PrewarmMigration();
+    expect(fetched()).toHaveLength(4);
+    expect(window.localStorage.getItem("offline_prewarm_v14_done")).toBe("1");
+    expect(window.localStorage.getItem("offline_prewarm_v15_done")).toBe("1");
+    vi.mocked(prewarmPage).mockClear();
+    await manager.runV15PrewarmMigration();
+    expect(fetched()).toEqual([]);
+  });
+
+  it("keeps its own retry count when a page may still come", async () => {
+    state.outcomes.set(UNIT_GONE, "network_error");
+    await manager.runV15PrewarmMigration();
+    expect(window.localStorage.getItem("offline_prewarm_v15_done")).toBeNull();
+    expect(window.localStorage.getItem(PREWARM_V15_RUNS_KEY)).toBe("1");
   });
 });

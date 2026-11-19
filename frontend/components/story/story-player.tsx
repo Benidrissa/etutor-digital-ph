@@ -791,7 +791,7 @@ export function StoryPlayer({
     for (const id of stageKey ? stageKey.split(",") : []) {
       const actor = actors.get(id);
       if (!actor) continue;
-      for (const pose of ["idle", "talk", "happy", "think"] as const) urls.push(artFor(story.art, actor.artKey, pose));
+      for (const pose of ["idle", "talk", "happy", "think", "surprised", "sad"] as const) urls.push(artFor(story.art, actor.artKey, pose));
     }
     preloadImages(urls);
   }, [stageKey, actors, story.art]);

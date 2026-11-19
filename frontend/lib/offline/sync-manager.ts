@@ -36,6 +36,10 @@ export const PREWARM_V14_RUNS_KEY = 'offline_prewarm_v14_runs';
 export const PREWARM_V14_NEXT_KEY = 'offline_prewarm_v14_next';
 export const PREWARM_V14_MAX_RUNS = 3;
 export const PREWARM_V14_BACKOFF_MS = 5 * 60 * 1000;
+// v15 (#2741): the story player preloads surprised and sad poses.
+const PREWARM_V15_DONE_KEY = 'offline_prewarm_v15_done';
+export const PREWARM_V15_RUNS_KEY = 'offline_prewarm_v15_runs';
+export const PREWARM_V15_NEXT_KEY = 'offline_prewarm_v15_next';
 
 export type SyncStatus =
   | { state: 'idle' }
@@ -120,6 +124,7 @@ class SyncManager {
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
       this.runV14PrewarmMigration();
+      this.runV15PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -141,6 +146,7 @@ class SyncManager {
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
       this.runV14PrewarmMigration();
+      this.runV15PrewarmMigration();
     }
   }
 
@@ -377,7 +383,7 @@ class SyncManager {
    * One-shot migration for users who downloaded a module before SW v14.
    * The v10 bump (the story media cache, #2681/#2682), the v12 bump (the
    * story player fixes, #2688) and the v12 bump (the AI read-aloud voice,
-   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, now `pages-v14-story-figures`. Without this, previously-prewarmed pages, the
+   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache (v15, #2741: now `pages-v15-story-poses`; see runV15PrewarmMigration). Without this, previously-prewarmed pages, the
    * module story page among them, are invisible to the SW and an offline
    * navigation falls through to /offline.html.
    *
@@ -400,13 +406,39 @@ class SyncManager {
 
   private v14Run: Promise<void> | null = null;
 
-  private async prewarmV14(): Promise<void> {
+  private prewarmV14(): Promise<void> {
+    return this.prewarmPages(PREWARM_V14_DONE_KEY, PREWARM_V14_RUNS_KEY, PREWARM_V14_NEXT_KEY);
+  }
+
+  /**
+   * One-shot migration for users who downloaded a module before SW v15
+   * (#2741): the pages cache was renamed to `pages-v15-story-poses`, so the
+   * pages stored under the v14 name are invisible to the SW. Same rules as
+   * the v14 run (bounded retries, persisted backoff, stored pages kept).
+   */
+  runV15PrewarmMigration(): Promise<void> {
+    if (!this.v15Run) {
+      // After the v14 run, so the two never fetch the same page at once.
+      this.v15Run = this.runV14PrewarmMigration()
+        .then(() =>
+          this.prewarmPages(PREWARM_V15_DONE_KEY, PREWARM_V15_RUNS_KEY, PREWARM_V15_NEXT_KEY),
+        )
+        .finally(() => {
+          this.v15Run = null;
+        });
+    }
+    return this.v15Run;
+  }
+
+  private v15Run: Promise<void> | null = null;
+
+  private async prewarmPages(doneKey: string, runsKey: string, nextKey: string): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
-      if (localStorage.getItem(PREWARM_V14_DONE_KEY)) return;
+      if (localStorage.getItem(doneKey)) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-      const runs = Number(localStorage.getItem(PREWARM_V14_RUNS_KEY)) || 0;
-      const notBefore = Number(localStorage.getItem(PREWARM_V14_NEXT_KEY)) || 0;
+      const runs = Number(localStorage.getItem(runsKey)) || 0;
+      const notBefore = Number(localStorage.getItem(nextKey)) || 0;
       if (Date.now() < notBefore) return;
 
       let retry = false;
@@ -440,13 +472,13 @@ class SyncManager {
       }
       const run = runs + 1;
       if (!retry || run >= PREWARM_V14_MAX_RUNS) {
-        localStorage.setItem(PREWARM_V14_DONE_KEY, '1');
-        localStorage.removeItem(PREWARM_V14_RUNS_KEY);
-        localStorage.removeItem(PREWARM_V14_NEXT_KEY);
+        localStorage.setItem(doneKey, '1');
+        localStorage.removeItem(runsKey);
+        localStorage.removeItem(nextKey);
       } else {
-        localStorage.setItem(PREWARM_V14_RUNS_KEY, String(run));
+        localStorage.setItem(runsKey, String(run));
         localStorage.setItem(
-          PREWARM_V14_NEXT_KEY,
+          nextKey,
           String(Date.now() + PREWARM_V14_BACKOFF_MS * 4 ** (run - 1)),
         );
       }

@@ -171,7 +171,7 @@ describe("service worker story media cache (#2681)", () => {
   });
 
   it("bumps the page cache with the service worker", () => {
-    expect(PAGES_CACHE_NAME).toBe("pages-v14-story-figures");
+    expect(PAGES_CACHE_NAME).toBe("pages-v15-story-poses");
     expect(rule(NetworkFirst).handler.options.cacheName).toBe(PAGES_CACHE_NAME);
   });
 });
@@ -218,11 +218,11 @@ describe("service worker clean-up of older caches (#2688)", () => {
       expect(isStaleRuntimeCache(stale)).toBe(true);
     }
     for (const kept of [
-      "pages-v14-story-figures",
-      "static-images-v14-story-figures",
-      "static-assets-v14-story-figures",
-      "api-responses-v14-story-figures",
-      "google-fonts-v14-story-figures",
+      "pages-v15-story-poses",
+      "static-images-v15-story-poses",
+      "static-assets-v15-story-poses",
+      "api-responses-v15-story-poses",
+      "google-fonts-v15-story-poses",
       "story-media-v1",
       "story-audio-v1",
       "course-figures-v1",
