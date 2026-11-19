@@ -23,6 +23,7 @@ import {
   type QuizAnswerSubmission,
   type QuizAttemptRequest,
 } from '@/lib/api';
+import { postStoryEvents, type StoryEvent } from '@/lib/story-course/events';
 import { isPagePrewarmed, prewarmPage, prewarmRetryable } from './prewarm';
 import type { QueuedQuizAnswerPayload } from './offline-quiz-scorer';
 
@@ -563,6 +564,10 @@ class SyncManager {
             unit_id: payload.unit_id,
           }),
         });
+        break;
+
+      case 'story_events':
+        await postStoryEvents((payload.events ?? []) as StoryEvent[]);
         break;
 
       default:

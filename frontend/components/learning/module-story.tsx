@@ -28,6 +28,7 @@ import {
   isStoryUnavailableError,
   storyErrorCode,
 } from '@/lib/story-course/api';
+import { reportStoryEvent } from '@/lib/story-course/events';
 import { isNetworkFailure, loadModuleStory } from '@/lib/story-course/load';
 import { firstNameOf, personalizeStory } from '@/lib/story-course/personalize';
 import {
@@ -787,6 +788,7 @@ function ModuleStoryReader({ storyId, userId, story, moduleId, language }: Reade
             variant="embedded"
             onComplete={(outcome) => handleChapterComplete(selected, outcome)}
             onStart={(choices) => setFriend(choices.friend)}
+            onEvent={(event) => void reportStoryEvent(event)}
             review={reviewing ?? undefined}
             onSnapshot={(snapshot) => liveSnapshotsRef.current.set(chapter.id, snapshot)}
             onBackFromStart={selected > 0 ? () => backIntoChapterBefore(selected) : undefined}

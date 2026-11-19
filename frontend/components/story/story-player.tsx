@@ -49,9 +49,11 @@ import {
 } from "@/lib/story-course/personalize";
 import { figureLanguage, figureUrl } from "@/lib/story-course/media";
 import { chapterLocalId } from "@/lib/story-course/progress";
+import type { StoryEvent } from "@/lib/story-course/events";
 import type { Prop, Step, StoryCourse } from "@/lib/story-course/types";
 
-import { ConceptVisual } from "./concept-visual";
+import { BetCard, BetDemo } from "./bet";
+import { ConceptVisual, isDemoVisual } from "./concept-visual";
 import { MinigameView } from "./minigame";
 import { QuestionCard, type QuestionAnswer, type QuestionProgress } from "./question-card";
 import { Backdrop } from "./stage/backdrop";
@@ -267,6 +269,11 @@ export interface StoryPlayerProps {
   review?: PlayerSnapshot;
   /** Every change of what was answered, so the host can hand it back as `review`. */
   onSnapshot?: (snapshot: PlayerSnapshot) => void;
+  /**
+   * Anonymised events (#2711): a bet and whether it matched, a first answer, a
+   * finished chapter. Never fired for a chapter opened again to look back at it.
+   */
+  onEvent?: (event: StoryEvent) => void;
 }
 
 /** How far a player got and how each step was answered (#2688). */
@@ -287,6 +294,7 @@ export function StoryPlayer({
   onBackFromStart,
   review,
   onSnapshot,
+  onEvent,
 }: StoryPlayerProps) {
   const t = useTranslations("Story");
   const target = course.languages?.target ?? "en";
@@ -611,6 +619,17 @@ export function StoryPlayer({
   // Report completion exactly once (a chapter opened again to look back at
   // it was reported already). The callback is read through a ref so a parent
   // re-rendering with a new function cannot re-fire it.
+  // Anonymised events (#2711), read through a ref like the completion. A chapter
+  // opened again to look back at it reports nothing.
+  const onEventRef = useRef(onEvent);
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+  const emit = (event: StoryEvent) => {
+    if (reviewing) return;
+    onEventRef.current?.({ ...event, lang: storyLang });
+  };
+  const firstTriesRef = useRef<Set<number>>(new Set());
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -620,6 +639,8 @@ export function StoryPlayer({
     if (!finished || completedRef.current) return;
     completedRef.current = true;
     onCompleteRef.current?.({ points, maxPoints });
+    emit({ event: "story_chapter_complete", story: course.id, chapter: chapterId, stars: starsFor(maxPoints ? points / maxPoints : 0, story.rewards?.stars) as 0 | 1 | 2 | 3 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reported once, with what it knew then
   }, [finished, points, maxPoints]);
 
   const cheeredRef = useRef(false);
@@ -888,6 +909,8 @@ export function StoryPlayer({
       return;
     }
     if (finished || !TAP_THROUGH.has(current.step.type)) return;
+    // A demo (#2711) is something to do: a tap beside it never carries past it.
+    if (current.step.type === "show" && isDemoVisual(current.step.visual)) return;
     if (typedRef.current?.skip() || boardRef.current?.skip()) return;
     if (canContinue) advance();
   };
@@ -914,6 +937,11 @@ export function StoryPlayer({
   };
 
   const onAttempt = (stepIndex: number) => (outcome: { correct: boolean }) => {
+    const ref = flat[stepIndex]?.step.ref;
+    if (ref && !firstTriesRef.current.has(stepIndex)) {
+      firstTriesRef.current.add(stepIndex);
+      emit({ event: "story_first_try", story: course.id, chapter: chapterId, question: ref, correct: outcome.correct, attempts: 1 });
+    }
     setReaction((previous) => ({ index: stepIndex, correct: outcome.correct, n: (previous?.n ?? 0) + 1 }));
     // The hint or the explanation lands at the bottom of the card: bring it
     // into view inside a card that scrolls on the stage.
@@ -1173,6 +1201,11 @@ export function StoryPlayer({
             rowDelays={reducedMotion || revisit ? rows.map(() => 0) : rowDelays(rows, title, readAloud)}
             side={boardSide}
             maxHeight={boardMax}
+            media={
+              step.media && (step.media.params?.source_image_id || step.media.params?.generated_image_id) ? (
+                <ConceptVisual visual={step.media.visual} params={step.media.params} language={figureLang} />
+              ) : undefined
+            }
           />
         );
       }
@@ -1199,6 +1232,25 @@ export function StoryPlayer({
             </VisualPanel>
           );
         }
+        if (isDemoVisual(step.visual)) {
+          // A demo (#2711): the learner acts, then their bet is put next to what it showed.
+          const betQuestion = step.bet ? questions.get(step.bet) : undefined;
+          const betAt = step.bet ? flat.findIndex((item) => item.step.type === "ask" && item.step.ref === step.bet) : -1;
+          return (
+            <VisualPanel key={index} insert={false}>
+              <BetDemo
+                visual={step.visual}
+                params={step.params}
+                caption={step.caption ? text(step.caption, target, home) : undefined}
+                lang={figureLang}
+                question={betQuestion}
+                chosen={betAt >= 0 ? records.get(betAt)?.question?.answer : undefined}
+                target={target}
+                home={home}
+              />
+            </VisualPanel>
+          );
+        }
         return (
           <VisualPanel key={index} insert={current?.shot === "insert" && !reducedMotion && !savesData()}>
             <ConceptVisual
@@ -1213,6 +1265,36 @@ export function StoryPlayer({
       case "ask": {
         const question = step.ref ? questions.get(step.ref) : undefined;
         if (!question) return <MissingRef key={index} kind="question" refId={step.ref} />;
+        if (step.predict || question.predict) {
+          // A bet (#2711): no points, no right or wrong said, the stimulus in view.
+          const known = record?.question?.answer;
+          return (
+            <StageCard key={index} ref={cardRef} kind="ask" banner={t("betBanner")} bannerColor="#7c3aed" paper review={!!record || reviewing}>
+              <BetCard
+                question={question}
+                target={target}
+                home={home}
+                bilingual={bilingual}
+                lang={figureLang}
+                chosen={known ? String(known) : undefined}
+                locked={reviewing || !!record}
+                onBet={(choiceId) => {
+                  settle(index, 0, {
+                    question: { answer: choiceId, correct: choiceId === String(question.answer), points: 0, attempts: 1 },
+                  });
+                  sfx("pop");
+                  emit({
+                    event: "story_prediction",
+                    story: course.id,
+                    chapter: chapterId,
+                    question: question.id,
+                    matched: choiceId === String(question.answer),
+                  });
+                }}
+              />
+            </StageCard>
+          );
+        }
         return (
           <StageCard key={index} ref={cardRef} kind="ask" banner={t("questionBanner")} paper review={!!record || reviewing}>
             <QuestionCard
@@ -1392,7 +1474,7 @@ export function StoryPlayer({
         className="flex min-h-14 min-w-0 flex-1 items-center justify-center gap-3 rounded-full border-[3px] border-[#ffd23f] bg-[#1d2b4f] px-4 text-base leading-tight font-extrabold min-[360px]:text-lg text-white shadow-[0_5px_0_rgba(0,0,0,0.25)] transition hover:bg-[#263a69] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1d6fb8] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-gray-200 disabled:text-gray-700 disabled:shadow-none sm:px-6"
       >
         {currentIsBlocking && !currentSettled && !beatOn ? (
-          t("answerToContinue")
+          step?.predict ? t("betToContinue") : t("answerToContinue")
         ) : (
           <>
             {t("next")}
