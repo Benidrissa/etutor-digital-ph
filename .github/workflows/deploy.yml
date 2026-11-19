@@ -120,7 +120,7 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest
       - name: Build and push mms-tts sidecar
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./infrastructure/mms-tts
           push: true
@@ -156,7 +156,7 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest
       - name: Build and push nllb sidecar
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./infrastructure/nllb
           push: true
@@ -212,7 +212,7 @@ jobs:
 
       - name: Build and push backend
         if: matrix.service == 'backend'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           push: true
@@ -223,7 +223,7 @@ jobs:
 
       - name: Build and push frontend
         if: matrix.service == 'frontend'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           push: true
