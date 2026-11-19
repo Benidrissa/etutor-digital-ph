@@ -689,6 +689,13 @@ class LessonStoryContext:
     earlier_line_keys: dict[tuple[str, str], str] = field(default_factory=dict)
     #: Refrain lines told by earlier chapters (at most 4 in a module).
     refrains_before: int = 0
+    #: #2713: the lead-ins (code lines before a question run) earlier chapters
+    #: already have, as ``(lang, line key)``: the slot builder picks others, so
+    #: the module's chapters never say the same one twice (the module validator
+    #: refuses a repeated line). Read by :mod:`story_beats` only.
+    #: ``None``: a classic chapter (lead-ins chosen as ever); a set: the slot
+    #: builder's (they avoid those of earlier chapters and of this one).
+    earlier_leadins: set[tuple[str, str]] | None = None
     #: The quiz refs the plan gave this chapter (``quiz_scope`` ``"assigned"``).
     assigned_refs: list[str] = field(default_factory=list)
     #: Whether the plan gives this chapter the episode's one game.
@@ -3238,7 +3245,7 @@ def _assemble(
                 # lead-in, never a paid repair call. A legacy plan is checked as before.
                 from app.domain.services.story_leadins import add_leadins
 
-                add_leadins(scenes, ctx.unit_number)
+                add_leadins(scenes, ctx.unit_number, avoid=ctx.earlier_leadins)
             story = check_story(
                 ctx, scenes, _question_facts(built), builder_issue, fallback_cards=fallback_cards
             )

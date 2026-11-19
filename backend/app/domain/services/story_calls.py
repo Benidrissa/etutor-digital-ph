@@ -32,6 +32,7 @@ Kimi is out of scope here.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -41,6 +42,7 @@ from typing import Any
 import structlog
 
 from app.ai.claude_service import TruncatedResponse
+from app.ai.usage_context import ai_usage_context, note_call
 
 logger = structlog.get_logger(__name__)
 
@@ -56,6 +58,9 @@ MAX_TOKENS: dict[str, int] = {
     "story": 12_000,
     "rally": 10_000,
     "judge": 2_000,
+    # #2713: the slot builder's lines, ~1k tokens for a chapter of 20 slots; the
+    # limit grows with the slots (:func:`slots_max_tokens`), this is its ceiling.
+    "slots": 6_000,
 }
 #: The episode plan grows with the module: a global block, then a few beats per
 #: chapter. Its limit is this base plus this much per chapter, within bounds.
@@ -71,6 +76,65 @@ def plan_max_tokens(chapters: int) -> int:
     """
     tokens = PLAN_BASE_TOKENS + PLAN_TOKENS_PER_CHAPTER * max(int(chapters), 1)
     return max(PLAN_MIN_TOKENS, min(PLAN_MAX_TOKENS, tokens))
+
+
+#: A slots answer: the keys and a little each slot, plus ~70 tokens a slot (two
+#: lines of up to 12-20 words and their quotes), within bounds.
+SLOTS_BASE_TOKENS, SLOTS_TOKENS_PER_SLOT = 600, 90
+SLOTS_MIN_TOKENS = 1_500
+
+
+def slots_max_tokens(slots: int) -> int:
+    """The ``max_tokens`` of a slots call for ``slots`` slots (never above the kind's ceiling)."""
+    tokens = SLOTS_BASE_TOKENS + SLOTS_TOKENS_PER_SLOT * max(int(slots), 1)
+    return max(SLOTS_MIN_TOKENS, min(MAX_TOKENS["slots"], tokens))
+
+
+#: The kind that counts a repair call in the run's counters (#2713).
+REPAIR_KIND = "repair"
+
+#: The admin settings of the story generator (#2713).
+MODEL_SETTING = "ai-model-story"
+REPAIR_SETTING = "story-max-repair-calls"
+VARIANT_SETTING = "story-builder-variant"
+CLASSIC, SLOTS = "classic", "slots"
+#: The value of ``ai-model-story`` that means "the content model".
+CONTENT_MODEL = "content"
+#: What the repair budget was before the setting (a pack's repairs; a screenplay's is 1).
+DEFAULT_REPAIR_CALLS = 1
+MAX_REPAIR_SETTING = 2
+
+
+def _setting(key: str, default: Any) -> Any:
+    try:
+        from app.domain.services.platform_settings_service import SettingsCache
+
+        return SettingsCache.instance().get(key, default)
+    except Exception:  # a missing cache is the default, never a failed story
+        return default
+
+
+def story_model() -> str | None:
+    """The model of story writing and repair, or ``None``: the content model (#2713)."""
+    value = str(_setting(MODEL_SETTING, CONTENT_MODEL) or "").strip()
+    return None if value in ("", CONTENT_MODEL) else value
+
+
+def repair_budget() -> int:
+    """Extra calls a pack, a screenplay or a slot line may be repaired with (0-2)."""
+    value = _setting(REPAIR_SETTING, DEFAULT_REPAIR_CALLS)
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return DEFAULT_REPAIR_CALLS
+    try:
+        return max(0, min(MAX_REPAIR_SETTING, int(value)))
+    except ValueError:
+        return DEFAULT_REPAIR_CALLS
+
+
+def builder_variant() -> str:
+    """``classic`` (the model writes the screenplay) or ``slots`` (code builds it)."""
+    value = str(_setting(VARIANT_SETTING, CLASSIC) or "").strip().lower()
+    return SLOTS if value == SLOTS else CLASSIC
 
 
 def _cap_for(tokens: int) -> float:
@@ -162,10 +226,27 @@ def concise(message: str) -> str:
     return f"{CONCISE_NOTICE}\n\n{message}"
 
 
+def _estimate_tokens(answer: Any) -> int:
+    """About how many tokens an answer took (3.2 characters a token), for a counter."""
+    try:
+        return max(1, round(len(json.dumps(answer, ensure_ascii=False, default=str)) / 3.2))
+    except Exception:
+        return 0
+
+
 async def structured_call(
-    service: Any, system: str, user: str, *, kind: str, max_tokens: int | None = None
+    service: Any,
+    system: str,
+    user: str,
+    *,
+    kind: str,
+    max_tokens: int | None = None,
+    repair: bool = False,
 ) -> Any:
     """One model call of ``kind``: its ``max_tokens`` (or ``max_tokens``), under its timeout.
+
+    The run's counters (:class:`~app.ai.usage_context.UsageTally`) count it as
+    ``kind``, or as ``repair`` when ``repair`` (the limits are the kind's).
 
     Raises :class:`StoryCallTimeout` past the timeout (or when no time is
     left), with its reason; :class:`TruncatedResponse` for an answer cut at
@@ -176,9 +257,16 @@ async def structured_call(
         raise StoryCallTimeout(kind, 0.0, DEADLINE)
     client = bounded(service, kind, max_tokens)
     scope = asyncio.timeout(timeout)
+    label = REPAIR_KIND if repair else kind
+    note_call(label)
     try:
         async with scope:
-            return await client.generate_structured_content(system, user, "story", max_retries=0)
+            with ai_usage_context(call_kind=label):
+                answer = await client.generate_structured_content(
+                    system, user, "story", max_retries=0
+                )
+            note_call(label, estimated_tokens=_estimate_tokens(answer))
+            return answer
     except TimeoutError as exc:
         if not scope.expired():
             raise  # the provider's own timeout: an outage, not our deadline
@@ -194,8 +282,15 @@ __all__ = [
     "CALL_CAPS",
     "CALL_MARGIN_S",
     "MAX_TOKENS",
+    "CLASSIC",
+    "REPAIR_KIND",
+    "SLOTS",
     "StoryCallTimeout",
     "TruncatedResponse",
+    "builder_variant",
+    "repair_budget",
+    "slots_max_tokens",
+    "story_model",
     "bounded",
     "call_bound",
     "call_timeout",

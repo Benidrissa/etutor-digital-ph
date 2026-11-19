@@ -199,12 +199,17 @@ def in_course(source: Any, course_source: str | None) -> bool:
 def illustration_in_scope(
     row: Mapping[str, Any], *, lesson_ids: Iterable[Any], module_id: Any
 ) -> bool:
-    """A lesson illustration belongs to one of the module's lessons, or to the module."""
-    lessons = {str(i) for i in lesson_ids}
+    """A lesson illustration belongs to one of the module's lessons, or to the module.
+
+    The module is enough: a unit has one lesson row per language (and sometimes
+    per level), and an illustration is drawn for one of them. Staging: the four
+    ready illustrations of a module all named a sibling row of the lesson the
+    French story reads, and none reached the catalogue.
+    """
+    if row.get("module_id") is not None and str(row.get("module_id")) == str(module_id):
+        return True
     lesson_id = row.get("lesson_id")
-    if lesson_id is not None:
-        return str(lesson_id) in lessons
-    return row.get("module_id") is not None and str(row.get("module_id")) == str(module_id)
+    return lesson_id is not None and str(lesson_id) in {str(i) for i in lesson_ids}
 
 
 # -- entries -----------------------------------------------------------------------
@@ -724,11 +729,19 @@ def bind_props(
     is worse than none). ``evidence`` (optional) receives, per bound prop id,
     ``{"score", "words", "prop", "caption"}`` for the report.
     """
-    candidates = [
+    eligible = [
         p
         for p in props
         if p.get("educational") and not p.get("figure") and p.get("kind") in ("real", "figure")
     ]
+    # The same object declared twice (a chapter's ``poster`` and another's
+    # ``poster_2``: same name in both languages) is one prop: it competes once
+    # and every copy shows the picture. Otherwise the copies tie and none binds.
+    twins: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for prop in eligible:
+        twins.setdefault(_same_object_key(prop), []).append(prop)
+    candidates = [group[0] for group in twins.values()]
+    copies = {str(group[0]["id"]): [str(p["id"]) for p in group[1:]] for group in twins.values()}
     used = {str(t) for t in taken}
     pool = [e for e in entries if str(e.get("asset_id")) not in used]
     pairs: dict[tuple[str, str], dict[str, Any]] = {}
@@ -779,7 +792,24 @@ def bind_props(
                     "prop": _text(label.get("fr") or label.get("en") or pid),
                     "caption": _text((entry.get("caption") or {}).get("fr")),
                 }
+            for copy in copies.get(pid, ()):
+                bound[copy] = dict(entry)
+                if evidence is not None:
+                    evidence[copy] = dict(evidence[pid])
     return bound
+
+
+def _same_object_key(prop: Mapping[str, Any]) -> tuple[str, str]:
+    """Two props with this key are one object: the same name in both languages.
+
+    A prop with no name at all is only ever itself.
+    """
+    label = prop.get("label") if isinstance(prop.get("label"), Mapping) else {}
+    fr = " ".join(_text(label.get("fr")).casefold().split())
+    en = " ".join(_text(label.get("en")).casefold().split())
+    if not fr and not en:
+        return (f"#{prop.get('id')}", "")
+    return (fr, en)
 
 
 # -- re-binding a story document (no model, no database) ----------------------------------

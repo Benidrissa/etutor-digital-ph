@@ -76,8 +76,15 @@ from app.domain.services.story_course_validator import validate_story_course
 
 logger = structlog.get_logger(__name__)
 
-#: Extra model calls after the first one, each fed the remaining errors.
+#: Extra model calls after the first one, each fed the remaining errors. Only the
+#: direct, plan-less path of :meth:`StoryFromLessonService.generate_document` reads
+#: it; a module run's budget (packs, screenplays, rally, slot lines) is the admin
+#: setting ``story-max-repair-calls`` (#2713, default 1; story.calls.repair_budget).
 MAX_REPAIR_CALLS = 2
+
+#: The kinds of call written by the story model (``ai-model-story``, #2713); the
+#: bible, plan, pack and judge stay on their own models.
+STORY_MODEL_KINDS = frozenset({"story", "rally", "slots"})
 
 STORY_FEATURE_FLAG = "story-mode-feature-enabled"
 
@@ -691,6 +698,10 @@ class StoryGeneration:
     dropped: dict[str, list[str]] = field(default_factory=dict)
     #: The spine the stored document was built from (v4: its recap, props now).
     spine: dict[str, Any] = field(default_factory=dict)
+    #: #2713: which builder made it (``classic``, or ``slots``: code built the
+    #: screenplay and the model filled its lines) and, for slots, its report.
+    variant: str = "classic"
+    slot_report: dict[str, Any] = field(default_factory=dict)
 
 
 #: The keys a practice pack writes (#2680), and those a chapter's story writes.
@@ -888,15 +899,25 @@ class StoryFromLessonService:
         claude_service: Any,
         lesson_service: Any | None = None,
         max_repair_calls: int = MAX_REPAIR_CALLS,
+        story_service: Any = None,
     ) -> None:
         self.claude_service = claude_service
         self.lesson_service = lesson_service
         self.max_repair_calls = max_repair_calls
+        #: #2713: the cheaper configured model that writes the screenplay, the
+        #: rally and the slot lines (and their repairs); ``None``: the content model.
+        self.story_service = story_service
 
     # -- the model ---------------------------------------------------------
 
     async def _call_model(
-        self, system_prompt: str, user_message: str, *, kind: str = "story"
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        kind: str = "story",
+        repair: bool = False,
+        max_tokens: int | None = None,
     ) -> dict[str, Any] | None:
         """One spine call — exactly one paid provider call; ``None`` when unreadable.
 
@@ -912,9 +933,15 @@ class StoryFromLessonService:
         """
         from app.domain.services.story_calls import TruncatedResponse, structured_call
 
+        client = self.story_service if kind in STORY_MODEL_KINDS else None
         try:
             spine = await structured_call(
-                self.claude_service, system_prompt, user_message, kind=kind
+                client if client is not None else self.claude_service,
+                system_prompt,
+                user_message,
+                kind=kind,
+                repair=repair,
+                max_tokens=max_tokens,
             )
         except TruncatedResponse:
             raise
@@ -976,6 +1003,78 @@ class StoryFromLessonService:
             kind="rally" if ctx.is_rally else "story",
         )
 
+    async def generate_slots_story(
+        self,
+        ctx: repair.LessonStoryContext,
+        pack: dict[str, Any],
+        *,
+        max_repair_calls: int = repair.STORY_REPAIR_CALLS,
+    ) -> StoryGeneration | None:
+        """#2713: one chapter, its screenplay built by code, its short lines filled by the model.
+
+        :mod:`story_beats` writes the scenes (cast, places, props, pictures, step
+        order, questions, cards); ONE ``slots`` call returns the lines
+        (:mod:`story_slots`), a failed slot is retried once within the repair
+        budget and then filled by the code. The result goes through the SAME
+        builder, checks and salvage as a classic chapter (:meth:`_choose`).
+        ``None`` when the answer was mostly unusable (the caller tells the
+        chapter the classic way): the slots paid for are not lost, but a story of
+        stock lines is never published.
+        """
+        from app.domain.services import story_beats, story_slots
+        from app.domain.services.story_calls import TruncatedResponse
+
+        script = story_beats.build_script(ctx, pack)
+
+        async def ask(message: str, *, repair: bool, max_tokens: int) -> dict[str, Any] | None:
+            try:
+                return await self._call_model(
+                    story_slots.SYSTEM, message, kind="slots", repair=repair, max_tokens=max_tokens
+                )
+            except TruncatedResponse:
+                return None
+
+        with ai_usage_context(FEATURE_STORY_GENERATION, only_if_unset=True):
+            result = await story_slots.fill_script(script, ctx, ask, repairs=max_repair_calls)
+        if result.mostly_fallback:
+            logger.warning(
+                "Story slots mostly unusable; the chapter is told the classic way",
+                slug=ctx.slug,
+                fallbacks=len(result.fallbacks),
+                slots=result.total,
+            )
+            return None
+        spine = {
+            **{key: value for key, value in pack.items() if key in PACK_KEYS},
+            **script.spine(),
+        }
+        title = (ctx.plan_entry or {}).get("title")
+        if title:
+            spine["chapter_title"] = title
+        attempted = self._build_and_validate(ctx, spine)
+        if attempted is None:
+            return None
+        build, report = attempted
+        empty_doc = self._empty_doc(ctx)
+        attempt = _Attempt(0, spine, build, report, build.doc != empty_doc)
+        generation = self._choose(ctx, [attempt], empty_doc)
+        generation.model_calls = result.calls
+        generation.variant = "slots"
+        generation.slot_report = {**result.report(), "evidence": script.evidence}
+        if not _parses(generation.doc):
+            generation.doc = repair.minimal_document(ctx)
+        generation.doc["checks"] = generation.report.checks.model_dump(mode="json")
+        logger.info(
+            "Story built from slots",
+            slug=ctx.slug,
+            ok=generation.report.ok,
+            errors=len(generation.report.errors),
+            warnings=len(generation.report.warnings),
+            model_calls=result.calls,
+            fallbacks=len(result.fallbacks),
+        )
+        return generation
+
     async def generate_pack(
         self,
         ctx: repair.LessonStoryContext,
@@ -1015,7 +1114,9 @@ class StoryFromLessonService:
                     )
                 calls += 1
                 try:
-                    answer = await self._call_model(system_prompt, prompt, kind="pack")
+                    answer = await self._call_model(
+                        system_prompt, prompt, kind="pack", repair=number > 0
+                    )
                 except (SoftTimeLimitExceeded, StoryCallTimeout):
                     raise
                 except TruncatedResponse:
@@ -1105,7 +1206,9 @@ class StoryFromLessonService:
                     )
                 calls += 1
                 try:
-                    answer = await self._call_model(system_prompt, message, kind=kind)
+                    answer = await self._call_model(
+                        system_prompt, message, kind=kind, repair=number > 0
+                    )
                 except TruncatedResponse as exc:
                     truncated += 1
                     logger.warning(
