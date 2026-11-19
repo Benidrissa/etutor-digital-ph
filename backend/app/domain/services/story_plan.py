@@ -45,6 +45,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas.story_course import PROP_LABEL_LIMIT, ValidationIssue
+from app.domain.services import story_journey as journey_table
 from app.domain.services import story_repair as repair
 from app.domain.services.story_bible import FRIEND, HERO, MENTOR, StoryBible
 from app.domain.services.story_cast_policy import (
@@ -189,6 +190,17 @@ class PlanRequest:
     #: #2709: the course's own pictures the plan may name (``story_assets``). Not
     #: part of the plan's digests: a catalogue change never re-plans a module.
     catalogue: dict[str, Any] | None = None
+    #: #2749: the bible's ``journey`` (``template``, ``quest``, ``shadow``); ``None``
+    #: unless the course's NEW bible has one. A legacy request is told and checked
+    #: exactly as before.
+    journey: dict[str, Any] | None = None
+    #: #2749: the next module's title, for the last chapter's closing sentence.
+    next_module_title: dict[str, str] | None = None
+
+    @property
+    def linear(self) -> bool:
+        """A journey plan in linear mode: needs a bible journey and a mentor policy."""
+        return self.journey is not None and self.cast_policy is not None
 
     @property
     def units(self) -> list[str]:
@@ -395,6 +407,7 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
         )
     used: dict[str, str] = {}
     games = 0
+    last = len(chapters) - 1
     for index, chapter in enumerate(chapters):
         path = f"chapters[{index}]"
         unit = str(chapter.get("unit") or "")
@@ -505,6 +518,8 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
         for key in ("goal", "obstacle", "turn", "ends_on"):
             if not _str(chapter.get(key)):
                 issues.append(_issue("plan_hook_missing", f"{path}.{key}", "write it"))
+        if request.linear:
+            issues += _journey_issues(chapter, path, final=not request.has_rally and index == last)
         games += bool(_str(chapter.get("game")))
     if isinstance(rally, dict):
         games += bool(_str(rally.get("game")))
@@ -566,6 +581,33 @@ def validate_plan(raw: Any, request: PlanRequest) -> list[ValidationIssue]:
                     "a want is something the characters want, never to learn or discover X",
                 )
             )
+    return issues
+
+
+def _journey_issues(chapter: dict[str, Any], path: str, *, final: bool) -> list[ValidationIssue]:
+    """A linear journey plan's own checks (#2749): a short question, a teaser that is no question."""
+    issues: list[ValidationIssue] = []
+    question = _str(chapter.get("question"))
+    if not question:
+        issues.append(
+            _issue("plan_question_missing", f"{path}.question", "write the chapter's question")
+        )
+    elif len(question.split()) > journey_table.WORD_LIMIT:
+        issues.append(
+            _issue(
+                "plan_question_long",
+                f"{path}.question",
+                f"at most {journey_table.WORD_LIMIT} words",
+            )
+        )
+    if not final and "?" in _str(chapter.get("ends_on")):
+        issues.append(
+            _issue(
+                "plan_teaser_is_question",
+                f"{path}.ends_on",
+                "ends_on is one statement of the next topic, not a question",
+            )
+        )
     return issues
 
 
@@ -887,6 +929,41 @@ def _props(raw: Any, units: list[str], gaps: list[str]) -> list[dict[str, Any]]:
     return out
 
 
+def journey_stages(request: PlanRequest) -> list[list[int]]:
+    """The stages of each lesson chapter, then of the rally if the module has one."""
+    count = len(request.lessons) + (1 if request.has_rally else 0)
+    return journey_table.distribute(
+        count, mentor=journey_table.mentor_in_story(request.cast_policy)
+    )
+
+
+def _journey_question(raw: dict[str, Any] | None, lesson: PlanLesson) -> str:
+    """The chapter's story question: the model's, at most 30 words, else built from the title."""
+    raw = raw if isinstance(raw, dict) else {}
+    return journey_table.words(_str(raw.get("question"))) or journey_table.question_in_code(
+        _str(lesson.title.get("en"), 120)
+    )
+
+
+def _add_journey_keys(
+    chapters: list[dict[str, Any]],
+    by_unit: dict[str, Any],
+    request: PlanRequest,
+    gaps: list[str],
+) -> None:
+    """``question`` then ``stages`` on every lesson chapter, after the keys of a legacy one."""
+    stages = journey_stages(request)
+    for index, chapter in enumerate(chapters):
+        lesson = request.lesson(chapter["unit"])
+        if lesson is None:
+            continue
+        raw = by_unit.get(chapter["unit"])
+        if not _str((raw or {}).get("question")):
+            gaps.append(f"{chapter['unit']}: question built from the title")
+        chapter["question"] = _journey_question(raw, lesson)
+        chapter["stages"] = list(stages[index])
+
+
 def normalise_plan(
     raw: Any,
     request: PlanRequest,
@@ -912,6 +989,8 @@ def normalise_plan(
         _chapter(by_unit.get(lesson.unit_number), lesson, places, cast_ids, gaps, mentor=mentor)
         for lesson in request.lessons
     ]
+    if request.linear:
+        _add_journey_keys(chapters, by_unit, request, gaps)
     if previous is not None and rewritten is not None:
         old = {c["unit"]: c for c in previous.get("chapters") or []}
         for index, chapter in enumerate(chapters):
@@ -922,7 +1001,8 @@ def normalise_plan(
                 chapters[index] = copy.deepcopy(before)
             else:
                 fresh = copy.deepcopy(before)
-                for key in REWRITTEN:
+                # ``stages`` and ``ends_on`` are kept; a journey chapter's question is rewritten.
+                for key in (*REWRITTEN, *(("question",) if request.linear else ())):
                     fresh[key] = chapter[key]
                 chapters[index] = fresh
         frozen = {c["unit"] for c in chapters if c["unit"] not in rewritten}
@@ -960,11 +1040,15 @@ def normalise_plan(
     plan["chapters"] = chapters
     if request.has_rally:
         plan["rally"] = _rally(raw.get("rally"), chapters, request, places, gaps)
+        if request.linear:
+            plan["rally"]["stages"] = list(journey_stages(request)[-1])
     _one_game(plan, request, gaps)
     if request.cast_policy is not None:
         if request.cast_policy == CAMEO:
             _cameo_only(chapters, cast_ids)
         plan[CAST_POLICY_KEY] = with_policy(request.cast_policy)
+        if request.linear:
+            plan["journey"] = journey_table.plan_journey()
     return plan, gaps
 
 
@@ -1101,6 +1185,9 @@ def default_plan(request: PlanRequest) -> dict[str, Any]:
         )
         chapter["title"] = {lang: _str(lesson.title[lang], 120) for lang in ("en", "fr")}
         chapters.append(chapter)
+    if request.linear:
+        # Its questions are built in code from the lessons' titles.
+        _add_journey_keys(chapters, {}, request, [])
     counts = {c["unit"]: 0 for c in chapters}
     for candidate in request.candidates:
         for chapter in chapters:
@@ -1128,9 +1215,13 @@ def default_plan(request: PlanRequest) -> dict[str, Any]:
     }
     if request.has_rally:
         plan["rally"] = _rally({}, chapters, request, places, gaps)
+        if request.linear:
+            plan["rally"]["stages"] = list(journey_stages(request)[-1])
     _one_game(plan, request, gaps)
     if request.cast_policy is not None:
         plan[CAST_POLICY_KEY] = with_policy(request.cast_policy)
+        if request.linear:
+            plan["journey"] = journey_table.plan_journey()
     return plan
 
 
@@ -1441,6 +1532,10 @@ class StoryPlanService:
             build_plan_user_message,
         )
 
+        if request.linear:
+            from app.ai.prompts.story_plan import journey_system_block
+
+            system_prompt += "\n\n" + journey_system_block(request)
         message = build_plan_user_message(request)
         if previous is not None and rewritten:
             message += "\n\n" + build_incremental_block(previous, sorted(rewritten))

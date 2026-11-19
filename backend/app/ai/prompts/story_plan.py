@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from app.domain.services import story_journey as journey_table
 from app.domain.services.story_repair import clean_text
 
 if TYPE_CHECKING:
@@ -57,6 +58,8 @@ def _bible_block(request: PlanRequest) -> str:
     note = _policy_note(request)
     if note:
         lines.append(note)
+    if request.linear:
+        lines += _quest_lines(request)
     lines.append(
         "THE BIBLE'S MISSION FOR THIS MODULE (a seed: sharpen it into a premise with a want,"
         f' stakes and a clock): "{mission.get("en", "")}" / "{mission.get("fr", "")}"'
@@ -68,6 +71,84 @@ def _bible_block(request: PlanRequest) -> str:
             f" «{previous.get('title', '')}»: {previous.get('logline', '')}"
         )
     return "\n".join(lines)
+
+
+def _quest_lines(request: PlanRequest) -> list[str]:
+    """The course's quest and shadow (#2749), the bible's, when it has them."""
+    journey = request.journey or {}
+    lines = []
+    if journey.get("quest"):
+        lines.append(f"THE COURSE QUEST (what the learner can do by the end): {journey['quest']}")
+    if journey.get("shadow"):
+        lines.append(f"THE SHADOW (the misconception the story undoes): {journey['shadow']}")
+    return lines
+
+
+def journey_stages(request: PlanRequest) -> list[list[int]]:
+    from app.domain.services.story_plan import journey_stages as stages_of
+
+    return stages_of(request)
+
+
+def _journey_block(request: PlanRequest) -> str:
+    """The stages each chapter plays (#2749): the table, applied by code, never chosen."""
+    stages = journey_stages(request)
+    lines = [
+        "=== THE JOURNEY (linear): the stages each chapter plays — fixed, not yours to change ===",
+        "Each chapter asks its question near the start and answers it by its end. Its goal,"
+        " obstacle and turn follow its stages.",
+    ]
+    names = [
+        f"chapter {n} (lesson {lesson.unit_number})"
+        for n, lesson in enumerate(request.lessons, start=1)
+    ]
+    if request.has_rally:
+        names.append("the rally")
+    for name, chapter_stages in zip(names, stages, strict=False):
+        lines.append(f"{name}:")
+        lines += [f"  {line}" for line in journey_table.stage_lines(chapter_stages)]
+    return "\n".join(lines)
+
+
+def journey_system_block(request: PlanRequest) -> str:
+    """The wording of a journey plan's chapters (#2749), added to the system prompt.
+
+    Rules 5 and 6 of the admin-editable system prompts have each chapter end open
+    and the next pick it up; a journey plan has its own wording, built here, so
+    an admin override still applies to legacy plans.
+    """
+    return (
+        "=== THIS EPISODE FOLLOWS THE HERO'S JOURNEY (replaces rules 5 and 6 above) ===\n"
+        "5. Every chapter has a goal (what the characters try today), an obstacle (what goes"
+        " wrong), a turn (the discovery that gets them past it), and a story question that it"
+        " asks and answers. Each chapter plays the journey stages the user message lists for"
+        " it. A chapter ends on ONE plain statement of what the next chapter is about, never"
+        " a question; it never ends on a summary, on praise or on homework.\n"
+        "6. Each chapter opens on the topic its predecessor named: the next moment of the"
+        " same scene, or a clean cut marked by time or place. Never a recap, never the"
+        " mission announced again. The last chapter closes warm and, if a next module is"
+        " named, says in one sentence what comes next."
+    )
+
+
+def _journey_rules(request: PlanRequest, last: str) -> list[str]:
+    nxt = request.next_module_title
+    title = (nxt or {}).get(request.language) or (nxt or {}).get("en")
+    close = (
+        f"the story closes warm and, in one sentence, names the next module «{title}»"
+        if title
+        else "the story closes warm; there is no next module to name"
+    )
+    return [
+        '- "question": each lesson chapter has one, in English, at most'
+        f" {journey_table.WORD_LIMIT} words: the story question the chapter asks and answers."
+        " It is not a quiz question and has nothing to do with the refs in the beats'"
+        ' "questions".',
+        '- "stages": do not write them; each chapter plays the stages of THE JOURNEY above.',
+        '- "ends_on" of every chapter but the last is ONE statement of what the next chapter'
+        " is about, never a question.",
+        f"- In the last chapter ({'the rally' if request.has_rally else last}) {close}.",
+    ]
 
 
 def _voices(request: PlanRequest) -> str:
@@ -261,11 +342,23 @@ def build_plan_user_message(request: PlanRequest) -> str:
             " episode's obstacle for good and wins the want on stage; {child}'s flaw meets"
             f' its last test; every prop is paid off by then ("paid_off": at the latest'
             f' "{last}"). Its "ends_on" is a warm last image, a callback to the running gag:'
-            " never a cliffhanger. Every other chapter ends unresolved."
+            " never a cliffhanger."
+            + ("" if request.linear else " Every other chapter ends unresolved.")
         )
+    if request.linear:
+        rules += _journey_rules(request, last)
     output = _OUTPUT.replace("__RALLY__", _RALLY if request.has_rally else "").replace(
         "__VOICES__", _voices(request)
     )
+    if request.linear:
+        output = output.replace(
+            '"ends_on": "the exact image or line the chapter stops on, unresolved"',
+            '"ends_on": "one statement of what the next chapter is about, not a question"',
+        ).replace(
+            '"title": {"en": "...", "fr": "..."}, "when": "Saturday morning",',
+            '"title": {"en": "...", "fr": "..."}, "question": "the story question this chapter'
+            ' asks and answers", "when": "Saturday morning",',
+        )
     if not request.has_rally:
         output = output.replace('"paid_off": "rally"', '"paid_off": "__LAST__"').replace(
             "is past by the rally", "is past by the last chapter"
@@ -275,6 +368,7 @@ def build_plan_user_message(request: PlanRequest) -> str:
         [
             request_line,
             _bible_block(request),
+            *([_journey_block(request)] if request.linear else []),
             _fact_sheets(request),
             _figures_block(request),
             _questions(request),
