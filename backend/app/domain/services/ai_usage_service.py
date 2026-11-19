@@ -108,6 +108,7 @@ async def record_ai_usage(
             characters=characters,
         )
         usage = usage or {}
+        kind = ctx.repair_of or ctx.call_kind
         event = AiUsageEvent(
             id=uuid.uuid4(),
             provider=provider,
@@ -131,6 +132,9 @@ async def record_ai_usage(
             duration_ms=duration_ms,
             success=success,
             error_type=error_type[:100] if error_type else None,
+            # A story call's kind (the one a repair repairs) and whether it repairs (#2735).
+            call_kind=kind[:30] if kind else None,
+            is_repair=bool(ctx.repair_of),
         )
         async with _session_factory_for_loop()() as session:
             session.add(event)
