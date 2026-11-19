@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Step, StoryArt } from "@/lib/story-course/types";
 
 import { moodMarkFor } from "./cast";
-import { shotFor } from "./scene-plan";
+import { sceneShotOf, shotFor } from "./scene-plan";
 
 const plan = (step: Step, extra: { startsScene?: boolean; pointed?: string[] } = {}) => ({
   step,
@@ -65,5 +65,19 @@ describe("moodMarkFor", () => {
     expect(moodMarkFor(a, "hero", "happy")).toBeUndefined();
     expect(moodMarkFor(undefined, "hero", "sad")).toBeUndefined();
     expect(moodMarkFor(art({}), "hero", "sad")).toBeUndefined();
+  });
+});
+
+describe("sceneShotOf", () => {
+  it("keeps the scene still during an insert: only the picture in its panel moves", () => {
+    expect(sceneShotOf("insert")).toBeUndefined();
+  });
+
+  it("passes every other shot to the scene's layers", () => {
+    expect(sceneShotOf("wide")).toBe("wide");
+    expect(sceneShotOf("close")).toBe("close");
+    expect(sceneShotOf("two")).toBe("two");
+    expect(sceneShotOf("split")).toBe("split");
+    expect(sceneShotOf(undefined)).toBeUndefined();
   });
 });
