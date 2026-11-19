@@ -37,7 +37,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+# ``scripts/`` for the sibling modules, ``backend/`` for ``app`` (the provider layer), as the export does.
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import story_script_storyboard as board  # noqa: E402
 from story_script_grammar import (  # noqa: E402
@@ -553,21 +555,27 @@ async def cmd_run(args) -> int:
         return 0
     by_id = {b["id"]: b for b in bundles}
     models: dict[str, Model] = {}
-    runs: list[Run] = []
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    results = out / "results.json"
+    # Every finished run is written at once, and a second invocation resumes: a failure at call 40
+    # of 54 (overload, rate limit) must not lose, or re-buy, the 39 runs already paid for.
+    runs: list[Run] = _load_runs(results) if results.exists() else []
+    done = {(r.chapter, r.model, tuple(r.languages), r.run) for r in runs}
     for chapter, model, langs, index in rows:
+        if (chapter, model, tuple(langs), index) in done:
+            continue
         bundle = by_id[chapter]
         header = build_header(bundle, assignments.get(chapter, {}), list(langs))
         client = models.setdefault(model, AnthropicModel(model))
         runs.append(await run_one(client, bundle, header, index))
+        results.write_text(
+            json.dumps([asdict(r) for r in runs], ensure_ascii=False, indent=1), "utf-8"
+        )
         print(
             f"{chapter} {model} {'+'.join(langs)} #{index}: first={'ok' if runs[-1].first_valid else 'bad'}"
             f" final={'ok' if runs[-1].final_valid else 'bad'} tokens={runs[-1].total_tokens}"
         )
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "results.json").write_text(
-        json.dumps([asdict(r) for r in runs], ensure_ascii=False, indent=1), "utf-8"
-    )
     print(report_markdown(runs))
     return 0
 

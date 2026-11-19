@@ -497,6 +497,70 @@ def test_run_without_spend_builds_no_model_and_sends_nothing(tmp_path, monkeypat
     assert not (tmp_path / "out" / "results.json").exists()
 
 
+def test_a_paid_run_keeps_every_finished_run_and_resumes_without_buying_them_again(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "chapter-a.json").write_text(json.dumps(_bundle()), "utf-8")
+    bundle = _bundle()
+    header = harness.build_header(bundle, {}, ["fr"])
+    ok = "\n".join(good_script(header))
+
+    class Flaky:
+        """Answers ``budget`` calls, then fails as an overloaded API does."""
+
+        def __init__(self, name, budget):
+            self.name, self.budget, self.calls = name, budget, 0
+
+        def named(self, name):
+            self.name = name
+            return self
+
+        async def complete(self, system, user, max_tokens):
+            self.calls += 1
+            if self.calls > self.budget:
+                raise RuntimeError("529 overloaded")
+            return harness.Reply(ok, 100, 50)
+
+    out = tmp_path / "out"
+    args = ["run", "--chapters", str(tmp_path), "--out", str(out), "--spend"]
+    first = Flaky("m", 4)  # a chapter's matrix is 9 runs
+    monkeypatch.setattr(harness, "AnthropicModel", lambda name: first.named(name))
+    with pytest.raises(RuntimeError):
+        harness.main(args)
+    kept = json.loads((out / "results.json").read_text("utf-8"))
+    assert 0 < len(kept) < 9  # nothing paid for is lost
+
+    second = Flaky("m", 1000)
+    monkeypatch.setattr(harness, "AnthropicModel", lambda name: second.named(name))
+    started = []
+    real_run_one = harness.run_one
+
+    async def counting(model, bundle, header, index, **kw):
+        started.append(1)
+        return await real_run_one(model, bundle, header, index, **kw)
+
+    monkeypatch.setattr(harness, "run_one", counting)
+    assert harness.main(args) == 0
+    assert len(json.loads((out / "results.json").read_text("utf-8"))) == 9  # one chapter: 9 rows
+    assert len(started) == 9 - len(kept)  # only what was missing
+
+
+def test_the_harness_finds_the_provider_layer_when_run_as_a_script(tmp_path):
+    """``python scripts/story_script_paper_test.py`` puts only ``scripts/`` on the path."""
+    import subprocess
+
+    code = (
+        "import sys; sys.path[:] = [p for p in sys.path if not p.endswith('backend')];"
+        f"sys.path.insert(0, {str(_SCRIPTS)!r});"
+        "import story_script_paper_test, importlib;"
+        "importlib.import_module('app.ai.providers.anthropic_provider')"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, env={"PATH": ""}
+    )
+    assert done.returncode == 0, done.stderr
+
+
 def test_the_harness_never_uses_the_recording_wrapper_or_prints_a_key():
     source = (_SCRIPTS / "story_script_paper_test.py").read_text("utf-8")
     assert "resolve_provider" not in source.replace("``resolve_provider``", "")
