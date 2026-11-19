@@ -30,12 +30,12 @@ import type { QueuedQuizAnswerPayload } from './offline-quiz-scorer';
 const PREWARM_V6_DONE_KEY = 'offline_prewarm_v6_done';
 const PREWARM_V7_DONE_KEY = 'offline_prewarm_v7_done';
 const PREWARM_V8_DONE_KEY = 'offline_prewarm_v8_done';
-const PREWARM_V13_DONE_KEY = 'offline_prewarm_v13_done';
-// The v13 prewarm's runs so far and the earliest time for the next one (#2692).
-export const PREWARM_V13_RUNS_KEY = 'offline_prewarm_v13_runs';
-export const PREWARM_V13_NEXT_KEY = 'offline_prewarm_v13_next';
-export const PREWARM_V13_MAX_RUNS = 3;
-export const PREWARM_V13_BACKOFF_MS = 5 * 60 * 1000;
+const PREWARM_V14_DONE_KEY = 'offline_prewarm_v14_done';
+// The v14 prewarm's runs so far and the earliest time for the next one (#2692).
+export const PREWARM_V14_RUNS_KEY = 'offline_prewarm_v14_runs';
+export const PREWARM_V14_NEXT_KEY = 'offline_prewarm_v14_next';
+export const PREWARM_V14_MAX_RUNS = 3;
+export const PREWARM_V14_BACKOFF_MS = 5 * 60 * 1000;
 
 export type SyncStatus =
   | { state: 'idle' }
@@ -119,7 +119,7 @@ class SyncManager {
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
-      this.runV13PrewarmMigration();
+      this.runV14PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -140,7 +140,7 @@ class SyncManager {
       this.runV6PrewarmMigration();
       this.runV7PrewarmMigration();
       this.runV8PrewarmMigration();
-      this.runV13PrewarmMigration();
+      this.runV14PrewarmMigration();
     }
   }
 
@@ -374,39 +374,39 @@ class SyncManager {
   }
 
   /**
-   * One-shot migration for users who downloaded a module before SW v13.
+   * One-shot migration for users who downloaded a module before SW v14.
    * The v10 bump (the story media cache, #2681/#2682), the v12 bump (the
    * story player fixes, #2688) and the v12 bump (the AI read-aloud voice,
-   * #2704) and the v13 bump (close-ups never dropped, #2708) renamed the pages cache, now `pages-v13-story-closeups`. Without this, previously-prewarmed pages, the
+   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, now `pages-v14-story-figures`. Without this, previously-prewarmed pages, the
    * module story page among them, are invisible to the SW and an offline
    * navigation falls through to /offline.html.
    *
    * It marks itself done once every page is either stored or failed for
    * good (a unit removed: 404; storage full). Only a page that may still come
-   * (the link dropped, a 5xx) brings it back, at most PREWARM_V13_MAX_RUNS
+   * (the link dropped, a 5xx) brings it back, at most PREWARM_V14_MAX_RUNS
    * times in all, with a growing wait persisted between runs, and a page
    * stored already is never fetched again: on 2G a dead page must not cost
    * every module's pages on each start (#2692). Overlapping calls (an
    * `online` event during a run) share the run in progress.
    */
-  runV13PrewarmMigration(): Promise<void> {
-    if (!this.v13Run) {
-      this.v13Run = this.prewarmV13().finally(() => {
-        this.v13Run = null;
+  runV14PrewarmMigration(): Promise<void> {
+    if (!this.v14Run) {
+      this.v14Run = this.prewarmV14().finally(() => {
+        this.v14Run = null;
       });
     }
-    return this.v13Run;
+    return this.v14Run;
   }
 
-  private v13Run: Promise<void> | null = null;
+  private v14Run: Promise<void> | null = null;
 
-  private async prewarmV13(): Promise<void> {
+  private async prewarmV14(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
-      if (localStorage.getItem(PREWARM_V13_DONE_KEY)) return;
+      if (localStorage.getItem(PREWARM_V14_DONE_KEY)) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-      const runs = Number(localStorage.getItem(PREWARM_V13_RUNS_KEY)) || 0;
-      const notBefore = Number(localStorage.getItem(PREWARM_V13_NEXT_KEY)) || 0;
+      const runs = Number(localStorage.getItem(PREWARM_V14_RUNS_KEY)) || 0;
+      const notBefore = Number(localStorage.getItem(PREWARM_V14_NEXT_KEY)) || 0;
       if (Date.now() < notBefore) return;
 
       let retry = false;
@@ -439,15 +439,15 @@ class SyncManager {
         }
       }
       const run = runs + 1;
-      if (!retry || run >= PREWARM_V13_MAX_RUNS) {
-        localStorage.setItem(PREWARM_V13_DONE_KEY, '1');
-        localStorage.removeItem(PREWARM_V13_RUNS_KEY);
-        localStorage.removeItem(PREWARM_V13_NEXT_KEY);
+      if (!retry || run >= PREWARM_V14_MAX_RUNS) {
+        localStorage.setItem(PREWARM_V14_DONE_KEY, '1');
+        localStorage.removeItem(PREWARM_V14_RUNS_KEY);
+        localStorage.removeItem(PREWARM_V14_NEXT_KEY);
       } else {
-        localStorage.setItem(PREWARM_V13_RUNS_KEY, String(run));
+        localStorage.setItem(PREWARM_V14_RUNS_KEY, String(run));
         localStorage.setItem(
-          PREWARM_V13_NEXT_KEY,
-          String(Date.now() + PREWARM_V13_BACKOFF_MS * 4 ** (run - 1)),
+          PREWARM_V14_NEXT_KEY,
+          String(Date.now() + PREWARM_V14_BACKOFF_MS * 4 ** (run - 1)),
         );
       }
     } catch {
