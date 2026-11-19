@@ -25,7 +25,7 @@ from app.domain.services import story_poe as poe
 from app.domain.services import story_repair as repair
 from app.domain.services.story_course_validator import validate_story_course
 from app.domain.services.story_events import StoryEvent, StoryEventsRequest, properties_of
-from app.domain.services.story_metrics import all_findings, story_metrics
+from app.domain.services.story_metrics import PICTURE_CODES, all_findings, story_metrics
 from app.domain.services.story_plan import fresh_rally_refs, validate_plan
 from tests.test_story_cast_policy import none_ctx
 from tests.test_story_screenplay_module import make_run, pack
@@ -63,7 +63,14 @@ def test_a_stored_story_parses_dumps_and_validates_as_before():
     course = StoryCourse.model_validate(json.loads(STORED.read_text()))
     assert sha(course.model_dump(mode="json")) == GOLDEN["stored_dump"]
     report = validate_story_course(course, generated=True)
-    assert sha(report.model_dump(mode="json")) == GOLDEN["stored_report"]
+    dump = report.model_dump(mode="json")
+    # #2750 added warnings on module stories (and nothing else): without them the
+    # report is the one digested before. Errors and ``ok`` are not touched.
+    added = [w for w in dump["warnings"] if w["code"] in PICTURE_CODES]
+    assert added and report.ok and report.errors == []
+    dump["warnings"] = [w for w in dump["warnings"] if w["code"] not in PICTURE_CODES]
+    dump["checks"]["warnings"] -= len(added)
+    assert sha(dump) == GOLDEN["stored_report"]
     assert not any(
         "predict" in q or "reveal" in q for q in course.model_dump(mode="json")["questions"]
     )

@@ -6,7 +6,9 @@ figure, nothing from the prop library), the longest run of ``say`` lines, the
 mentor's share of the lines, the most words before a chapter's first card,
 the longest card, refrains, questions or paper tasks naming a prop not shown
 before them, French in ``en`` fields, "look" lines with nothing shown, and
-educational props with no picture. The numbers come from
+educational props with no picture, and (#2750) cards with no picture before
+them, bets out of order, runs of more than 3 lines, demo numbers not in the
+facts. The numbers come from
 :mod:`app.domain.services.story_metrics`, the validator's own.
 
 Read-only: SELECTs only (the stories and the cached prop matches), no model
@@ -54,6 +56,10 @@ COLUMNS = (
     ("french_in_en", "FR in en"),
     ("dangling_deixis", "deixis"),
     ("educational_without_art", "edu no art"),
+    ("card_without_picture", "card no pic"),
+    ("beat_out_of_order", "beat order"),
+    ("line_run_over_3", "run>3"),
+    ("demo_number_not_in_facts", "demo nbr"),
 )
 
 
@@ -80,6 +86,10 @@ def audit_row(
         "french_in_en": findings["lang_integrity"],
         "dangling_deixis": findings["dangling_deixis"],
         "educational_without_art": findings["educational_prop_without_art"],
+        "card_without_picture": findings["card_without_picture"],
+        "beat_out_of_order": findings["beat_out_of_order"],
+        "line_run_over_3": findings["line_run_over_3"],
+        "demo_number_not_in_facts": findings["demo_number_not_in_facts"],
     }
 
 
