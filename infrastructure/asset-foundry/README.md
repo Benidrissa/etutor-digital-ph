@@ -114,3 +114,19 @@ See the doc, §8.
 
 1. **Phase 0:** rank the props the stories ask for, with `backend/scripts/story_prop_inventory.py`. It can also run from the *Generate Module Story* workflow, mode `props`. Use the result to choose the first ~150 manifest entries.
 2. **Phase A:** the backend side is built (doc §13). Copy this folder's `out/` into the backend container and import it with `python scripts/import_story_library.py <folder> --dry-run`, then again without `--dry-run`. Stories then serve the matching stickers and close-ups ahead of the AI stickers (#2684).
+
+## The shared library (#2714)
+
+`library/manifest.json` is the versioned manifest of the generic CC0 decor props every stack ships; its output is committed in `backend/app/data/story_library` and imported automatically at API start (docs section 14).
+
+```sh
+# 1. fetch the models of wishlist.json; each is re-verified on its Poly Pizza page
+python3 fetch_poly_pizza.py --out work            # writes work/models/*.glb and work/manifest.json
+# 2. render and post-process (needs `npm install` and Pillow, as above)
+node render.mjs --manifest work/manifest.json --models work --out work/out
+python3 postprocess.py --manifest work/manifest.json --models work --out work/out
+# 3. review work/out/contact-sheet.png, copy the kept entries and their WebP into
+#    backend/app/data/story_library, merge library/manifest.json, bump library_version
+```
+
+`fetch_poly_pizza.py` keeps only models that Poly Pizza's own page says are `Licence: CC0 1.0` and uploaded by Quaternius or Kenney, and records each model's page and sha256. Review every render: some search hits are wrong (a toy, a different object), so entries are curated by eye before they are committed.

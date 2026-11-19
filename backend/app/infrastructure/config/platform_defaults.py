@@ -445,6 +445,38 @@ SETTING_DEFINITIONS: list[SettingDef] = [
         allowed_options=list(IMAGE_MODEL_OPTIONS),
     ),
     SettingDef(
+        "story-art-use-stock",
+        "ai",
+        True,
+        "boolean",
+        "Story art: use the shared stock",
+        "When ON, a course's story cast and places are taken from the reviewed stock "
+        "shared by every course (same role, variant, region pack and place theme) "
+        "before any image is drawn. Only approved stock counts, so nothing changes "
+        "until an operator approves some (#2714). OFF: always draw per course.",
+    ),
+    SettingDef(
+        "story-art-stock-pack",
+        "ai",
+        "west_africa",
+        "string",
+        "Story art: stock region pack",
+        "The region pack of stock art this stack adopts (skin tones, clothes, "
+        "landscapes), reviewed by a human before use (#2714).",
+    ),
+    SettingDef(
+        "story-art-max-custom-images",
+        "ai",
+        0,
+        "integer",
+        "Story art: cap on a course's own drawings",
+        "How many images of its own a course may draw beyond the shared stock. 0 "
+        "(the default) is no cap: whatever the stock lacks is drawn, as before. "
+        "Above 0, further items stay undrawn (a placeholder) until an operator "
+        "runs the art task with retry_failed (#2714).",
+        {"min": 0, "max": 500},
+    ),
+    SettingDef(
         "ai-rag-default-top-k",
         "ai",
         8,

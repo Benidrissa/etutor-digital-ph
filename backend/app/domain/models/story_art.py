@@ -52,8 +52,13 @@ POSE_IDLE = "idle"
 #: A character's poses, in the order they are made (idle first: the others are
 #: edits of it).
 CHARACTER_POSES = (POSE_IDLE, "talk", "happy", "think")
+#: Poses only the shared stock (#2714) may hold: a run never draws them, so
+#: existing courses cost nothing more. A course that adopts stock which has
+#: them is served them too (the player falls back to another pose without).
+EXTRA_CHARACTER_POSES = ("surprised", "sad")
+STOCK_CHARACTER_POSES = (*CHARACTER_POSES, *EXTRA_CHARACTER_POSES)
 POSE_BACKDROP = "backdrop"
-POSES = (*CHARACTER_POSES, POSE_BACKDROP)
+POSES = (*STOCK_CHARACTER_POSES, POSE_BACKDROP)
 
 STATUS_READY = "ready"
 STATUS_FAILED = "failed"
@@ -99,6 +104,12 @@ class StoryArt(Base):
     #: The art version (prompts and post-processing) it was drawn with; a row of
     #: an older version is redrawn (``story_art_service.ART_VERSION``).
     art_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    #: Set (and ``image_data`` null) when the row adopts a shared stock image
+    #: (#2714): the art map then serves the stock image's URL. Null for the
+    #: course's own drawings, which are served as ever.
+    stock_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("story_stock_art.id", ondelete="RESTRICT"), nullable=True
+    )
     #: A ``failed`` row: how many runs in a row failed it for this look with a
     #: transient error (outage, quota, timeout), and when a run may try it
     #: again. ``retry_after`` is null for a final failure: a deterministic one
