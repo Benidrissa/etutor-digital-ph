@@ -211,6 +211,38 @@ class TestDrawPoses:
 
 
 class TestReview:
+    async def test_review_loads_the_deferred_image_with_each_row(self, tmp_path, capsys):
+        """``image_data`` is deferred: read after the query, it fails on the async engine."""
+        idle = _idle()
+        cand = SimpleNamespace(
+            id=uuid.uuid4(), pack="west_africa", kind="character", theme="hero", variant="girl",
+            pose="surprised", model="fake", source_art_id=idle.id, image_data=_webp(),
+        )  # fmt: skip
+        seen: list[str] = []
+
+        class _Rows:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def scalars(self):
+                return self
+
+            def all(self):
+                return self.rows
+
+            def scalar_one_or_none(self):
+                return self.rows[0] if self.rows else None
+
+        class _Reads:
+            async def execute(self, statement):
+                seen.append(str(statement))
+                return _Rows([cand] if len(seen) == 1 else [idle])
+
+        code = await script.review(_Reads(), SimpleNamespace(out=str(tmp_path / "sheet")))
+        assert code == 0 and (tmp_path / "sheet" / "contact-sheet.png").exists()
+        assert len(seen) == 2 and all("story_stock_art.image_data" in sql for sql in seen)
+        assert "1 candidates" in capsys.readouterr().out
+
     def test_the_contact_sheet_has_a_row_per_candidate(self):
         sheet = script._contact_sheet([("a", _webp(), _webp()), ("b", _webp(), _webp())])
         assert sheet.width == 720 and sheet.height == 2 * (360 + 22)
