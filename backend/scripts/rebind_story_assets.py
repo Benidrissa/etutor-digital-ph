@@ -66,6 +66,7 @@ def process_story(
     *,
     revert: bool = False,
     validate=None,
+    min_score: float | None = None,
 ) -> dict[str, Any]:
     """Re-bind (or revert) one stored story document. Pure: no database, no model.
 
@@ -100,9 +101,15 @@ def process_story(
     if revert:
         changed = revert_document(doc)
     else:
-        result = rebind_document(doc, entries, binding=catalogue.get("binding") or {})
+        kwargs = {} if min_score is None else {"min_score": min_score}
+        result = rebind_document(doc, entries, binding=catalogue.get("binding") or {}, **kwargs)
         changed = result.changed
-        out.update(bound=result.bound, inserted=result.inserted, moved=result.moved)
+        out.update(
+            bound=result.bound,
+            inserted=result.inserted,
+            moved=result.moved,
+            evidence=result.evidence,
+        )
     after = validate(copy.deepcopy(doc)) if changed else before
     if changed:
         doc["checks"] = after.checks.model_dump(mode="json")
@@ -137,6 +144,14 @@ def render(rows: list[dict[str, Any]], *, applied: bool, revert: bool) -> str:
         )
         for pid, asset in row["bound"].items():
             lines.append(f"  prop {pid} <- asset {asset}")
+            proof = (row.get("evidence") or {}).get(pid)
+            if proof:
+                lines.append(
+                    f"    {proof['prop']!r}  ->  {proof['caption']!r}"
+                    f"  [score {proof['score']:g}: {', '.join(proof['words'])}]"
+                )
+            else:
+                lines.append("    (the saved binding)")
         for item in row["inserted"]:
             lines.append(f"  close-up of {item['prop']} added in {item['chapter']}/{item['scene']}")
         for item in row["moved"]:
@@ -174,6 +189,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--exclude", action="append", default=[], help="exclude an asset id")
     parser.add_argument("--pin", action="append", default=[], help="pin an asset id")
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=None,
+        help="least score (shared content words) to bind a prop; default: the strong threshold, 2",
+    )
     parser.add_argument("--json", default=None, help="also write the report to this file")
     return parser.parse_args(argv)
 
@@ -284,7 +305,11 @@ async def main(argv: list[str] | None = None, session_factory=None, builder=None
                 rows.append(row)
                 continue
             outcome = process_story(
-                record.content, catalogue, revert=args.revert, validate=validate_module_story
+                record.content,
+                catalogue,
+                revert=args.revert,
+                validate=validate_module_story,
+                min_score=args.min_score,
             )
             row.update({k: v for k, v in outcome.items() if k != "doc"})
             rows.append(row)

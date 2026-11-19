@@ -73,8 +73,8 @@ def illustration_row(**over: Any) -> dict[str, Any]:
         "lesson_id": LESSON,
         "module_id": MODULE,
         "concept": "Shepard tables",
-        "title_fr": "L'illusion des tables de Shepard",
-        "title_en": "The Shepard tables illusion",
+        "title_fr": "Croquis des deux tables",
+        "title_en": "Sketch of the two tables",
         "alt_text_en": "Two tables drawn by hand in perspective",
         "alt_text_fr": "Deux tables dessinées à la main en perspective",
     }
@@ -199,7 +199,7 @@ def test_the_catalogue_drops_noise_and_exclusions_and_dedupes_by_hash():
     assert [(e["id"], e["asset_id"]) for e in entries] == [("A1", SHEPARD), ("A2", ILLUSTRATION)]
     assert entries[0]["units"] == [UNIT, "unit-2"]
     assert entries[0]["credit"] == "course" and entries[1]["credit"] == "course_illustration"
-    assert entries[0]["attribution"] == "Perception.pdf, p.21"
+    assert entries[0]["attribution"] == "Perception, p.21"
 
 
 def test_the_order_is_pinned_then_origin_then_figures_before_illustrations():
@@ -314,7 +314,7 @@ def test_rebinding_the_studied_story_shows_the_shepard_figure_before_regardez():
     # The lesson illustration is a figure prop of its own kind of id.
     assert props["table_drawing"]["figure"] == {
         "generated_image_id": ILLUSTRATION,
-        "caption": {"en": "The Shepard tables illusion", "fr": "L'illusion des tables de Shepard"},
+        "caption": {"en": "Sketch of the two tables", "fr": "Croquis des deux tables"},
         "alt": {
             "en": "Two tables drawn by hand in perspective",
             "fr": "Deux tables dessinées à la main en perspective",
@@ -974,3 +974,379 @@ def test_every_import_made_inside_a_function_resolves():
             module = importlib.import_module(node.module)
             for alias in node.names:
                 assert hasattr(module, alias.name), f"{relative}: {node.module}.{alias.name}"
+
+
+# -- conservative binding (staging dry run) ----------------------------------------------------------------------
+
+
+def _prop(pid, fr, en, query, educational=True):
+    return {
+        "id": pid,
+        "label": {"fr": fr, "en": en},
+        "query": query,
+        "kind": "real" if educational else "sticker",
+        "educational": educational,
+    }
+
+
+def _figure(asset, caption, *, page=5, **over):
+    row = shepard_row(
+        id=asset,
+        image_hash=asset,
+        caption_en=caption,
+        caption_fr=caption,
+        caption=caption,
+        alt_text_en="",
+        alt_text_fr="",
+        semantic_tags=None,
+        page_number=page,
+        figure_number=None,
+    )
+    row.update(over)
+    return sa_.figure_entry(row, origin="semantic", unit_id=UNIT)
+
+
+def _illustration(asset, fr, en):
+    return sa_.illustration_entry(
+        illustration_row(id=asset, title_fr=fr, title_en=en, alt_text_en="", alt_text_fr=""),
+        unit_id=UNIT,
+    )
+
+
+def _uid(n):
+    return f"00000000-0000-4000-8000-{n:012d}"
+
+
+STAGING_ASSETS = {
+    "shepard": _figure(_uid(1), "Illusion créée par le psychologue Roger Shepard."),
+    "atoms": _figure(
+        _uid(2),
+        "Les atomes sont constitués de protons et de neutrons situés dans le noyau, et d'électrons.",
+    ),
+    "lactic": _figure(_uid(3), "La fermentation lactique est courante dans les muscles."),
+    "induced_fit": _figure(
+        _uid(4), "Le modèle de l'ajustement induit de l'enzyme : clé et serrure."
+    ),
+    "detective": _illustration(
+        _uid(5),
+        "Le détective inconscient : comment le cerveau construit un modèle mental",
+        "The unconscious detective: how the brain builds a mental model",
+    ),
+    "pyruvate": _figure(_uid(6), "Le pyruvate est converti en acétyl-CoA."),
+    "levels": _illustration(
+        _uid(7), "Propriétés et niveaux du vivant", "Properties and levels of life"
+    ),
+    "water": _illustration(
+        _uid(8), "Cycle de l'eau et nécessité de la vie", "Water cycle and life necessity"
+    ),
+    "biomolecules": _illustration(
+        _uid(9), "Quatre biomolécules essentielles", "Four essential biomolecules of life"
+    ),
+    "signs": _illustration(
+        _uid(10), "Huit signes des organismes vivants", "Eight signs of living organisms"
+    ),
+    "signs_things": _figure(_uid(11), "Eight signs of living things"),
+    "organised": _figure(_uid(12), "Vie organisée en niveaux"),
+    "three": _figure(_uid(13), "Ces exemples montrent trois molécules."),
+    "taxonomy": _figure(
+        _uid(14), "Les niveaux de la hiérarchie taxonomique pour un chien et un chat."
+    ),
+    "skills": _figure(
+        _uid(15), "Les compétences dont les entrepreneurs disposent pour résoudre des problèmes."
+    ),
+}
+
+STAGING_PROPS = [
+    _prop(
+        "poster",
+        "l'affiche des tables",
+        "the table poster",
+        "Shepard table illusion hand drawn poster",
+    ),
+    _prop(
+        "atom_diagram",
+        "le schéma de l'atome",
+        "the atom diagram",
+        "simple atom diagram nucleus electrons hand drawn",
+    ),
+    _prop(
+        "lactic_acid_label",
+        "l'étiquette d'acide lactique",
+        "the lactic acid label",
+        "lactic acid label muscle hand drawn",
+    ),
+    _prop(
+        "enzyme_card",
+        "la fiche de l'enzyme",
+        "the enzyme card",
+        "hand drawn enzyme diagram card paper",
+    ),
+    _prop(
+        "mental_schema",
+        "le schéma mental",
+        "the mental schema",
+        "index card filing cabinet brain concept illustration",
+    ),
+    _prop(
+        "atp_synthase_model",
+        "le modèle de l'ATP synthase",
+        "the ATP synthase model",
+        "ATP synthase rotating protein model diagram",
+    ),
+    _prop(
+        "crumpled_diagram",
+        "le schéma froissé",
+        "the crumpled diagram",
+        "crumpled hand-drawn paper diagram",
+    ),
+    _prop(
+        "stained_diagram",
+        "le schéma taché",
+        "the stained diagram",
+        "crumpled stained hand drawn diagram",
+    ),
+    _prop(
+        "courtyard_tap",
+        "le robinet de la cour",
+        "the courtyard tap",
+        "outdoor concrete water tap Africa",
+    ),
+    _prop(
+        "friend_notebook",
+        "le cahier de l'ami",
+        "the friend's notebook",
+        "child notebook pencil diagrams",
+    ),
+    _prop("vial_three", "la fiole trois", "vial three", "clear sugar syrup glass vial"),
+    _prop("mystery_vials", "les fioles mystères", "the mystery vials", "mystery glass vials sugar"),
+    _prop("mango_tree", "le manguier", "the mango tree", "mango tree school courtyard Africa"),
+    _prop("termite_mound", "la termitière", "the termite mound", "termite mound Africa"),
+    _prop("agama_lizard", "le margouillat", "the agama lizard", "agama lizard wall"),
+    _prop(
+        "levels_ladder",
+        "l'échelle des niveaux",
+        "the levels ladder",
+        "levels of biological organization diagram ladder",
+    ),
+    _prop(
+        "problem_list",
+        "la liste des problèmes",
+        "the problem list",
+        "hand drawn list crossings paper",
+    ),
+]
+
+GOOD = {
+    "poster": "shepard",
+    "atom_diagram": "atoms",
+    "lactic_acid_label": "lactic",
+    "enzyme_card": "induced_fit",
+    "mental_schema": "detective",
+}
+
+
+def _catalogue(assets):
+    return sa_.assemble(
+        list(assets.values()), course_source=COURSE, lesson_ids=[LESSON], module_id=MODULE
+    )
+
+
+def test_the_staging_dry_run_binds_the_five_good_props_and_none_of_the_wrong_ones():
+    entries = _catalogue(STAGING_ASSETS)
+    ids = {key: STAGING_ASSETS[key]["asset_id"] for key in STAGING_ASSETS}
+    evidence: dict = {}
+    bound = sa_.bind_props(STAGING_PROPS, entries, evidence=evidence)
+    assert {pid: e["asset_id"] for pid, e in bound.items()} == {
+        pid: ids[key] for pid, key in GOOD.items()
+    }
+    # Every binding says why: a score, the shared words, the prop and the caption.
+    assert set(evidence) == set(GOOD)
+    assert evidence["poster"]["score"] >= 2 and set(evidence["poster"]["words"]) >= {
+        "shepard",
+        "illusion",
+    }
+    assert evidence["poster"]["prop"] == "l'affiche des tables"
+    assert evidence["poster"]["caption"].startswith("Illusion créée")
+    assert evidence["enzyme_card"]["words"] == ["enzym"]  # one word: head noun, rare, in the query
+
+
+@pytest.mark.parametrize("pid", [p["id"] for p in STAGING_PROPS if p["id"] not in GOOD])
+def test_a_wrong_prop_is_never_bound(pid):
+    bound = sa_.bind_props(STAGING_PROPS, _catalogue(STAGING_ASSETS))
+    assert pid not in bound
+
+
+def test_a_decor_prop_never_binds_even_on_a_strong_match():
+    decor = _prop(
+        "poster", "l'affiche des tables", "the table poster", "Shepard table illusion", False
+    )
+    assert sa_.bind_props([decor], _catalogue(STAGING_ASSETS)) == {}
+
+
+def test_alt_text_and_tags_do_not_count_as_evidence():
+    entry = _figure(
+        _uid(40),
+        "Une illustration",
+        alt_text_en="Shepard table illusion",
+        alt_text_fr="Illusion des tables de Shepard",
+        semantic_tags={"topics": ["shepard", "illusion", "table"]},
+    )
+    assert (
+        sa_.bind_props(
+            STAGING_PROPS[:1],
+            sa_.assemble([entry], course_source=COURSE, lesson_ids=[], module_id=MODULE),
+        )
+        == {}
+    )
+
+
+def test_two_props_tied_for_one_picture_bind_neither():
+    twin = _prop(
+        "poster_2",
+        "l'affiche des tables",
+        "the table poster",
+        "Shepard table illusion hand drawn poster",
+    )
+    entries = _catalogue({"shepard": STAGING_ASSETS["shepard"]})
+    assert sa_.bind_props([STAGING_PROPS[0], twin], entries) == {}
+
+
+def test_the_minimum_score_can_be_raised():
+    entries = _catalogue(STAGING_ASSETS)
+    assert "poster" in sa_.bind_props(STAGING_PROPS, entries, min_score=2)
+    # The poster shares 2 words with its caption: asking for 3 binds none of the 2-word ones.
+    assert "poster" not in sa_.bind_props(STAGING_PROPS, entries, min_score=3)
+
+
+# -- page captures, twins, credits --------------------------------------------------------------------------------
+
+CAPTURE = "590809b4-1111-4111-8111-111111111111"
+CAPTURE_TWIN = "65bb9ff9-2222-4222-8222-222222222222"
+STUDIED_ILLUSTRATION = "f9430732-3333-4333-8333-333333333333"
+
+
+def _studied_entries():
+    caption = "Illusion créée par le psychologue Roger Shepard."
+    page = dict(
+        source=COURSE,
+        page_number=21,
+        figure_number="Figure 1",
+        caption_en=caption,
+        caption_fr=caption,
+        alt_text_en="",
+        alt_text_fr="",
+        semantic_tags=None,
+    )
+    return sa_.assemble(
+        [
+            sa_.figure_entry(
+                shepard_row(
+                    id=CAPTURE,
+                    image_hash="aaa",
+                    figure_kind="complex_diagram",
+                    width=1024,
+                    height=1627,
+                    **page,
+                ),
+                origin="lesson_ref",
+                unit_id=UNIT,
+            ),
+            sa_.figure_entry(
+                shepard_row(
+                    id=CAPTURE_TWIN,
+                    image_hash="bbb",
+                    figure_kind="photo",
+                    width=284,
+                    height=200,
+                    **page,
+                ),
+                origin="lesson_ref",
+                unit_id=UNIT,
+            ),
+            _illustration(
+                STUDIED_ILLUSTRATION,
+                "L'illusion des tables de Shepard",
+                "The Shepard tables illusion",
+            ),
+        ],
+        course_source=COURSE,
+        lesson_ids=[LESSON],
+        module_id=MODULE,
+    )
+
+
+def test_the_same_page_figure_under_two_hashes_is_one_entry_flagged_as_a_page_capture():
+    entries = _studied_entries()
+    assert [e["asset_id"] for e in entries] == [CAPTURE, STUDIED_ILLUSTRATION]
+    assert entries[0]["page_capture"] is True and "page_capture" not in entries[1]
+    assert entries[0]["page"] == 21
+
+
+def test_a_page_capture_ranks_after_the_lesson_illustration_that_matches_as_strongly():
+    entries = _studied_entries()
+    poster = STAGING_PROPS[0]
+    bound = sa_.bind_props([poster], entries)
+    assert bound["poster"]["asset_id"] == STUDIED_ILLUSTRATION
+    # With only the page capture, the poster may still use it (nothing better).
+    assert sa_.bind_props([poster], entries[:1])["poster"]["asset_id"] == CAPTURE
+    # A cropped figure of the same strength still comes first.
+    cropped = sa_.figure_entry(
+        shepard_row(
+            id=SHEPARD,
+            image_hash="ccc",
+            caption_en="Shepard table illusion",
+            caption_fr="Illusion des tables de Shepard",
+            page_number=22,
+            width=600,
+            height=400,
+        ),
+        origin="lesson_ref",
+        unit_id=UNIT,
+    )
+    both = sa_.assemble(
+        [cropped, *_studied_entries()], course_source=COURSE, lesson_ids=[LESSON], module_id=MODULE
+    )
+    assert sa_.bind_props([poster], both)["poster"]["asset_id"] == SHEPARD
+
+
+def test_page_like_dimensions_make_a_page_capture():
+    assert sa_.is_page_capture("complex_diagram", 300, 200)
+    assert sa_.is_page_capture("diagram", 800, 1000) and not sa_.is_page_capture(
+        "diagram", 800, 999
+    )
+    assert not sa_.is_page_capture("diagram", 700, 1600) and not sa_.is_page_capture(
+        "photo", None, None
+    )
+
+
+def test_a_catalogue_figure_asks_for_the_original_picture():
+    ref = sa_.ref_of(_studied_entries()[0])
+    assert figure_of(ref)["original"] is True
+    assert "original" not in figure_of(sa_.ref_of(_studied_entries()[1]))
+
+
+def test_a_raw_file_name_becomes_a_readable_credit():
+    raw = "Mindware__Tools_for_Smart_Thinking_Nisbett__Richard_E_2015_Edition_Complete.pdf"
+    human = sa_.human_source(raw)
+    assert "_" not in human and ".pdf" not in human and len(human) <= 61
+    assert human.startswith("Mindware Tools for Smart Thinking")
+    assert not human[:-1].endswith(" ")
+    entry = sa_.figure_entry(
+        shepard_row(attribution=None, resource_title=raw), origin="lesson_ref", unit_id=UNIT
+    )
+    assert entry["attribution"].endswith(", p.21") and "_" not in entry["attribution"]
+    assert sa_.human_source("OpenStax, CC BY 4.0") == "OpenStax, CC BY 4.0"
+
+
+def test_the_rebind_report_puts_the_prop_and_its_caption_side_by_side():
+    outcome = script.process_story(story(), catalogue(entries=_studied_entries()))
+    text = script.render(
+        [{"module_id": MODULE, "language": "fr", **outcome}], applied=False, revert=False
+    )
+    assert (
+        "l'affiche des tables" in text
+        and "L'illusion des tables de Shepard" in text
+        and "score" in text
+    )
+    none = script.process_story(story(), catalogue(entries=_studied_entries()), min_score=9)
+    assert not none["bound"]

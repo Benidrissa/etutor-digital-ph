@@ -21,6 +21,8 @@ import type {
   TextObject,
 } from "@/lib/story-course/types";
 
+import { humanAttribution } from "@/lib/story-course/media";
+
 import { GROUND } from "./cast";
 
 /** Height of a prop as a share of the stage height, per size. */
@@ -401,7 +403,7 @@ export const ILLUSTRATION_CREDIT: PropPicture["credit"] = {
 function courseCredit(prop: Prop): PropPicture["credit"] {
   const figure = prop.figure;
   const parts = (from: string) =>
-    [from, figure?.figure_number, figure?.attribution].filter(Boolean).join(" · ");
+    [from, figure?.figure_number, humanAttribution(figure?.attribution)].filter(Boolean).join(" · ");
   return {
     kind: "course",
     title: figure?.figure_number,
@@ -439,7 +441,7 @@ export function pictureFor(prop: Prop, media: PropMedia | undefined, lang: "fr" 
   }
   if (figure?.source_image_id && /^[0-9a-f-]{8,64}$/i.test(figure.source_image_id)) {
     return {
-      src: `/api/v1/source-images/${figure.source_image_id}/data?lang=${lang}`,
+      src: `/api/v1/source-images/${figure.source_image_id}/data${figure.original ? "" : `?lang=${lang}`}`,
       width: 4,
       height: 3,
       alt: figure.alt ?? prop.label,

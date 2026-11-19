@@ -12,6 +12,7 @@
 import { useTranslations } from "next-intl";
 
 import { text } from "@/lib/story-course/answer";
+import { humanAttribution } from "@/lib/story-course/media";
 import type { MediaCredit, StoryCourse } from "@/lib/story-course/types";
 
 import { CreditLine, StoryDialog } from "./look-closer";
@@ -65,7 +66,7 @@ export function creditsFor(story: StoryCourse, lang: "fr" | "en"): CreditEntry[]
         if (seen.has(key)) continue;
         seen.add(key);
         const number = nonEmpty(step.params?.figure_number);
-        const attribution = nonEmpty(step.params?.attribution);
+        const attribution = humanAttribution(nonEmpty(step.params?.attribution));
         const parts = (from: string) => [from, number, attribution].filter(Boolean).join(" · ");
         const label = number ?? (step.caption ? text(step.caption, lang, lang === "fr" ? "en" : "fr") : id.slice(0, 8));
         entries.push({

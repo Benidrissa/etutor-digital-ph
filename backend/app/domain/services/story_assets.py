@@ -91,9 +91,6 @@ MAX_CHECKS = 40
 CHECK_TRIES = 2
 MAX_ILLUSTRATIONS = 8
 
-#: A prop is bound to a picture when they share at least this many words.
-MIN_BIND_OVERLAP = 2
-
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
     [
@@ -230,13 +227,43 @@ def _tag_values(tags: Any) -> list[str]:
     return [str(tags)] if tags else []
 
 
+#: A page rendered whole (not a cropped figure): the PDF's text is in the picture.
+PAGE_MIN_WIDTH = 800
+PAGE_MIN_RATIO = 1.25
+
+
+def is_page_capture(figure_kind: Any, width: Any, height: Any) -> bool:
+    """``complex_diagram``, or a portrait picture as large as a page: a whole page, not a figure."""
+    if str(figure_kind or "").lower() == "complex_diagram":
+        return True
+    return (
+        isinstance(width, int)
+        and isinstance(height, int)
+        and width >= PAGE_MIN_WIDTH
+        and height >= PAGE_MIN_RATIO * width
+    )
+
+
+def human_source(value: Any, limit: int = 60) -> str:
+    """A file name made readable: no extension, underscores and hyphen runs as spaces, ~60 characters."""
+    name = _text(value)
+    name = re.sub(r"\.(pdf|docx?|pptx?|epub|csv|txt)\b", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"_+|-{2,}", " ", name)
+    name = " ".join(name.split())
+    if len(name) > limit:
+        cut = name[:limit]
+        space = cut.rfind(" ")
+        name = (cut[:space] if space > limit // 2 else cut).rstrip(" ,;:.-") + "…"
+    return name
+
+
 def figure_entry(row: Mapping[str, Any], *, origin: str, unit_id: str | None) -> dict[str, Any]:
     """A catalogue entry for a ``source_images`` row (its columns, as a mapping)."""
     page = row.get("page_number")
     attribution = _text(row.get("attribution"))
     if not attribution:
         # Fallback credit: the resource's title and the page.
-        parts = [_text(row.get("resource_title")), f"p.{page}" if page else ""]
+        parts = [human_source(row.get("resource_title")), f"p.{page}" if page else ""]
         attribution = ", ".join(p for p in parts if p)
     entry: dict[str, Any] = {
         "asset_id": str(row["id"]),
@@ -254,6 +281,10 @@ def figure_entry(row: Mapping[str, Any], *, origin: str, unit_id: str | None) ->
             entry[key] = _text(row[key])
     if page:
         entry["page"] = int(page)
+    if is_page_capture(row.get("figure_kind"), row.get("width"), row.get("height")):
+        entry["page_capture"] = True
+    if row.get("width"):
+        entry["width"] = row["width"]
     if attribution:
         entry["attribution"] = attribution[:200]
     return entry
@@ -290,6 +321,15 @@ def _origin_rank(entry: Mapping[str, Any]) -> int:
     return ORIGINS.index(origin) if origin in ORIGINS else len(ORIGINS)
 
 
+def _twin_key(entry: Mapping[str, Any]) -> tuple[Any, ...] | None:
+    """(page, figure number, caption) of a course figure: what two rows of one picture share."""
+    caption = entry.get("caption") or {}
+    text = fold(caption.get("en") or caption.get("fr"))
+    if entry.get("kind") != KIND_FIGURE or not entry.get("page") or not text:
+        return None
+    return (entry["page"], fold(entry.get("figure_number")), text)
+
+
 def assemble(
     candidates: Iterable[dict[str, Any]],
     *,
@@ -313,6 +353,7 @@ def assemble(
     excluded = {str(e) for e in exclusions}
     lesson_ids = list(lesson_ids)
     seen: dict[str, dict[str, Any]] = {}
+    twins: dict[tuple[Any, ...], str] = {}
     for candidate in candidates:
         entry = copy.deepcopy(candidate)
         asset_id = str(entry.get("asset_id") or "")
@@ -329,13 +370,23 @@ def assemble(
             entry["origin"] = "pinned"
             entry["pinned"] = True
         key = str(entry.get("image_hash") or asset_id)
+        # The same picture indexed twice has two hashes (a re-index, a translated
+        # copy): same page, figure number and caption is the same picture too.
+        twin = _twin_key(entry)
+        if key not in seen and twin is not None and twin in twins:
+            key = twins[twin]
         known = seen.get(key)
         if known is None:
             seen[key] = entry
+            if twin is not None:
+                twins.setdefault(twin, key)
             continue
         for unit in entry.get("units") or []:
             if unit not in known["units"]:
                 known["units"].append(unit)
+        # The twin rows serve the same bytes: a page capture is one whichever row says so.
+        if entry.get("page_capture"):
+            known["page_capture"] = True
         if _origin_rank(entry) < _origin_rank(known):
             known.update({k: entry[k] for k in ("origin", "pinned") if k in entry})
     ordered = sorted(
@@ -363,6 +414,11 @@ def ref_of(entry: Mapping[str, Any]) -> dict[str, Any]:
     }
     if entry.get("kind") == KIND_ILLUSTRATION:
         ref["generated"] = True
+    else:
+        # The localised variant can be a smaller render: the original is asked for.
+        ref["original"] = True
+    if entry.get("page_capture"):
+        ref["page_capture"] = True
     for key in ("figure_number", "image_hash", "figure_kind", "attribution"):
         if entry.get(key):
             ref[key] = entry[key]
@@ -431,8 +487,225 @@ def plan_figures_block(catalogue: Mapping[str, Any] | None) -> str:
 # -- binding props to the catalogue ----------------------------------------------------
 
 
+#: A prop is shown with a picture only on strong evidence: this score, in shared
+#: content words (a single shared word counts as 2 when it is the prop's head
+#: noun, rare in the catalogue and confirmed by the prop's query).
+STRONG_SCORE = 2.0
+
+#: Words that name a container, a format, a look or a place, not the thing: two
+#: props that share only these have nothing in common. Both languages.
+_GENERIC_WORDS = frozenset(
+    [
+        "diagram",
+        "diagramme",
+        "schema",
+        "scheme",
+        "model",
+        "modele",
+        "card",
+        "carte",
+        "fiche",
+        "paper",
+        "papier",
+        "sheet",
+        "feuille",
+        "list",
+        "liste",
+        "label",
+        "etiquette",
+        "strip",
+        "bande",
+        "hand",
+        "main",
+        "drawn",
+        "dessine",
+        "dessin",
+        "drawing",
+        "crumpled",
+        "froisse",
+        "stained",
+        "tache",
+        "picture",
+        "image",
+        "photo",
+        "illustration",
+        "figure",
+        "poster",
+        "affiche",
+        "board",
+        "notebook",
+        "cahier",
+        "note",
+        "simple",
+        "small",
+        "large",
+        "clear",
+        "big",
+        "little",
+        "old",
+        "new",
+        "tiny",
+        "wooden",
+        "bois",
+        "metal",
+        "plastic",
+        "concrete",
+        "beton",
+        "glass",
+        "verre",
+        "petit",
+        "grand",
+        "clair",
+        "vieux",
+        "nouveau",
+        "child",
+        "children",
+        "enfant",
+        "kid",
+        "student",
+        "eleve",
+        "outdoor",
+        "indoor",
+        "exterieur",
+        "interieur",
+        "africa",
+        "afrique",
+        "west",
+        "ouest",
+        "african",
+        "africain",
+        "courtyard",
+        "cour",
+        "school",
+        "ecole",
+        "village",
+        "colorful",
+        "colourful",
+        "couleur",
+        "handwritten",
+        "manuscrit",
+        "paper",
+        "thing",
+        "chose",
+        "example",
+        "exemple",
+        "type",
+        "kind",
+        "sort",
+        "used",
+        "utilise",
+        "made",
+        "fait",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "zero",
+        "un",
+        "deux",
+        "trois",
+        "quatre",
+        "cinq",
+        "sept",
+        "huit",
+        "neuf",
+        "dix",
+        "first",
+        "premier",
+        "second",
+        "deuxieme",
+    ]
+)
+
+
+def _cstem(word: str) -> str:
+    """ "tables" ~ "table", "atome" ~ "atom": plural and a final "e" fold away."""
+    word = word[:-1] if len(word) > 4 and word.endswith("s") else word
+    return word[:-1] if len(word) > 4 and word.endswith("e") else word
+
+
+_GENERIC = frozenset(_cstem(w) for w in _GENERIC_WORDS)
+
+
+def name_words(*texts: Any) -> list[str]:
+    """The content words naming a thing, in order, once each: no generic or number word."""
+    out: list[str] = []
+    for text in texts:
+        for word in _WORD_RE.findall(fold(text).replace("'", " ")):
+            if len(word) < 3 or word.isdigit() or word in _STOPWORDS:
+                continue
+            stem = _cstem(word)
+            if stem not in _GENERIC and word not in _GENERIC_WORDS and stem not in out:
+                out.append(stem)
+    return out
+
+
+def _caption_sides(entry: Mapping[str, Any]) -> tuple[bool, list[str], list[str]]:
+    """``(one language, fr words, en words)`` of the entry's caption (its title, for an illustration)."""
+    caption = entry.get("caption") or {}
+    fr, en = _text(caption.get("fr")), _text(caption.get("en"))
+    return fr == en, name_words(fr), name_words(en)
+
+
+def _prop_sides(prop: Mapping[str, Any]) -> tuple[list[str], list[str], list[str]]:
+    """``(label fr, label en, query)`` as content words."""
+    label = prop.get("label") if isinstance(prop.get("label"), Mapping) else {}
+    return (
+        name_words(label.get("fr")),
+        name_words(label.get("en")),
+        name_words(prop.get("query")),
+    )
+
+
 def prop_words(prop: Mapping[str, Any]) -> frozenset[str]:
-    return words(prop.get("label"), prop.get("query"))
+    fr, en, query = _prop_sides(prop)
+    return frozenset([*fr, *en, *query])
+
+
+def match_prop(
+    prop: Mapping[str, Any], entry: Mapping[str, Any], catalogue: Sequence[Mapping[str, Any]]
+) -> dict[str, Any] | None:
+    """How strongly ``entry``'s caption names ``prop``, or ``None`` when it does not.
+
+    Only the prop's own name (label fr and en, query) against the caption or
+    title is compared, never alt text, tags or surrounding text, and generic
+    container, format, look and place words never count. Each language is
+    matched against the same language of the caption; a caption written in one
+    language only is matched against all the prop's words. Strong evidence is
+    at least 2 shared content words, or 1 that is the head (first or last
+    content word) of the prop's label, appears in at most one caption of the
+    catalogue, and is confirmed by the prop's query (a shared 5-letter start).
+    """
+    label_fr, label_en, query = _prop_sides(prop)
+    one_language, cap_fr, cap_en = _caption_sides(entry)
+    if one_language:
+        sides = [([*label_fr, *label_en, *query], cap_fr)]
+    else:
+        sides = [([*label_fr], cap_fr), ([*label_en, *query], cap_en)]
+    shared: list[str] = []
+    for prop_side, cap_side in sides:
+        found = [w for w in dict.fromkeys(prop_side) if w in cap_side]
+        if len(found) > len(shared):
+            shared = found
+    if not shared:
+        return None
+    if len(shared) >= 2:
+        return {"score": float(len(shared)), "words": shared}
+    word = shared[0]
+    heads = {w for lab in (label_fr, label_en) if lab for w in (lab[0], lab[-1])}
+    seen_in = sum(1 for e in catalogue if word in {*_caption_sides(e)[1], *_caption_sides(e)[2]})
+    confirmed = (
+        any(word[:5] == q[:5] and min(len(word), len(q)) >= 5 for q in query) or word in query
+    )
+    if word in heads and seen_in <= 1 and confirmed:
+        return {"score": STRONG_SCORE, "words": shared}
+    return None
 
 
 def bind_props(
@@ -440,13 +713,16 @@ def bind_props(
     entries: Sequence[Mapping[str, Any]],
     *,
     taken: Iterable[str] = (),
+    min_score: float = STRONG_SCORE,
+    evidence: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Each educational prop without a picture → the entry that shows it, if any.
+    """Each educational prop without a picture → the entry that shows it, on strong evidence only.
 
-    Deterministic: the entries go in catalogue order (figures of the course
-    before illustrations); each takes the unbound prop it shares most words
-    with, at least :data:`MIN_BIND_OVERLAP`, the earlier prop on a tie; a
-    prop takes one entry and an entry serves one prop.
+    Decor props (``educational`` false) never bind. A picture serves one prop
+    and a prop takes one picture: when two props tie for a picture, or two
+    pictures tie for a prop, neither binds (a wrong picture shown as evidence
+    is worse than none). ``evidence`` (optional) receives, per bound prop id,
+    ``{"score", "words", "prop", "caption"}`` for the report.
     """
     candidates = [
         p
@@ -454,21 +730,55 @@ def bind_props(
         if p.get("educational") and not p.get("figure") and p.get("kind") in ("real", "figure")
     ]
     used = {str(t) for t in taken}
+    pool = [e for e in entries if str(e.get("asset_id")) not in used]
+    pairs: dict[tuple[str, str], dict[str, Any]] = {}
+    for entry in pool:
+        for prop in candidates:
+            hit = match_prop(prop, entry, entries)
+            if hit is not None and hit["score"] >= min_score:
+                pairs[(str(prop["id"]), str(entry["asset_id"]))] = hit
+
+    by_id = {str(e["asset_id"]): e for e in pool}
+
+    def rank(key: tuple[str, str]) -> tuple[float, int]:
+        # Score first; on a tie a cropped figure, then an illustration, then a page
+        # capture (the PDF's page rendered whole, its text in the picture).
+        entry = by_id[key[1]]
+        kind = (
+            2 if entry.get("page_capture") else 1 if entry.get("kind") == KIND_ILLUSTRATION else 0
+        )
+        return pairs[key]["score"], -kind
+
+    def best_unique(
+        keys: list[tuple[str, str]], *, by_kind: bool = False
+    ) -> tuple[str, str] | None:
+        if not keys:
+            return None
+        top = max(rank(k) if by_kind else (pairs[k]["score"], 0) for k in keys)
+        leaders = [k for k in keys if (rank(k) if by_kind else (pairs[k]["score"], 0)) == top]
+        return leaders[0] if len(leaders) == 1 else None
+
+    # One prop per picture, then one picture per prop; a tie on either side binds nothing.
+    by_entry = {}
+    for entry in pool:
+        eid = str(entry["asset_id"])
+        pick = best_unique([k for k in pairs if k[1] == eid])
+        if pick is not None:
+            by_entry[eid] = pick
     bound: dict[str, dict[str, Any]] = {}
-    for entry in entries:
-        if str(entry.get("asset_id")) in used:
-            continue
-        shared = entry_words(entry)
-        best: tuple[int, int, Mapping[str, Any]] | None = None
-        for index, prop in enumerate(candidates):
-            if str(prop["id"]) in bound:
-                continue
-            score = len(prop_words(prop) & shared)
-            if score >= MIN_BIND_OVERLAP and (best is None or score > best[0]):
-                best = (score, index, prop)
-        if best is not None:
-            bound[str(best[2]["id"])] = dict(entry)
-            used.add(str(entry.get("asset_id")))
+    for prop in candidates:
+        pid = str(prop["id"])
+        pick = best_unique([k for k in by_entry.values() if k[0] == pid], by_kind=True)
+        if pick is not None:
+            entry = by_id[pick[1]]
+            bound[pid] = dict(entry)
+            if evidence is not None:
+                label = prop.get("label") if isinstance(prop.get("label"), Mapping) else {}
+                evidence[pid] = {
+                    **pairs[pick],
+                    "prop": _text(label.get("fr") or label.get("en") or pid),
+                    "caption": _text((entry.get("caption") or {}).get("fr")),
+                }
     return bound
 
 
@@ -482,6 +792,8 @@ class RebindResult:
         self.bound: dict[str, str] = {}  # prop id → asset id
         self.inserted: list[dict[str, str]] = []
         self.moved: list[dict[str, Any]] = []
+        #: prop id → ``{"score", "words", "prop", "caption"}`` for the props bound by words.
+        self.evidence: dict[str, dict[str, Any]] = {}
 
     @property
     def changed(self) -> bool:
@@ -600,6 +912,7 @@ def rebind_document(
     entries: Sequence[Mapping[str, Any]],
     *,
     binding: Mapping[str, str] | None = None,
+    min_score: float = STRONG_SCORE,
 ) -> RebindResult:
     """Bind a stored module story's props to the catalogue, in place. No model call.
 
@@ -632,7 +945,9 @@ def rebind_document(
             wanted[pid] = dict(entry)
     rest = [p for p in props if p["id"] not in wanted]
     taken = {*already, *(str(e["asset_id"]) for e in wanted.values())}
-    wanted.update(bind_props(rest, entries, taken=taken))
+    wanted.update(
+        bind_props(rest, entries, taken=taken, min_score=min_score, evidence=result.evidence)
+    )
 
     module_story = doc.setdefault("module_story", {})
     record = module_story.setdefault("assets", {"version": CATALOGUE_VERSION, "bound": {}})
@@ -743,6 +1058,7 @@ _SOURCE_COLUMNS = (
     "image_hash",
     "figure_kind",
     "width",
+    "height",
     "storage_key",
     "figure_number",
     "caption",
