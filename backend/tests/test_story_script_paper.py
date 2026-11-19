@@ -400,6 +400,21 @@ def test_header_is_built_from_plan_pack_and_fact_sheet_with_hand_assignments():
     )  # no mentor in this cast
 
 
+def test_header_reads_a_pack_as_it_is_stored_under_spine_and_the_stored_wording():
+    bundle = _bundle()
+    plain = harness.build_header(bundle, {}, ["fr"])
+    # ``story_courses.source_rows["pack"]`` wraps the questions: {"spine": ..., "stems": ..., "inputs": ...}
+    stored = {**bundle, "pack": {"spine": bundle["pack"], "stems": {}, "inputs": "digest"}}
+    wrapped = harness.build_header(stored, {}, ["fr"])
+    assert wrapped.quiz == plain.quiz and len(wrapped.quiz) >= 1
+    # a derived question takes the wording the stored chapter gives it, in the script's language
+    refs = [r for b in bundle["plan_entry"]["beats"] for r in b.get("questions") or []]
+    told = {**stored, "stored": {**bundle["stored"], "questions": [
+        {"id": refs[0], "prompt": {"en": "Is it alive?", "fr": "Est-ce vivant ?"}}
+    ]}}  # fmt: skip
+    assert harness.build_header(told, {}, ["fr"]).quiz["Q1"] == "Est-ce vivant ?"
+
+
 def test_prompts_carry_the_grammar_the_header_and_the_facts_and_no_secret():
     bundle = _bundle()
     header = harness.build_header(bundle, {}, ["fr", "en"])
