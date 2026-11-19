@@ -82,3 +82,28 @@ describe("savesData", () => {
     expect(savesData()).toBe(false);
   });
 });
+
+describe("humanSource and humanAttribution (#2709)", () => {
+  const raw = "Mindware__Tools_for_Smart_Thinking_Nisbett__Richard_E_2015_Edition_Complete.pdf";
+
+  it("makes a file name readable, cut on a word boundary", async () => {
+    const { humanSource } = await import("./media");
+    const out = humanSource(raw)!;
+    expect(out).not.toMatch(/[_]|\.pdf/);
+    expect(out.startsWith("Mindware Tools for Smart Thinking")).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(61);
+    expect(humanSource("OpenStax, CC BY 4.0")).toBe("OpenStax, CC BY 4.0");
+    expect(humanSource(undefined)).toBeUndefined();
+  });
+
+  it("keeps the page of an already stored raw attribution", async () => {
+    const { humanAttribution } = await import("./media");
+    expect(humanAttribution(`${raw}, p.21`)).toMatch(/^Mindware Tools.*, p\.21$/);
+    expect(humanAttribution("OpenStax, CC BY 4.0")).toBe("OpenStax, CC BY 4.0");
+  });
+
+  it("asks for the original picture, not the language variant, when told to", () => {
+    expect(figureUrl({ source_image_id: FIGURE, original: true }, "fr")).toBe(`/api/v1/source-images/${FIGURE}/data`);
+    expect(figureUrl({ source_image_id: FIGURE }, "fr")).toBe(`/api/v1/source-images/${FIGURE}/data?lang=fr`);
+  });
+});

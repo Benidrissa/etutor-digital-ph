@@ -530,6 +530,9 @@ class _Namespace:
             step["id"] = self.id(step["id"])
         if step.get("type") in ("ask", "game", "photo", "video") and step.get("ref"):
             step["ref"] = self.id(step["ref"])
+        if step.get("type") == "show" and step.get("bet"):
+            # #2711: a demo points at the bet it observes.
+            step["bet"] = self.id(step["bet"])
         return step
 
     def calibration(self, row: dict[str, Any]) -> dict[str, Any]:

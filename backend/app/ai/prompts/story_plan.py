@@ -219,7 +219,17 @@ def build_plan_user_message(request: PlanRequest) -> str:
         '- "questions": refs from the list above. At most 2 per beat and 4 per lesson'
         " chapter, never one ref in two lesson chapters. A question goes only to a chapter"
         " of a lesson its quiz covers; a question from a lesson's own quiz goes only to that"
-        " lesson's chapter." + (f" The rally takes {low} to {high}." if request.has_rally else ""),
+        " lesson's chapter."
+        + (
+            (
+                f" The rally takes up to {high}, and ONLY questions no chapter takes: a"
+                " question asked in a chapter is never asked again (fewer is fine)."
+                if request.cast_policy is not None
+                else f" The rally takes {low} to {high}."
+            )
+            if request.has_rally
+            else ""
+        ),
         '- "game": a one-line description in exactly one chapter'
         + (" or the rally" if request.has_rally else "")
         + ", null everywhere else.",

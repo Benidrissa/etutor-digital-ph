@@ -1,0 +1,1914 @@
+{
+ "_comment": "Generic decor props for the shared story library (#2714). Each line: id, EN label, FR label, Poly Pizza search term, tags. fetch_poly_pizza.py takes the first CC0 result by an allowed author whose title fits and re-verifies it on the model page. Items removed after review (a render that looked wrong, a weapon-like or unrelated title) are not listed; items listed but absent from library/manifest.json had no suitable CC0 Quaternius or Kenney model on 2026-11-19.",
+ "items": [
+  [
+   "bucket",
+   "a bucket",
+   "un seau",
+   "bucket",
+   [
+    "pail",
+    "water"
+   ]
+  ],
+  [
+   "chair",
+   "a chair",
+   "une chaise",
+   "chair",
+   [
+    "seat",
+    "furniture"
+   ]
+  ],
+  [
+   "table",
+   "a table",
+   "une table",
+   "table",
+   [
+    "desk",
+    "furniture"
+   ]
+  ],
+  [
+   "bench",
+   "a bench",
+   "un banc",
+   "bench",
+   [
+    "seat",
+    "furniture"
+   ]
+  ],
+  [
+   "bed",
+   "a bed",
+   "un lit",
+   "bed",
+   [
+    "sleep",
+    "furniture"
+   ]
+  ],
+  [
+   "bookshelf",
+   "a bookshelf",
+   "une bibliotheque",
+   "bookshelf",
+   [
+    "shelf",
+    "books",
+    "library"
+   ]
+  ],
+  [
+   "lamp",
+   "a lamp",
+   "une lampe",
+   "lamp",
+   [
+    "light"
+   ]
+  ],
+  [
+   "candle",
+   "a candle",
+   "une bougie",
+   "candle",
+   [
+    "light",
+    "flame"
+   ]
+  ],
+  [
+   "lantern",
+   "a lantern",
+   "une lanterne",
+   "lantern",
+   [
+    "light",
+    "lamp"
+   ]
+  ],
+  [
+   "mug",
+   "a mug",
+   "une tasse",
+   "mug",
+   [
+    "cup",
+    "drink"
+   ]
+  ],
+  [
+   "cup",
+   "a cup",
+   "un gobelet",
+   "cup",
+   [
+    "mug",
+    "drink"
+   ]
+  ],
+  [
+   "plate",
+   "a plate",
+   "une assiette",
+   "plate",
+   [
+    "dish",
+    "meal"
+   ]
+  ],
+  [
+   "bowl",
+   "a bowl",
+   "un bol",
+   "bowl",
+   [
+    "dish",
+    "meal"
+   ]
+  ],
+  [
+   "pot",
+   "a cooking pot",
+   "une marmite",
+   "pot",
+   [
+    "cooking",
+    "kitchen"
+   ]
+  ],
+  [
+   "bottle",
+   "a bottle",
+   "une bouteille",
+   "bottle",
+   [
+    "water",
+    "drink"
+   ]
+  ],
+  [
+   "kettle",
+   "a kettle",
+   "une bouilloire",
+   "kettle",
+   [
+    "tea",
+    "kitchen"
+   ]
+  ],
+  [
+   "pan",
+   "a frying pan",
+   "une poele",
+   "pan",
+   [
+    "cooking",
+    "kitchen"
+   ]
+  ],
+  [
+   "broom",
+   "a broom",
+   "un balai",
+   "broom",
+   [
+    "sweep",
+    "clean"
+   ]
+  ],
+  [
+   "clock",
+   "a clock",
+   "une horloge",
+   "clock",
+   [
+    "time",
+    "watch"
+   ]
+  ],
+  [
+   "radio",
+   "a radio",
+   "une radio",
+   "radio",
+   [
+    "music",
+    "news"
+   ]
+  ],
+  [
+   "telephone",
+   "a telephone",
+   "un telephone",
+   "phone",
+   [
+    "call",
+    "mobile"
+   ]
+  ],
+  [
+   "television",
+   "a television",
+   "une television",
+   "television",
+   [
+    "tv",
+    "screen"
+   ]
+  ],
+  [
+   "computer",
+   "a computer",
+   "un ordinateur",
+   "computer",
+   [
+    "laptop",
+    "screen"
+   ]
+  ],
+  [
+   "backpack",
+   "a backpack",
+   "un sac a dos",
+   "backpack",
+   [
+    "school",
+    "bag"
+   ]
+  ],
+  [
+   "pencil",
+   "a pencil",
+   "un crayon",
+   "pencil",
+   [
+    "school",
+    "write"
+   ]
+  ],
+  [
+   "globe",
+   "a globe",
+   "un globe terrestre",
+   "globe",
+   [
+    "world",
+    "map",
+    "geography"
+   ]
+  ],
+  [
+   "door",
+   "a door",
+   "une porte",
+   "door",
+   [
+    "entrance"
+   ]
+  ],
+  [
+   "ladder",
+   "a ladder",
+   "une echelle",
+   "ladder",
+   [
+    "climb"
+   ]
+  ],
+  [
+   "box",
+   "a box",
+   "une boite",
+   "box",
+   [
+    "container",
+    "package"
+   ]
+  ],
+  [
+   "crate",
+   "a crate",
+   "une caisse",
+   "crate",
+   [
+    "box",
+    "wooden"
+   ]
+  ],
+  [
+   "barrel",
+   "a barrel",
+   "un tonneau",
+   "barrel",
+   [
+    "cask",
+    "container"
+   ]
+  ],
+  [
+   "shovel",
+   "a shovel",
+   "une pelle",
+   "shovel",
+   [
+    "dig",
+    "tool"
+   ]
+  ],
+  [
+   "pickaxe",
+   "a pickaxe",
+   "une pioche",
+   "pickaxe",
+   [
+    "tool",
+    "dig"
+   ]
+  ],
+  [
+   "wheelbarrow",
+   "a wheelbarrow",
+   "une brouette",
+   "wheelbarrow",
+   [
+    "cart",
+    "farm"
+   ]
+  ],
+  [
+   "fishing_rod",
+   "a fishing rod",
+   "une canne a peche",
+   "fishing",
+   [
+    "fish",
+    "river"
+   ]
+  ],
+  [
+   "first_aid_kit",
+   "a first-aid kit",
+   "une trousse de secours",
+   "first aid",
+   [
+    "medical",
+    "health",
+    "kit"
+   ]
+  ],
+  [
+   "bandage",
+   "a bandage",
+   "un bandage",
+   "bandage",
+   [
+    "medical",
+    "health"
+   ]
+  ],
+  [
+   "pill",
+   "a pill",
+   "un comprime",
+   "pill",
+   [
+    "medicine",
+    "health"
+   ]
+  ],
+  [
+   "syringe",
+   "a syringe",
+   "une seringue",
+   "syringe",
+   [
+    "injection",
+    "vaccine",
+    "health"
+   ]
+  ],
+  [
+   "apple",
+   "an apple",
+   "une pomme",
+   "apple",
+   [
+    "fruit"
+   ]
+  ],
+  [
+   "banana",
+   "a banana",
+   "une banane",
+   "banana",
+   [
+    "fruit"
+   ]
+  ],
+  [
+   "orange",
+   "an orange",
+   "une orange",
+   "orange",
+   [
+    "fruit",
+    "citrus"
+   ]
+  ],
+  [
+   "lemon",
+   "a lemon",
+   "un citron",
+   "lemon",
+   [
+    "fruit",
+    "citrus"
+   ]
+  ],
+  [
+   "pineapple",
+   "a pineapple",
+   "un ananas",
+   "pineapple",
+   [
+    "fruit"
+   ]
+  ],
+  [
+   "coconut",
+   "a coconut",
+   "une noix de coco",
+   "coconut",
+   [
+    "fruit",
+    "palm"
+   ]
+  ],
+  [
+   "mango",
+   "a mango",
+   "une mangue",
+   "mango",
+   [
+    "fruit"
+   ]
+  ],
+  [
+   "strawberry",
+   "a strawberry",
+   "une fraise",
+   "strawberry",
+   [
+    "fruit",
+    "berry"
+   ]
+  ],
+  [
+   "carrot",
+   "a carrot",
+   "une carotte",
+   "carrot",
+   [
+    "vegetable",
+    "root"
+   ]
+  ],
+  [
+   "tomato",
+   "a tomato",
+   "une tomate",
+   "tomato",
+   [
+    "vegetable"
+   ]
+  ],
+  [
+   "corn",
+   "an ear of corn",
+   "un epi de mais",
+   "corn",
+   [
+    "maize",
+    "cereal",
+    "crop"
+   ]
+  ],
+  [
+   "wheat",
+   "wheat",
+   "du ble",
+   "wheat",
+   [
+    "cereal",
+    "crop",
+    "grain"
+   ]
+  ],
+  [
+   "cabbage",
+   "a cabbage",
+   "un chou",
+   "cabbage",
+   [
+    "vegetable"
+   ]
+  ],
+  [
+   "potato",
+   "a potato",
+   "une pomme de terre",
+   "potato",
+   [
+    "vegetable",
+    "tuber"
+   ]
+  ],
+  [
+   "pepper",
+   "a pepper",
+   "un piment",
+   "pepper",
+   [
+    "vegetable",
+    "chili"
+   ]
+  ],
+  [
+   "pumpkin",
+   "a pumpkin",
+   "une citrouille",
+   "pumpkin",
+   [
+    "vegetable",
+    "squash"
+   ]
+  ],
+  [
+   "eggplant",
+   "an eggplant",
+   "une aubergine",
+   "eggplant",
+   [
+    "vegetable"
+   ]
+  ],
+  [
+   "mushroom",
+   "a mushroom",
+   "un champignon",
+   "mushroom",
+   [
+    "fungus"
+   ]
+  ],
+  [
+   "bread",
+   "a slice of bread",
+   "une tranche de pain",
+   "bread",
+   [
+    "slice",
+    "food"
+   ]
+  ],
+  [
+   "cheese",
+   "a piece of cheese",
+   "un morceau de fromage",
+   "cheese",
+   [
+    "food",
+    "dairy"
+   ]
+  ],
+  [
+   "fish",
+   "a fish",
+   "un poisson",
+   "fish",
+   [
+    "river",
+    "sea"
+   ]
+  ],
+  [
+   "cow",
+   "a cow",
+   "une vache",
+   "cow",
+   [
+    "cattle",
+    "farm",
+    "animal"
+   ]
+  ],
+  [
+   "sheep",
+   "a sheep",
+   "un mouton",
+   "sheep",
+   [
+    "farm",
+    "animal",
+    "wool"
+   ]
+  ],
+  [
+   "goat",
+   "a goat",
+   "une chevre",
+   "goat",
+   [
+    "farm",
+    "animal"
+   ]
+  ],
+  [
+   "pig",
+   "a pig",
+   "un cochon",
+   "pig",
+   [
+    "farm",
+    "animal"
+   ]
+  ],
+  [
+   "horse",
+   "a horse",
+   "un cheval",
+   "horse",
+   [
+    "farm",
+    "animal"
+   ]
+  ],
+  [
+   "cat",
+   "a cat",
+   "un chat",
+   "cat",
+   [
+    "pet",
+    "animal"
+   ]
+  ],
+  [
+   "duck",
+   "a duck",
+   "un canard",
+   "duck",
+   [
+    "bird",
+    "animal",
+    "river"
+   ]
+  ],
+  [
+   "frog",
+   "a frog",
+   "une grenouille",
+   "frog",
+   [
+    "amphibian",
+    "animal"
+   ]
+  ],
+  [
+   "snake",
+   "a snake",
+   "un serpent",
+   "snake",
+   [
+    "reptile",
+    "animal"
+   ]
+  ],
+  [
+   "turtle",
+   "a turtle",
+   "une tortue",
+   "turtle",
+   [
+    "reptile",
+    "animal"
+   ]
+  ],
+  [
+   "elephant",
+   "an elephant",
+   "un elephant",
+   "elephant",
+   [
+    "animal",
+    "savanna"
+   ]
+  ],
+  [
+   "giraffe",
+   "a giraffe",
+   "une girafe",
+   "giraffe",
+   [
+    "animal",
+    "savanna"
+   ]
+  ],
+  [
+   "monkey",
+   "a monkey",
+   "un singe",
+   "monkey",
+   [
+    "animal",
+    "primate"
+   ]
+  ],
+  [
+   "zebra",
+   "a zebra",
+   "un zebre",
+   "zebra",
+   [
+    "animal",
+    "savanna"
+   ]
+  ],
+  [
+   "hippo",
+   "a hippopotamus",
+   "un hippopotame",
+   "hippo",
+   [
+    "animal",
+    "river"
+   ]
+  ],
+  [
+   "crocodile",
+   "a crocodile",
+   "un crocodile",
+   "crocodile",
+   [
+    "reptile",
+    "river"
+   ]
+  ],
+  [
+   "crab",
+   "a crab",
+   "un crabe",
+   "crab",
+   [
+    "crustacean",
+    "beach"
+   ]
+  ],
+  [
+   "palm_tree",
+   "a palm tree",
+   "un palmier",
+   "palm",
+   [
+    "tree",
+    "plant"
+   ]
+  ],
+  [
+   "bush",
+   "a bush",
+   "un buisson",
+   "bush",
+   [
+    "plant",
+    "shrub"
+   ]
+  ],
+  [
+   "cactus",
+   "a cactus",
+   "un cactus",
+   "cactus",
+   [
+    "plant",
+    "desert"
+   ]
+  ],
+  [
+   "rock",
+   "a rock",
+   "un rocher",
+   "rock",
+   [
+    "stone",
+    "boulder"
+   ]
+  ],
+  [
+   "log",
+   "a log",
+   "une buche",
+   "log",
+   [
+    "wood",
+    "trunk"
+   ]
+  ],
+  [
+   "stump",
+   "a tree stump",
+   "une souche",
+   "stump",
+   [
+    "wood"
+   ]
+  ],
+  [
+   "sun",
+   "the sun",
+   "le soleil",
+   "sun",
+   [
+    "sky",
+    "weather"
+   ]
+  ],
+  [
+   "hut",
+   "a hut",
+   "une case",
+   "hut",
+   [
+    "home",
+    "building"
+   ]
+  ],
+  [
+   "well",
+   "a well",
+   "un puits",
+   "well",
+   [
+    "water",
+    "village"
+   ]
+  ],
+  [
+   "windmill",
+   "a windmill",
+   "un moulin a vent",
+   "windmill",
+   [
+    "wind",
+    "mill"
+   ]
+  ],
+  [
+   "barn",
+   "a barn",
+   "une grange",
+   "barn",
+   [
+    "farm",
+    "building"
+   ]
+  ],
+  [
+   "fence",
+   "a fence",
+   "une cloture",
+   "fence",
+   [
+    "farm",
+    "garden"
+   ]
+  ],
+  [
+   "bridge",
+   "a bridge",
+   "un pont",
+   "bridge",
+   [
+    "river",
+    "crossing"
+   ]
+  ],
+  [
+   "tent",
+   "a tent",
+   "une tente",
+   "tent",
+   [
+    "camp"
+   ]
+  ],
+  [
+   "signpost",
+   "a signpost",
+   "un panneau",
+   "signpost",
+   [
+    "sign",
+    "direction"
+   ]
+  ],
+  [
+   "bicycle",
+   "a bicycle",
+   "un velo",
+   "bicycle",
+   [
+    "bike",
+    "transport"
+   ]
+  ],
+  [
+   "motorcycle",
+   "a motorcycle",
+   "une moto",
+   "motorcycle",
+   [
+    "motorbike",
+    "transport"
+   ]
+  ],
+  [
+   "bus",
+   "a bus",
+   "un bus",
+   "bus",
+   [
+    "vehicle",
+    "transport"
+   ]
+  ],
+  [
+   "truck",
+   "a truck",
+   "un camion",
+   "truck",
+   [
+    "vehicle",
+    "transport"
+   ]
+  ],
+  [
+   "tractor",
+   "a tractor",
+   "un tracteur",
+   "tractor",
+   [
+    "farm",
+    "vehicle"
+   ]
+  ],
+  [
+   "ambulance",
+   "an ambulance",
+   "une ambulance",
+   "ambulance",
+   [
+    "health",
+    "vehicle"
+   ]
+  ],
+  [
+   "taxi",
+   "a taxi",
+   "un taxi",
+   "taxi",
+   [
+    "vehicle",
+    "transport"
+   ]
+  ],
+  [
+   "boat",
+   "a boat",
+   "un bateau",
+   "boat",
+   [
+    "river",
+    "sea",
+    "transport"
+   ]
+  ],
+  [
+   "canoe",
+   "a canoe",
+   "une pirogue",
+   "canoe",
+   [
+    "boat",
+    "river",
+    "paddle"
+   ]
+  ],
+  [
+   "airplane",
+   "an airplane",
+   "un avion",
+   "airplane",
+   [
+    "plane",
+    "flight",
+    "transport"
+   ]
+  ],
+  [
+   "coin",
+   "a coin",
+   "une piece",
+   "coin",
+   [
+    "money"
+   ]
+  ],
+  [
+   "key",
+   "a key",
+   "une cle",
+   "key",
+   [
+    "lock"
+   ]
+  ],
+  [
+   "flag",
+   "a flag",
+   "un drapeau",
+   "flag",
+   [
+    "banner"
+   ]
+  ],
+  [
+   "trophy",
+   "a trophy",
+   "un trophee",
+   "trophy",
+   [
+    "prize",
+    "award"
+   ]
+  ],
+  [
+   "bell",
+   "a bell",
+   "une cloche",
+   "bell",
+   [
+    "ring",
+    "school"
+   ]
+  ],
+  [
+   "campfire",
+   "a campfire",
+   "un feu de camp",
+   "campfire",
+   [
+    "fire",
+    "flame"
+   ]
+  ],
+  [
+   "kite",
+   "a kite",
+   "un cerf-volant",
+   "kite",
+   [
+    "toy",
+    "play"
+   ]
+  ],
+  [
+   "drum",
+   "a drum",
+   "un tambour",
+   "drum",
+   [
+    "music",
+    "instrument"
+   ]
+  ],
+  [
+   "guitar",
+   "a guitar",
+   "une guitare",
+   "guitar",
+   [
+    "music",
+    "instrument"
+   ]
+  ],
+  [
+   "umbrella",
+   "an umbrella",
+   "un parapluie",
+   "umbrella",
+   [
+    "rain"
+   ]
+  ],
+  [
+   "hat",
+   "a hat",
+   "un chapeau",
+   "hat",
+   [
+    "clothes"
+   ]
+  ],
+  [
+   "shoe",
+   "a shoe",
+   "une chaussure",
+   "shoe",
+   [
+    "clothes",
+    "footwear"
+   ]
+  ],
+  [
+   "scissors",
+   "a pair of scissors",
+   "des ciseaux",
+   "scissors",
+   [
+    "cut",
+    "tool"
+   ]
+  ],
+  [
+   "magnifying_glass",
+   "a magnifying glass",
+   "une loupe",
+   "magnifying",
+   [
+    "lens",
+    "science"
+   ]
+  ],
+  [
+   "microscope",
+   "a microscope",
+   "un microscope",
+   "microscope",
+   [
+    "lens",
+    "science",
+    "lab"
+   ]
+  ],
+  [
+   "flask",
+   "a lab flask",
+   "une fiole",
+   "flask",
+   [
+    "laboratory",
+    "science",
+    "chemistry"
+   ]
+  ],
+  [
+   "test_tube",
+   "a test tube",
+   "un tube a essai",
+   "test tube",
+   [
+    "laboratory",
+    "science"
+   ]
+  ],
+  [
+   "thermometer",
+   "a thermometer",
+   "un thermometre",
+   "thermometer",
+   [
+    "temperature",
+    "health"
+   ]
+  ],
+  [
+   "calculator",
+   "a calculator",
+   "une calculatrice",
+   "calculator",
+   [
+    "maths",
+    "school"
+   ]
+  ],
+  [
+   "ruler",
+   "a ruler",
+   "une regle",
+   "ruler",
+   [
+    "measure",
+    "school"
+   ]
+  ],
+  [
+   "scale",
+   "a weighing scale",
+   "une balance",
+   "scale",
+   [
+    "weight",
+    "measure"
+   ]
+  ],
+  [
+   "net",
+   "a fishing net",
+   "un filet",
+   "net",
+   [
+    "fishing"
+   ]
+  ],
+  [
+   "basket",
+   "a basket",
+   "un panier",
+   "basket",
+   [
+    "woven",
+    "container"
+   ]
+  ],
+  [
+   "sofa",
+   "a sofa",
+   "un canape",
+   "sofa",
+   [
+    "couch",
+    "furniture"
+   ]
+  ],
+  [
+   "fridge",
+   "a fridge",
+   "un refrigerateur",
+   "fridge",
+   [
+    "kitchen",
+    "cold"
+   ]
+  ],
+  [
+   "toilet",
+   "a toilet",
+   "des toilettes",
+   "toilet",
+   [
+    "sanitation",
+    "hygiene"
+   ]
+  ],
+  [
+   "soap",
+   "a bar of soap",
+   "un savon",
+   "soap",
+   [
+    "hygiene",
+    "wash"
+   ]
+  ],
+  [
+   "tap",
+   "a water tap",
+   "un robinet",
+   "faucet",
+   [
+    "water",
+    "hygiene"
+   ]
+  ],
+  [
+   "fan",
+   "a fan",
+   "un ventilateur",
+   "fan",
+   [
+    "air",
+    "cool"
+   ]
+  ],
+  [
+   "solar_panel",
+   "a solar panel",
+   "un panneau solaire",
+   "solar",
+   [
+    "energy",
+    "power"
+   ]
+  ],
+  [
+   "stool",
+   "a stool",
+   "un tabouret",
+   "stool",
+   [
+    "seat",
+    "furniture"
+   ]
+  ],
+  [
+   "shelf",
+   "a shelf",
+   "une etagere",
+   "shelf",
+   [
+    "furniture",
+    "storage"
+   ]
+  ],
+  [
+   "cabinet",
+   "a cabinet",
+   "une armoire",
+   "cabinet",
+   [
+    "furniture",
+    "storage"
+   ]
+  ],
+  [
+   "vase",
+   "a vase",
+   "un vase",
+   "vase",
+   [
+    "flowers",
+    "decor"
+   ]
+  ],
+  [
+   "plant_pot",
+   "a potted plant",
+   "une plante en pot",
+   "plant",
+   [
+    "pot",
+    "houseplant"
+   ]
+  ],
+  [
+   "window",
+   "a window",
+   "une fenetre",
+   "window",
+   [
+    "glass",
+    "house"
+   ]
+  ],
+  [
+   "mirror",
+   "a mirror",
+   "un miroir",
+   "mirror",
+   [
+    "glass"
+   ]
+  ],
+  [
+   "speaker",
+   "a speaker",
+   "un haut-parleur",
+   "speaker",
+   [
+    "sound",
+    "music"
+   ]
+  ],
+  [
+   "camera",
+   "a camera",
+   "un appareil photo",
+   "camera",
+   [
+    "photo"
+   ]
+  ],
+  [
+   "headphones",
+   "headphones",
+   "un casque audio",
+   "headphones",
+   [
+    "music",
+    "audio"
+   ]
+  ],
+  [
+   "carpet",
+   "a rug",
+   "un tapis",
+   "carpet",
+   [
+    "floor",
+    "home"
+   ]
+  ],
+  [
+   "oak_tree",
+   "an oak tree",
+   "un chene",
+   "oak",
+   [
+    "tree",
+    "forest"
+   ]
+  ],
+  [
+   "pine_tree",
+   "a pine tree",
+   "un pin",
+   "pine",
+   [
+    "tree",
+    "forest"
+   ]
+  ],
+  [
+   "sunflower",
+   "a sunflower",
+   "un tournesol",
+   "sunflower",
+   [
+    "flower",
+    "plant"
+   ]
+  ],
+  [
+   "leaf",
+   "a leaf",
+   "une feuille",
+   "leaf",
+   [
+    "plant"
+   ]
+  ],
+  [
+   "stone",
+   "a stone",
+   "une pierre",
+   "stone",
+   [
+    "rock"
+   ]
+  ],
+  [
+   "road_sign",
+   "a road sign",
+   "un panneau routier",
+   "road sign",
+   [
+    "street",
+    "traffic"
+   ]
+  ],
+  [
+   "traffic_light",
+   "a traffic light",
+   "un feu tricolore",
+   "traffic light",
+   [
+    "street",
+    "road"
+   ]
+  ],
+  [
+   "street_lamp",
+   "a street lamp",
+   "un lampadaire",
+   "street lamp",
+   [
+    "street",
+    "light"
+   ]
+  ],
+  [
+   "mailbox",
+   "a mailbox",
+   "une boite aux lettres",
+   "mailbox",
+   [
+    "post",
+    "letter"
+   ]
+  ],
+  [
+   "water_tower",
+   "a water tower",
+   "un chateau d'eau",
+   "water tower",
+   [
+    "water",
+    "village"
+   ]
+  ],
+  [
+   "silo",
+   "a silo",
+   "un silo",
+   "silo",
+   [
+    "farm",
+    "grain"
+   ]
+  ],
+  [
+   "greenhouse",
+   "a greenhouse",
+   "une serre",
+   "greenhouse",
+   [
+    "farm",
+    "plants"
+   ]
+  ],
+  [
+   "shed",
+   "a shed",
+   "un hangar",
+   "shed",
+   [
+    "farm",
+    "storage"
+   ]
+  ],
+  [
+   "hay_bale",
+   "a hay bale",
+   "une botte de foin",
+   "hay",
+   [
+    "farm",
+    "straw"
+   ]
+  ],
+  [
+   "scarecrow",
+   "a scarecrow",
+   "un epouvantail",
+   "scarecrow",
+   [
+    "farm",
+    "field"
+   ]
+  ],
+  [
+   "pitchfork",
+   "a pitchfork",
+   "une fourche",
+   "pitchfork",
+   [
+    "farm",
+    "tool"
+   ]
+  ],
+  [
+   "watering_can",
+   "a watering can",
+   "un arrosoir",
+   "watering can",
+   [
+    "garden",
+    "water"
+   ]
+  ],
+  [
+   "toolbox",
+   "a toolbox",
+   "une boite a outils",
+   "toolbox",
+   [
+    "tools",
+    "repair"
+   ]
+  ],
+  [
+   "wrench",
+   "a wrench",
+   "une cle a molette",
+   "wrench",
+   [
+    "tool",
+    "repair"
+   ]
+  ],
+  [
+   "saw",
+   "a saw",
+   "une scie",
+   "saw",
+   [
+    "tool",
+    "wood"
+   ]
+  ],
+  [
+   "paintbrush",
+   "a paintbrush",
+   "un pinceau",
+   "paintbrush",
+   [
+    "paint",
+    "art"
+   ]
+  ],
+  [
+   "can",
+   "a tin can",
+   "une boite de conserve",
+   "can",
+   [
+    "tin",
+    "food"
+   ]
+  ],
+  [
+   "jug",
+   "a jug",
+   "une cruche",
+   "jug",
+   [
+    "water",
+    "pitcher"
+   ]
+  ],
+  [
+   "teapot",
+   "a teapot",
+   "une theiere",
+   "teapot",
+   [
+    "tea",
+    "kitchen"
+   ]
+  ],
+  [
+   "spoon",
+   "a spoon",
+   "une cuillere",
+   "spoon",
+   [
+    "kitchen",
+    "cutlery"
+   ]
+  ],
+  [
+   "fork",
+   "a fork",
+   "une fourchette",
+   "fork",
+   [
+    "kitchen",
+    "cutlery"
+   ]
+  ],
+  [
+   "glass",
+   "a glass",
+   "un verre",
+   "glass",
+   [
+    "drink",
+    "water"
+   ]
+  ],
+  [
+   "llama",
+   "a llama",
+   "un lama",
+   "llama",
+   [
+    "animal"
+   ]
+  ],
+  [
+   "deer",
+   "a deer",
+   "un cerf",
+   "deer",
+   [
+    "animal",
+    "forest"
+   ]
+  ],
+  [
+   "owl",
+   "an owl",
+   "une chouette",
+   "owl",
+   [
+    "bird",
+    "night"
+   ]
+  ],
+  [
+   "penguin",
+   "a penguin",
+   "un manchot",
+   "penguin",
+   [
+    "bird",
+    "animal"
+   ]
+  ],
+  [
+   "whale",
+   "a whale",
+   "une baleine",
+   "whale",
+   [
+    "sea",
+    "animal"
+   ]
+  ],
+  [
+   "shark",
+   "a shark",
+   "un requin",
+   "shark",
+   [
+    "sea",
+    "animal"
+   ]
+  ],
+  [
+   "octopus",
+   "an octopus",
+   "une pieuvre",
+   "octopus",
+   [
+    "sea",
+    "animal"
+   ]
+  ],
+  [
+   "starfish",
+   "a starfish",
+   "une etoile de mer",
+   "starfish",
+   [
+    "sea",
+    "beach"
+   ]
+  ],
+  [
+   "shell",
+   "a seashell",
+   "un coquillage",
+   "shell",
+   [
+    "sea",
+    "beach"
+   ]
+  ],
+  [
+   "anchor",
+   "an anchor",
+   "une ancre",
+   "anchor",
+   [
+    "boat",
+    "sea"
+   ]
+  ],
+  [
+   "lifebuoy",
+   "a lifebuoy",
+   "une bouee de sauvetage",
+   "life buoy",
+   [
+    "water",
+    "safety"
+   ]
+  ],
+  [
+   "paddle",
+   "a paddle",
+   "une pagaie",
+   "paddle",
+   [
+    "boat",
+    "river"
+   ]
+  ],
+  [
+   "lighthouse",
+   "a lighthouse",
+   "un phare",
+   "lighthouse",
+   [
+    "sea",
+    "tower"
+   ]
+  ],
+  [
+   "envelope",
+   "an envelope",
+   "une enveloppe",
+   "envelope",
+   [
+    "letter",
+    "post"
+   ]
+  ],
+  [
+   "gift",
+   "a gift box",
+   "un cadeau",
+   "gift",
+   [
+    "present",
+    "box"
+   ]
+  ],
+  [
+   "balloon",
+   "a balloon",
+   "un ballon gonflable",
+   "balloon",
+   [
+    "party"
+   ]
+  ],
+  [
+   "cake",
+   "a cake",
+   "un gateau",
+   "cake",
+   [
+    "food",
+    "party"
+   ]
+  ],
+  [
+   "cookie",
+   "a cookie",
+   "un biscuit",
+   "cookie",
+   [
+    "food",
+    "snack"
+   ]
+  ],
+  [
+   "ice_cream",
+   "an ice cream",
+   "une glace",
+   "ice cream",
+   [
+    "food",
+    "dessert"
+   ]
+  ],
+  [
+   "donut",
+   "a donut",
+   "un beignet",
+   "donut",
+   [
+    "food",
+    "snack"
+   ]
+  ],
+  [
+   "honey",
+   "a honey jar",
+   "un pot de miel",
+   "honey",
+   [
+    "food",
+    "bee"
+   ]
+  ],
+  [
+   "flour",
+   "a bag of flour",
+   "un sac de farine",
+   "flour",
+   [
+    "food",
+    "baking"
+   ]
+  ]
+ ]
+}

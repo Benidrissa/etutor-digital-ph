@@ -16,7 +16,10 @@ import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
 import { text } from "@/lib/story-course/answer";
+import { figureLanguage } from "@/lib/story-course/media";
 import type { Exercise } from "@/lib/story-course/types";
+
+import { StimulusThumb } from "../stimulus-thumb";
 
 export function PaperExercise({
   exercise,
@@ -67,6 +70,10 @@ export function PaperExercise({
           .filter(Boolean)
           .join(" · ")}
       </p>
+      <div className="mt-2">
+        {/* #2711: the picture the task is about. */}
+        <StimulusThumb stimulus={exercise.stimulus} lang={figureLanguage(target, home)} />
+      </div>
       <p className="mt-2 font-medium text-gray-900">{text(exercise.prompt, target, home)}</p>
       {bilingual ? (
         <p className="mt-1 text-sm italic text-gray-600" lang={home}>

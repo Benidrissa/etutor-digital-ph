@@ -126,6 +126,8 @@ export interface PropFigure {
   /** ...or a lesson illustration made with AI (generated_images, #2709): one of the two. */
   generated_image_id?: string;
   figure_number?: string;
+  /** Ask for the original picture, not the `?lang=` variant (a page capture, or a variant of unknown size). */
+  original?: boolean;
   /** source_images.image_hash: finds the figure again after a re-index changes its id. */
   image_hash?: string;
   alt?: TextObject;
@@ -253,11 +255,35 @@ export interface Question {
   review_of?: string | number;
   points?: number;
   /**
+   * A bet (#2711): an ungraded prediction made before the explanation. It
+   * carries `points: 0`; a player that does not know it plays a plain
+   * multiple-choice question.
+   */
+  predict?: boolean;
+  /** The reaction keyed to a bet, shown once the demo has played (#2711). */
+  reveal?: { right?: TextObject; wrong?: TextObject };
+  /** The picture the question is about, shown as a thumbnail (#2711). */
+  stimulus?: Stimulus;
+  /**
    * Set on a question copied verbatim from a quiz unit's MCQ (contract C-1):
    * the quiz unit's number and the quiz's own question id. Absent on the
    * extra questions the story writes itself.
    */
   derived_from?: DerivedFrom;
+}
+
+/** The course picture a question or a paper task is about (#2711). */
+export interface Stimulus {
+  source_image_id?: string;
+  generated_image_id?: string;
+  alt?: TextObject;
+  caption?: TextObject;
+}
+
+/** The picture beside a concept card (#2711): the figure its scene showed. */
+export interface StepMedia {
+  visual: string;
+  params?: Record<string, unknown>;
 }
 
 export interface DerivedFrom {
@@ -291,6 +317,8 @@ export interface Exercise {
   traps?: Trap[];
   explanation?: TextObject;
   photo_check?: PhotoCheck;
+  /** The picture the task is about, shown as a thumbnail (#2711). */
+  stimulus?: Stimulus;
 }
 
 export interface Step {
@@ -315,6 +343,14 @@ export interface Step {
   props?: string[];
   /** Forces the camera shot of this beat; absent, the player picks one (#2712). */
   shot?: "wide" | "two" | "close" | "insert" | "split";
+  /** An `ask` that is a bet (#2711): ungraded, 0 points. */
+  predict?: boolean;
+  /** A demo `show` (#2711): the id of the bet it observes. */
+  bet?: string;
+  /** A `concept` card (#2711): the picture shown beside its words. */
+  media?: StepMedia;
+  /** `ask` (bet) and `concept`: the lesson idea numbers they name. */
+  teaches?: number | number[];
 }
 
 export type StepFrame = "opener" | "objectives" | "finished" | "ask_tutor";

@@ -180,3 +180,19 @@ describe("SyncManager.syncNow", () => {
     expect(queue.actions).toEqual([]);
   });
 });
+
+describe("SyncManager: queued story events (#2711)", () => {
+  it("replays a bet queued offline to the story-events route", async () => {
+    setOnline(true);
+    const events = [{ event: "story_prediction", story: "s", question: "p1", matched: true }];
+    queue.actions = [
+      { id: 7, actionType: "story_events", payload: { events }, createdAt: 0, synced: 0 },
+    ];
+    await manager.syncNow();
+    expect(apiFetchMock).toHaveBeenCalledWith("/api/v1/analytics/story-events", {
+      method: "POST",
+      body: JSON.stringify({ events }),
+    });
+    expect(queue.actions).toEqual([]);
+  });
+});

@@ -1,0 +1,3834 @@
+{
+ "library_version": 1,
+ "entries": [
+  {
+   "id": "apple",
+   "kind": "sticker",
+   "label": {
+    "en": "an apple",
+    "fr": "une pomme"
+   },
+   "tags": [
+    "fruit"
+   ],
+   "files": {
+    "src": {
+     "file": "apple.webp",
+     "bytes": 6216
+    }
+   },
+   "width": 329,
+   "height": 343,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/o4Of5itnxB",
+    "site": "Poly Pizza",
+    "title": "Apple",
+    "sha256_original": "1676ad60c8e33f3c19f6b16643c486d79f97cbd57c78ad1661ce0039519873d1",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "1676ad60c8e33f3c19f6b16643c486d79f97cbd57c78ad1661ce0039519873d1",
+   "library_version": 1
+  },
+  {
+   "id": "backpack",
+   "kind": "sticker",
+   "label": {
+    "en": "a backpack",
+    "fr": "un sac a dos"
+   },
+   "tags": [
+    "school",
+    "bag"
+   ],
+   "files": {
+    "src": {
+     "file": "backpack.webp",
+     "bytes": 4984
+    }
+   },
+   "width": 335,
+   "height": 357,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/vF7TuXCPDH",
+    "site": "Poly Pizza",
+    "title": "Backpack",
+    "sha256_original": "404af15a4bc0a955d9d8133d16de7a4b900663f3a11f5364624ab8e7e9b6f68a",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "404af15a4bc0a955d9d8133d16de7a4b900663f3a11f5364624ab8e7e9b6f68a",
+   "library_version": 1
+  },
+  {
+   "id": "banana",
+   "kind": "sticker",
+   "label": {
+    "en": "a banana",
+    "fr": "une banane"
+   },
+   "tags": [
+    "fruit"
+   ],
+   "files": {
+    "src": {
+     "file": "banana.webp",
+     "bytes": 9452
+    }
+   },
+   "width": 400,
+   "height": 259,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/5Z07I9KMob",
+    "site": "Poly Pizza",
+    "title": "Banana",
+    "sha256_original": "e218e6db680fbb56907282306b8a578b5e34f15fd5e5fa1e7f90d9ca7285796b",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "e218e6db680fbb56907282306b8a578b5e34f15fd5e5fa1e7f90d9ca7285796b",
+   "library_version": 1
+  },
+  {
+   "id": "barn",
+   "kind": "sticker",
+   "label": {
+    "en": "a barn",
+    "fr": "une grange"
+   },
+   "tags": [
+    "farm",
+    "building"
+   ],
+   "files": {
+    "src": {
+     "file": "barn.webp",
+     "bytes": 21918
+    }
+   },
+   "width": 400,
+   "height": 330,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/vSqQNA7ez6",
+    "site": "Poly Pizza",
+    "title": "Barn",
+    "sha256_original": "c7e19b37ecc74f24e121c822116b125f7a7eea6473943650ca05faca3ebdebc3",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "c7e19b37ecc74f24e121c822116b125f7a7eea6473943650ca05faca3ebdebc3",
+   "library_version": 1
+  },
+  {
+   "id": "barrel",
+   "kind": "sticker",
+   "label": {
+    "en": "a barrel",
+    "fr": "un tonneau"
+   },
+   "tags": [
+    "cask",
+    "container"
+   ],
+   "files": {
+    "src": {
+     "file": "barrel.webp",
+     "bytes": 14764
+    }
+   },
+   "width": 275,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/ONdghDBByN",
+    "site": "Poly Pizza",
+    "title": "Barrel",
+    "sha256_original": "bc2fe12bd6f04492ea22d89394324c18e32c77afe85194d1319c16585777963a",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "bc2fe12bd6f04492ea22d89394324c18e32c77afe85194d1319c16585777963a",
+   "library_version": 1
+  },
+  {
+   "id": "bed",
+   "kind": "sticker",
+   "label": {
+    "en": "a bed",
+    "fr": "un lit"
+   },
+   "tags": [
+    "sleep",
+    "furniture"
+   ],
+   "files": {
+    "src": {
+     "file": "bed.webp",
+     "bytes": 10366
+    }
+   },
+   "width": 400,
+   "height": 243,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/sn8az3odMR",
+    "site": "Poly Pizza",
+    "title": "Bed Single",
+    "sha256_original": "23c5c32096840f3dd347b1c68029d2f50e2af468ccd38daa33b494f1943b3dc8",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "23c5c32096840f3dd347b1c68029d2f50e2af468ccd38daa33b494f1943b3dc8",
+   "library_version": 1
+  },
+  {
+   "id": "bell",
+   "kind": "sticker",
+   "label": {
+    "en": "a bell",
+    "fr": "une cloche"
+   },
+   "tags": [
+    "ring",
+    "school"
+   ],
+   "files": {
+    "src": {
+     "file": "bell.webp",
+     "bytes": 9932
+    }
+   },
+   "width": 305,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/cILuaO115Y",
+    "site": "Poly Pizza",
+    "title": "Bell",
+    "sha256_original": "017f9ac626bc5a33a051caf5f4ccba841b6ca35c40a6143e71640c011603a18e",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "017f9ac626bc5a33a051caf5f4ccba841b6ca35c40a6143e71640c011603a18e",
+   "library_version": 1
+  },
+  {
+   "id": "bench",
+   "kind": "sticker",
+   "label": {
+    "en": "a bench",
+    "fr": "un banc"
+   },
+   "tags": [
+    "seat",
+    "furniture"
+   ],
+   "files": {
+    "src": {
+     "file": "bench.webp",
+     "bytes": 10180
+    }
+   },
+   "width": 400,
+   "height": 259,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/jLxjFxFRpw",
+    "site": "Poly Pizza",
+    "title": "Bench",
+    "sha256_original": "9e923fef29388cca35f8eb473e95bc5ef32fea733682e9e54b6b944e3c055204",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "9e923fef29388cca35f8eb473e95bc5ef32fea733682e9e54b6b944e3c055204",
+   "library_version": 1
+  },
+  {
+   "id": "boat",
+   "kind": "sticker",
+   "label": {
+    "en": "a boat",
+    "fr": "un bateau"
+   },
+   "tags": [
+    "river",
+    "sea",
+    "transport"
+   ],
+   "files": {
+    "src": {
+     "file": "boat.webp",
+     "bytes": 12404
+    }
+   },
+   "width": 310,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/BgSZXwmm7k",
+    "site": "Poly Pizza",
+    "title": "Sail Boat",
+    "sha256_original": "dd0d959f66c058e2afcfc01227f80b83347b5105d324690596a0c0eb6e65fb95",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "dd0d959f66c058e2afcfc01227f80b83347b5105d324690596a0c0eb6e65fb95",
+   "library_version": 1
+  },
+  {
+   "id": "bottle",
+   "kind": "sticker",
+   "label": {
+    "en": "a bottle",
+    "fr": "une bouteille"
+   },
+   "tags": [
+    "water",
+    "drink"
+   ],
+   "files": {
+    "src": {
+     "file": "bottle.webp",
+     "bytes": 5244
+    }
+   },
+   "width": 120,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/FAHsHFXfTf",
+    "site": "Poly Pizza",
+    "title": "Bottle",
+    "sha256_original": "7245e26241cac72d63aa6ad9efb02b32c1d13ff2dd8648401ab14494b5d181f6",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "7245e26241cac72d63aa6ad9efb02b32c1d13ff2dd8648401ab14494b5d181f6",
+   "library_version": 1
+  },
+  {
+   "id": "bowl",
+   "kind": "sticker",
+   "label": {
+    "en": "a bowl",
+    "fr": "un bol"
+   },
+   "tags": [
+    "dish",
+    "meal"
+   ],
+   "files": {
+    "src": {
+     "file": "bowl.webp",
+     "bytes": 3100
+    }
+   },
+   "width": 367,
+   "height": 239,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/cXIpPoXb1U",
+    "site": "Poly Pizza",
+    "title": "Bowl",
+    "sha256_original": "52006a9c9e055fbb10c616fa281d32ae1c961881cfe93fefa3e539a249d80d3c",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "52006a9c9e055fbb10c616fa281d32ae1c961881cfe93fefa3e539a249d80d3c",
+   "library_version": 1
+  },
+  {
+   "id": "box",
+   "kind": "sticker",
+   "label": {
+    "en": "a box",
+    "fr": "une boite"
+   },
+   "tags": [
+    "container",
+    "package"
+   ],
+   "files": {
+    "src": {
+     "file": "box.webp",
+     "bytes": 9952
+    }
+   },
+   "width": 400,
+   "height": 397,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/HvjissDrdr",
+    "site": "Poly Pizza",
+    "title": "Box",
+    "sha256_original": "83d88c4c255f868b8fd77c6dc80b666aefd17b07223b12644ac046ebe32727a8",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "83d88c4c255f868b8fd77c6dc80b666aefd17b07223b12644ac046ebe32727a8",
+   "library_version": 1
+  },
+  {
+   "id": "bread",
+   "kind": "sticker",
+   "label": {
+    "en": "a slice of bread",
+    "fr": "une tranche de pain"
+   },
+   "tags": [
+    "slice",
+    "food"
+   ],
+   "files": {
+    "src": {
+     "file": "bread.webp",
+     "bytes": 8618
+    }
+   },
+   "width": 400,
+   "height": 168,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/luo9BHRaax",
+    "site": "Poly Pizza",
+    "title": "Bread",
+    "sha256_original": "2de0f2a1195f5f4e2c516f94702cddde849be653121c68ac8dff3895483775ba",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "2de0f2a1195f5f4e2c516f94702cddde849be653121c68ac8dff3895483775ba",
+   "library_version": 1
+  },
+  {
+   "id": "bridge",
+   "kind": "sticker",
+   "label": {
+    "en": "a bridge",
+    "fr": "un pont"
+   },
+   "tags": [
+    "river",
+    "crossing"
+   ],
+   "files": {
+    "src": {
+     "file": "bridge.webp",
+     "bytes": 14218
+    }
+   },
+   "width": 400,
+   "height": 228,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/j4KsIuJYnq",
+    "site": "Poly Pizza",
+    "title": "Small Bridge",
+    "sha256_original": "055ec4fa6c401f655641894ee4b0bd360c28b7907bc00183ef3b1eabd6fc0890",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "055ec4fa6c401f655641894ee4b0bd360c28b7907bc00183ef3b1eabd6fc0890",
+   "library_version": 1
+  },
+  {
+   "id": "bucket",
+   "kind": "sticker",
+   "label": {
+    "en": "a bucket",
+    "fr": "un seau"
+   },
+   "tags": [
+    "pail",
+    "water"
+   ],
+   "files": {
+    "src": {
+     "file": "bucket.webp",
+     "bytes": 14392
+    }
+   },
+   "width": 280,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/83obI9bNun",
+    "site": "Poly Pizza",
+    "title": "Bucket",
+    "sha256_original": "bdf24cde2e74d8995a2dd4e2f70f6f759e644f1ed5f151e2e9fa2f65fb1fcf0d",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "bdf24cde2e74d8995a2dd4e2f70f6f759e644f1ed5f151e2e9fa2f65fb1fcf0d",
+   "library_version": 1
+  },
+  {
+   "id": "bush",
+   "kind": "sticker",
+   "label": {
+    "en": "a bush",
+    "fr": "un buisson"
+   },
+   "tags": [
+    "plant",
+    "shrub"
+   ],
+   "files": {
+    "src": {
+     "file": "bush.webp",
+     "bytes": 11094
+    }
+   },
+   "width": 371,
+   "height": 248,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/ooG6CkLyE8",
+    "site": "Poly Pizza",
+    "title": "Bush",
+    "sha256_original": "917de9eee116cd439637abeca201ac0a823cb534c4618e15dcbca34d3a916782",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "917de9eee116cd439637abeca201ac0a823cb534c4618e15dcbca34d3a916782",
+   "library_version": 1
+  },
+  {
+   "id": "cabbage",
+   "kind": "sticker",
+   "label": {
+    "en": "a cabbage",
+    "fr": "un chou"
+   },
+   "tags": [
+    "vegetable"
+   ],
+   "files": {
+    "src": {
+     "file": "cabbage.webp",
+     "bytes": 8446
+    }
+   },
+   "width": 354,
+   "height": 293,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/6urnIRBhzr",
+    "site": "Poly Pizza",
+    "title": "Cabbage",
+    "sha256_original": "9786001e8bebad152f84b92ea01994d6cafe12d9e5c46c7737e9a1078c60d8a6",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "9786001e8bebad152f84b92ea01994d6cafe12d9e5c46c7737e9a1078c60d8a6",
+   "library_version": 1
+  },
+  {
+   "id": "cactus",
+   "kind": "sticker",
+   "label": {
+    "en": "a cactus",
+    "fr": "un cactus"
+   },
+   "tags": [
+    "plant",
+    "desert"
+   ],
+   "files": {
+    "src": {
+     "file": "cactus.webp",
+     "bytes": 7216
+    }
+   },
+   "width": 199,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/HsEJgRLQWX",
+    "site": "Poly Pizza",
+    "title": "Cactus",
+    "sha256_original": "a4e4a3be9eb522874ce888c87216f48988da7c3cb8febcfef49c82b2adab351f",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "a4e4a3be9eb522874ce888c87216f48988da7c3cb8febcfef49c82b2adab351f",
+   "library_version": 1
+  },
+  {
+   "id": "cake",
+   "kind": "sticker",
+   "label": {
+    "en": "a cake",
+    "fr": "un gateau"
+   },
+   "tags": [
+    "food",
+    "party"
+   ],
+   "files": {
+    "src": {
+     "file": "cake.webp",
+     "bytes": 11876
+    }
+   },
+   "width": 380,
+   "height": 320,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/38GEFBlOXw",
+    "site": "Poly Pizza",
+    "title": "Cake Birthday",
+    "sha256_original": "1542c71c41c779fe9fb10ed874f7e9ca38d9877f9fd0a8af793077e90b6af35c",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "1542c71c41c779fe9fb10ed874f7e9ca38d9877f9fd0a8af793077e90b6af35c",
+   "library_version": 1
+  },
+  {
+   "id": "campfire",
+   "kind": "sticker",
+   "label": {
+    "en": "a campfire",
+    "fr": "un feu de camp"
+   },
+   "tags": [
+    "fire",
+    "flame"
+   ],
+   "files": {
+    "src": {
+     "file": "campfire.webp",
+     "bytes": 18076
+    }
+   },
+   "width": 400,
+   "height": 374,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/i6UFAevfcu",
+    "site": "Poly Pizza",
+    "title": "Campfire",
+    "sha256_original": "253660be472f72fb6c93d8deb6ee58759885049fd859bbad972444ee82511ede",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "253660be472f72fb6c93d8deb6ee58759885049fd859bbad972444ee82511ede",
+   "library_version": 1
+  },
+  {
+   "id": "can",
+   "kind": "sticker",
+   "label": {
+    "en": "a tin can",
+    "fr": "une boite de conserve"
+   },
+   "tags": [
+    "tin",
+    "food"
+   ],
+   "files": {
+    "src": {
+     "file": "can.webp",
+     "bytes": 7680
+    }
+   },
+   "width": 268,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/YnowJvWqxE",
+    "site": "Poly Pizza",
+    "title": "Can",
+    "sha256_original": "66ea638e8c12f1c9efca4f6081ff864e689c5499ae654ecc86c7940256ea21ee",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "66ea638e8c12f1c9efca4f6081ff864e689c5499ae654ecc86c7940256ea21ee",
+   "library_version": 1
+  },
+  {
+   "id": "candle",
+   "kind": "sticker",
+   "label": {
+    "en": "a candle",
+    "fr": "une bougie"
+   },
+   "tags": [
+    "light",
+    "flame"
+   ],
+   "files": {
+    "src": {
+     "file": "candle.webp",
+     "bytes": 13658
+    }
+   },
+   "width": 400,
+   "height": 304,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/AnzHB44wlW",
+    "site": "Poly Pizza",
+    "title": "Candles",
+    "sha256_original": "2cd72a19212e44baca9d36665e5c6c1650df7c6cf9ada9a2aa9637f6a6510a4e",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "2cd72a19212e44baca9d36665e5c6c1650df7c6cf9ada9a2aa9637f6a6510a4e",
+   "library_version": 1
+  },
+  {
+   "id": "carrot",
+   "kind": "sticker",
+   "label": {
+    "en": "a carrot",
+    "fr": "une carotte"
+   },
+   "tags": [
+    "vegetable",
+    "root"
+   ],
+   "files": {
+    "src": {
+     "file": "carrot.webp",
+     "bytes": 10182
+    }
+   },
+   "width": 178,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/59muuwqSsq",
+    "site": "Poly Pizza",
+    "title": "Carrot",
+    "sha256_original": "86329db7e0bbab3f99a9ee4652045d491a93b50416c36a030fe9f7e950bfe8a5",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "86329db7e0bbab3f99a9ee4652045d491a93b50416c36a030fe9f7e950bfe8a5",
+   "library_version": 1
+  },
+  {
+   "id": "cat",
+   "kind": "sticker",
+   "label": {
+    "en": "a cat",
+    "fr": "un chat"
+   },
+   "tags": [
+    "pet",
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "cat.webp",
+     "bytes": 6688
+    }
+   },
+   "width": 315,
+   "height": 378,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/qKICY6xla2",
+    "site": "Poly Pizza",
+    "title": "Cat",
+    "sha256_original": "842c5f96c480b9a7800994345ed83be5e9ba5fc8e18be633f2b7cfe09cf8fef7",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "842c5f96c480b9a7800994345ed83be5e9ba5fc8e18be633f2b7cfe09cf8fef7",
+   "library_version": 1
+  },
+  {
+   "id": "chair",
+   "kind": "sticker",
+   "label": {
+    "en": "a chair",
+    "fr": "une chaise"
+   },
+   "tags": [
+    "seat",
+    "furniture"
+   ],
+   "files": {
+    "src": {
+     "file": "chair.webp",
+     "bytes": 12262
+    }
+   },
+   "width": 228,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/iMNqRzPwwe",
+    "site": "Poly Pizza",
+    "title": "Chair",
+    "sha256_original": "bdc6aeeb64524bbdccba2f079e6485e2a372aed1c428d976d5da67aadcf18b7a",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "bdc6aeeb64524bbdccba2f079e6485e2a372aed1c428d976d5da67aadcf18b7a",
+   "library_version": 1
+  },
+  {
+   "id": "cheese",
+   "kind": "sticker",
+   "label": {
+    "en": "a piece of cheese",
+    "fr": "un morceau de fromage"
+   },
+   "tags": [
+    "food",
+    "dairy"
+   ],
+   "files": {
+    "src": {
+     "file": "cheese.webp",
+     "bytes": 8038
+    }
+   },
+   "width": 400,
+   "height": 151,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/Z4BmZzAdcv",
+    "site": "Poly Pizza",
+    "title": "Cheese Cut",
+    "sha256_original": "74122d6fe27b8d5cdae880d2be661cac7f94a649cdc25e9723047c6b010395af",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "74122d6fe27b8d5cdae880d2be661cac7f94a649cdc25e9723047c6b010395af",
+   "library_version": 1
+  },
+  {
+   "id": "coconut",
+   "kind": "sticker",
+   "label": {
+    "en": "a coconut",
+    "fr": "une noix de coco"
+   },
+   "tags": [
+    "fruit",
+    "palm"
+   ],
+   "files": {
+    "src": {
+     "file": "coconut.webp",
+     "bytes": 4640
+    }
+   },
+   "width": 361,
+   "height": 254,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/ufT2tXnLFc",
+    "site": "Poly Pizza",
+    "title": "Coconut Half",
+    "sha256_original": "3bb9a52efdb70c76d6b660cf7f398c6e4dbfcbd13b9380db8e3688387a473c86",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "3bb9a52efdb70c76d6b660cf7f398c6e4dbfcbd13b9380db8e3688387a473c86",
+   "library_version": 1
+  },
+  {
+   "id": "coin",
+   "kind": "sticker",
+   "label": {
+    "en": "a coin",
+    "fr": "une piece"
+   },
+   "tags": [
+    "money"
+   ],
+   "files": {
+    "src": {
+     "file": "coin.webp",
+     "bytes": 13054
+    }
+   },
+   "width": 360,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/QHZtj94fvh",
+    "site": "Poly Pizza",
+    "title": "Coin",
+    "sha256_original": "7b4e95e9f9ec58e4ca0334759ceb7dc63ac0db4666dc443d0f07058298569944",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "7b4e95e9f9ec58e4ca0334759ceb7dc63ac0db4666dc443d0f07058298569944",
+   "library_version": 1
+  },
+  {
+   "id": "computer",
+   "kind": "sticker",
+   "label": {
+    "en": "a computer",
+    "fr": "un ordinateur"
+   },
+   "tags": [
+    "laptop",
+    "screen"
+   ],
+   "files": {
+    "src": {
+     "file": "computer.webp",
+     "bytes": 10002
+    }
+   },
+   "width": 400,
+   "height": 374,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/V5Qo141OcB",
+    "site": "Poly Pizza",
+    "title": "Computer Screen",
+    "sha256_original": "be4d698aa13793ed97f425028d633ef899d04c2ad8c89fe36932e5e7810e154e",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "be4d698aa13793ed97f425028d633ef899d04c2ad8c89fe36932e5e7810e154e",
+   "library_version": 1
+  },
+  {
+   "id": "corn",
+   "kind": "sticker",
+   "label": {
+    "en": "an ear of corn",
+    "fr": "un epi de mais"
+   },
+   "tags": [
+    "maize",
+    "cereal",
+    "crop"
+   ],
+   "files": {
+    "src": {
+     "file": "corn.webp",
+     "bytes": 17046
+    }
+   },
+   "width": 201,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/IhhB7kGaAQ",
+    "site": "Poly Pizza",
+    "title": "Corn",
+    "sha256_original": "fb3731a9814a2bdaeef2b15642119f03bcacbc48d96b5e05df5904aeebee7395",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "fb3731a9814a2bdaeef2b15642119f03bcacbc48d96b5e05df5904aeebee7395",
+   "library_version": 1
+  },
+  {
+   "id": "cow",
+   "kind": "sticker",
+   "label": {
+    "en": "a cow",
+    "fr": "une vache"
+   },
+   "tags": [
+    "cattle",
+    "farm",
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "cow.webp",
+     "bytes": 8720
+    }
+   },
+   "width": 314,
+   "height": 312,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/5XSc2Fka3F",
+    "site": "Poly Pizza",
+    "title": "Cow",
+    "sha256_original": "5bdb18da23e114c717a8739e7defc75b6bf3d1dd54e928c141a0286bf14aa4a8",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "5bdb18da23e114c717a8739e7defc75b6bf3d1dd54e928c141a0286bf14aa4a8",
+   "library_version": 1
+  },
+  {
+   "id": "crate",
+   "kind": "sticker",
+   "label": {
+    "en": "a crate",
+    "fr": "une caisse"
+   },
+   "tags": [
+    "box",
+    "wooden"
+   ],
+   "files": {
+    "src": {
+     "file": "crate.webp",
+     "bytes": 13012
+    }
+   },
+   "width": 400,
+   "height": 395,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/YAghI6GBls",
+    "site": "Poly Pizza",
+    "title": "Cube Crate",
+    "sha256_original": "e0c4c5946b53ba314ec6e22bdb5d3329e4a2f0950b3c477a88e0d456d85baea8",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "e0c4c5946b53ba314ec6e22bdb5d3329e4a2f0950b3c477a88e0d456d85baea8",
+   "library_version": 1
+  },
+  {
+   "id": "cup",
+   "kind": "sticker",
+   "label": {
+    "en": "a cup",
+    "fr": "un gobelet"
+   },
+   "tags": [
+    "mug",
+    "drink"
+   ],
+   "files": {
+    "src": {
+     "file": "cup.webp",
+     "bytes": 5774
+    }
+   },
+   "width": 295,
+   "height": 376,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/aSF8ANEIsX",
+    "site": "Poly Pizza",
+    "title": "Cup",
+    "sha256_original": "28594dce6e5ff4b5ae34dd201645c2fea6d63b4b8f9c42984c45d21b89e948c2",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "28594dce6e5ff4b5ae34dd201645c2fea6d63b4b8f9c42984c45d21b89e948c2",
+   "library_version": 1
+  },
+  {
+   "id": "deer",
+   "kind": "sticker",
+   "label": {
+    "en": "a deer",
+    "fr": "un cerf"
+   },
+   "tags": [
+    "animal",
+    "forest"
+   ],
+   "files": {
+    "src": {
+     "file": "deer.webp",
+     "bytes": 12806
+    }
+   },
+   "width": 266,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/T6Cs7tmMHJ",
+    "site": "Poly Pizza",
+    "title": "Deer",
+    "sha256_original": "fabf360b22eaccccd056ee99d698a9562d15aa245821f96e4fbad6db3751604e",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "fabf360b22eaccccd056ee99d698a9562d15aa245821f96e4fbad6db3751604e",
+   "library_version": 1
+  },
+  {
+   "id": "donut",
+   "kind": "sticker",
+   "label": {
+    "en": "a donut",
+    "fr": "un beignet"
+   },
+   "tags": [
+    "food",
+    "snack"
+   ],
+   "files": {
+    "src": {
+     "file": "donut.webp",
+     "bytes": 6768
+    }
+   },
+   "width": 370,
+   "height": 212,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/UQRRrsP3wj",
+    "site": "Poly Pizza",
+    "title": "Donut",
+    "sha256_original": "cb8d0edad3f280cf4157d5b7253b6ac6355a5cf86ca8c018bd5ac9c722719728",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "cb8d0edad3f280cf4157d5b7253b6ac6355a5cf86ca8c018bd5ac9c722719728",
+   "library_version": 1
+  },
+  {
+   "id": "door",
+   "kind": "sticker",
+   "label": {
+    "en": "a door",
+    "fr": "une porte"
+   },
+   "tags": [
+    "entrance"
+   ],
+   "files": {
+    "src": {
+     "file": "door.webp",
+     "bytes": 7524
+    }
+   },
+   "width": 215,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/a948jjnuaL",
+    "site": "Poly Pizza",
+    "title": "Door",
+    "sha256_original": "38c80d7012c4f930cbae01fdd9bf2a0d25d4dd70aeb687e32e37b01a35c72248",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "38c80d7012c4f930cbae01fdd9bf2a0d25d4dd70aeb687e32e37b01a35c72248",
+   "library_version": 1
+  },
+  {
+   "id": "eggplant",
+   "kind": "sticker",
+   "label": {
+    "en": "an eggplant",
+    "fr": "une aubergine"
+   },
+   "tags": [
+    "vegetable"
+   ],
+   "files": {
+    "src": {
+     "file": "eggplant.webp",
+     "bytes": 7218
+    }
+   },
+   "width": 218,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/QV0aZsjWPc",
+    "site": "Poly Pizza",
+    "title": "Eggplant",
+    "sha256_original": "ea841bdd7b4ca76831015138852df4f046c9b38de21447a99416078ddc0f8f92",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "ea841bdd7b4ca76831015138852df4f046c9b38de21447a99416078ddc0f8f92",
+   "library_version": 1
+  },
+  {
+   "id": "fence",
+   "kind": "sticker",
+   "label": {
+    "en": "a fence",
+    "fr": "une cloture"
+   },
+   "tags": [
+    "farm",
+    "garden"
+   ],
+   "files": {
+    "src": {
+     "file": "fence.webp",
+     "bytes": 10394
+    }
+   },
+   "width": 400,
+   "height": 181,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/e02PFKKhbr",
+    "site": "Poly Pizza",
+    "title": "Fence",
+    "sha256_original": "0c35f9fb6b9ff69501463834e3f6cf7d565979aa4caae19445344d87400c70c8",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "0c35f9fb6b9ff69501463834e3f6cf7d565979aa4caae19445344d87400c70c8",
+   "library_version": 1
+  },
+  {
+   "id": "first_aid_kit",
+   "kind": "sticker",
+   "label": {
+    "en": "a first-aid kit",
+    "fr": "une trousse de secours"
+   },
+   "tags": [
+    "medical",
+    "health",
+    "kit"
+   ],
+   "files": {
+    "src": {
+     "file": "first_aid_kit.webp",
+     "bytes": 12064
+    }
+   },
+   "width": 400,
+   "height": 332,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/Hp80p6148W",
+    "site": "Poly Pizza",
+    "title": "First Aid Kit",
+    "sha256_original": "6d665861ec5f79224ed1c99e5eb685015e053b3f73b1216def773a1afa9fd816",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "6d665861ec5f79224ed1c99e5eb685015e053b3f73b1216def773a1afa9fd816",
+   "library_version": 1
+  },
+  {
+   "id": "fish",
+   "kind": "sticker",
+   "label": {
+    "en": "a fish",
+    "fr": "un poisson"
+   },
+   "tags": [
+    "river",
+    "sea"
+   ],
+   "files": {
+    "src": {
+     "file": "fish.webp",
+     "bytes": 7836
+    }
+   },
+   "width": 262,
+   "height": 262,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/BEcU9rjiAq",
+    "site": "Poly Pizza",
+    "title": "Fish",
+    "sha256_original": "9607de8de8a0ac2d857f271272e70e6d8d3fd19852d979c2cfbe9eafe1e4fcc5",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "9607de8de8a0ac2d857f271272e70e6d8d3fd19852d979c2cfbe9eafe1e4fcc5",
+   "library_version": 1
+  },
+  {
+   "id": "fishing_rod",
+   "kind": "sticker",
+   "label": {
+    "en": "a fishing rod",
+    "fr": "une canne a peche"
+   },
+   "tags": [
+    "fish",
+    "river"
+   ],
+   "files": {
+    "src": {
+     "file": "fishing_rod.webp",
+     "bytes": 3508
+    }
+   },
+   "width": 44,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/0YAR0Lg58p",
+    "site": "Poly Pizza",
+    "title": "Fishing Rod",
+    "sha256_original": "6d5bd9d93d74b61c68bd053f8b94f5d594df998938d1a71d38119e2832f8fdb5",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "6d5bd9d93d74b61c68bd053f8b94f5d594df998938d1a71d38119e2832f8fdb5",
+   "library_version": 1
+  },
+  {
+   "id": "flag",
+   "kind": "sticker",
+   "label": {
+    "en": "a flag",
+    "fr": "un drapeau"
+   },
+   "tags": [
+    "banner"
+   ],
+   "files": {
+    "src": {
+     "file": "flag.webp",
+     "bytes": 5278
+    }
+   },
+   "width": 179,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/FuOkF3WBrx",
+    "site": "Poly Pizza",
+    "title": "Flag",
+    "sha256_original": "ac75a6cb5328baf68fb1cad86204191f9717e20cfcccc600b3f10c4a1d260cbd",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "ac75a6cb5328baf68fb1cad86204191f9717e20cfcccc600b3f10c4a1d260cbd",
+   "library_version": 1
+  },
+  {
+   "id": "fork",
+   "kind": "sticker",
+   "label": {
+    "en": "a fork",
+    "fr": "une fourchette"
+   },
+   "tags": [
+    "kitchen",
+    "cutlery"
+   ],
+   "files": {
+    "src": {
+     "file": "fork.webp",
+     "bytes": 6284
+    }
+   },
+   "width": 400,
+   "height": 113,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/S590GNguL2",
+    "site": "Poly Pizza",
+    "title": "Utensil Fork",
+    "sha256_original": "c5747dad86ba5c4dd5cb0c0f928ad0d47614ed84d8d87ed1ea0b091ecece2233",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "c5747dad86ba5c4dd5cb0c0f928ad0d47614ed84d8d87ed1ea0b091ecece2233",
+   "library_version": 1
+  },
+  {
+   "id": "fridge",
+   "kind": "sticker",
+   "label": {
+    "en": "a fridge",
+    "fr": "un refrigerateur"
+   },
+   "tags": [
+    "kitchen",
+    "cold"
+   ],
+   "files": {
+    "src": {
+     "file": "fridge.webp",
+     "bytes": 5806
+    }
+   },
+   "width": 209,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/8sjRm8fnHh",
+    "site": "Poly Pizza",
+    "title": "Kitchen Fridge",
+    "sha256_original": "65437d539065381839fdfdff5ea10b7133d28e762e38ff1b6d7e3723f798e408",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "65437d539065381839fdfdff5ea10b7133d28e762e38ff1b6d7e3723f798e408",
+   "library_version": 1
+  },
+  {
+   "id": "frog",
+   "kind": "sticker",
+   "label": {
+    "en": "a frog",
+    "fr": "une grenouille"
+   },
+   "tags": [
+    "amphibian",
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "frog.webp",
+     "bytes": 7320
+    }
+   },
+   "width": 365,
+   "height": 203,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/9Z2V8fpazF",
+    "site": "Poly Pizza",
+    "title": "Frog",
+    "sha256_original": "92dc96c90e7228676f8c43dc7711ba5ed5505029ebb2f6d4ad198d9e35bdbfe0",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "92dc96c90e7228676f8c43dc7711ba5ed5505029ebb2f6d4ad198d9e35bdbfe0",
+   "library_version": 1
+  },
+  {
+   "id": "guitar",
+   "kind": "sticker",
+   "label": {
+    "en": "a guitar",
+    "fr": "une guitare"
+   },
+   "tags": [
+    "music",
+    "instrument"
+   ],
+   "files": {
+    "src": {
+     "file": "guitar.webp",
+     "bytes": 7490
+    }
+   },
+   "width": 381,
+   "height": 194,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/5Fp8gpomrb",
+    "site": "Poly Pizza",
+    "title": "Guitar",
+    "sha256_original": "7122adbbad2c126cf56c1398514415c40655551d718548262b717d3123f57d99",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "7122adbbad2c126cf56c1398514415c40655551d718548262b717d3123f57d99",
+   "library_version": 1
+  },
+  {
+   "id": "hay_bale",
+   "kind": "sticker",
+   "label": {
+    "en": "a hay bale",
+    "fr": "une botte de foin"
+   },
+   "tags": [
+    "farm",
+    "straw"
+   ],
+   "files": {
+    "src": {
+     "file": "hay_bale.webp",
+     "bytes": 14744
+    }
+   },
+   "width": 256,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/Yu8TOERkpw",
+    "site": "Poly Pizza",
+    "title": "Hay",
+    "sha256_original": "a7b39cae2cbd0839647c23c597a4ff64cb3a1086529e78c0169614f4a42655ed",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "a7b39cae2cbd0839647c23c597a4ff64cb3a1086529e78c0169614f4a42655ed",
+   "library_version": 1
+  },
+  {
+   "id": "honey",
+   "kind": "sticker",
+   "label": {
+    "en": "a honey jar",
+    "fr": "un pot de miel"
+   },
+   "tags": [
+    "food",
+    "bee"
+   ],
+   "files": {
+    "src": {
+     "file": "honey.webp",
+     "bytes": 7110
+    }
+   },
+   "width": 329,
+   "height": 387,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/p92t5dG8Zd",
+    "site": "Poly Pizza",
+    "title": "Honey",
+    "sha256_original": "2a01edf476a57cf02333a471445c3c5c128a924983d81d379ba0a2f1d6ca916f",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "2a01edf476a57cf02333a471445c3c5c128a924983d81d379ba0a2f1d6ca916f",
+   "library_version": 1
+  },
+  {
+   "id": "horse",
+   "kind": "sticker",
+   "label": {
+    "en": "a horse",
+    "fr": "un cheval"
+   },
+   "tags": [
+    "farm",
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "horse.webp",
+     "bytes": 7380
+    }
+   },
+   "width": 278,
+   "height": 362,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/qvTrSG9pZF",
+    "site": "Poly Pizza",
+    "title": "Horse",
+    "sha256_original": "fae7a7ec91e0d6a33554efb896fac9c4e8c632644183bcb8cc962f673d3ce609",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "fae7a7ec91e0d6a33554efb896fac9c4e8c632644183bcb8cc962f673d3ce609",
+   "library_version": 1
+  },
+  {
+   "id": "hut",
+   "kind": "sticker",
+   "label": {
+    "en": "a hut",
+    "fr": "une case"
+   },
+   "tags": [
+    "home",
+    "building"
+   ],
+   "files": {
+    "src": {
+     "file": "hut.webp",
+     "bytes": 16704
+    }
+   },
+   "width": 400,
+   "height": 349,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/4MJWbyd6vw",
+    "site": "Poly Pizza",
+    "title": "Hut",
+    "sha256_original": "78276f984382c03465d1a4050a31f145484876f00b73d59e9ec2de64f0ae6f71",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "78276f984382c03465d1a4050a31f145484876f00b73d59e9ec2de64f0ae6f71",
+   "library_version": 1
+  },
+  {
+   "id": "key",
+   "kind": "sticker",
+   "label": {
+    "en": "a key",
+    "fr": "une cle"
+   },
+   "tags": [
+    "lock"
+   ],
+   "files": {
+    "src": {
+     "file": "key.webp",
+     "bytes": 9096
+    }
+   },
+   "width": 400,
+   "height": 175,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/bg6e1lfNsO",
+    "site": "Poly Pizza",
+    "title": "Key",
+    "sha256_original": "2d447d3dbf30b91f8ff074e1c50773bb87270dde627c198339ec3021edcc0201",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "2d447d3dbf30b91f8ff074e1c50773bb87270dde627c198339ec3021edcc0201",
+   "library_version": 1
+  },
+  {
+   "id": "ladder",
+   "kind": "sticker",
+   "label": {
+    "en": "a ladder",
+    "fr": "une echelle"
+   },
+   "tags": [
+    "climb"
+   ],
+   "files": {
+    "src": {
+     "file": "ladder.webp",
+     "bytes": 5404
+    }
+   },
+   "width": 68,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/h2xOIRr1OP",
+    "site": "Poly Pizza",
+    "title": "Ladder",
+    "sha256_original": "55afc5f0385aa934640f893d5e7aa46b9ba9535824a4a6847e560db578d4abbd",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "55afc5f0385aa934640f893d5e7aa46b9ba9535824a4a6847e560db578d4abbd",
+   "library_version": 1
+  },
+  {
+   "id": "lamp",
+   "kind": "sticker",
+   "label": {
+    "en": "a lamp",
+    "fr": "une lampe"
+   },
+   "tags": [
+    "light"
+   ],
+   "files": {
+    "src": {
+     "file": "lamp.webp",
+     "bytes": 3976
+    }
+   },
+   "width": 93,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/8LiDIfXVLi",
+    "site": "Poly Pizza",
+    "title": "Lamp Round Floor",
+    "sha256_original": "66c669325a563ec4d9843a4c1e5a9f96c30abad13d0db710b4c00306e9cfbdc8",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "66c669325a563ec4d9843a4c1e5a9f96c30abad13d0db710b4c00306e9cfbdc8",
+   "library_version": 1
+  },
+  {
+   "id": "lemon",
+   "kind": "sticker",
+   "label": {
+    "en": "a lemon",
+    "fr": "un citron"
+   },
+   "tags": [
+    "fruit",
+    "citrus"
+   ],
+   "files": {
+    "src": {
+     "file": "lemon.webp",
+     "bytes": 6352
+    }
+   },
+   "width": 340,
+   "height": 379,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/MSMJRlLpuL",
+    "site": "Poly Pizza",
+    "title": "Lemon",
+    "sha256_original": "18afa34cab83cf4415e2a8344f526e22637f5896bd93bb75cf06ea3bf467473c",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "18afa34cab83cf4415e2a8344f526e22637f5896bd93bb75cf06ea3bf467473c",
+   "library_version": 1
+  },
+  {
+   "id": "llama",
+   "kind": "sticker",
+   "label": {
+    "en": "a llama",
+    "fr": "un lama"
+   },
+   "tags": [
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "llama.webp",
+     "bytes": 11982
+    }
+   },
+   "width": 247,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/JxVJ9rfWGy",
+    "site": "Poly Pizza",
+    "title": "Llama",
+    "sha256_original": "2c4e4eb34348409edfe6ee87ad0260b9e6b6dec96902a979e3a9d9c181224bf2",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "2c4e4eb34348409edfe6ee87ad0260b9e6b6dec96902a979e3a9d9c181224bf2",
+   "library_version": 1
+  },
+  {
+   "id": "log",
+   "kind": "sticker",
+   "label": {
+    "en": "a log",
+    "fr": "une buche"
+   },
+   "tags": [
+    "wood",
+    "trunk"
+   ],
+   "files": {
+    "src": {
+     "file": "log.webp",
+     "bytes": 7486
+    }
+   },
+   "width": 400,
+   "height": 189,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/L4E32Wee6C",
+    "site": "Poly Pizza",
+    "title": "Wood Log",
+    "sha256_original": "7c3489a6d7f39025dc86278f17ba005a62466061067a385fec88a61f79d03844",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "7c3489a6d7f39025dc86278f17ba005a62466061067a385fec88a61f79d03844",
+   "library_version": 1
+  },
+  {
+   "id": "mug",
+   "kind": "sticker",
+   "label": {
+    "en": "a mug",
+    "fr": "une tasse"
+   },
+   "tags": [
+    "cup",
+    "drink"
+   ],
+   "files": {
+    "src": {
+     "file": "mug.webp",
+     "bytes": 5694
+    }
+   },
+   "width": 364,
+   "height": 373,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/fis2ugeLbn",
+    "site": "Poly Pizza",
+    "title": "Mug",
+    "sha256_original": "266fb62b9483c0805b10d3ebcc87361345208dbe26ac6d0c6fe50f773bc9c487",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "266fb62b9483c0805b10d3ebcc87361345208dbe26ac6d0c6fe50f773bc9c487",
+   "library_version": 1
+  },
+  {
+   "id": "mushroom",
+   "kind": "sticker",
+   "label": {
+    "en": "a mushroom",
+    "fr": "un champignon"
+   },
+   "tags": [
+    "fungus"
+   ],
+   "files": {
+    "src": {
+     "file": "mushroom.webp",
+     "bytes": 4492
+    }
+   },
+   "width": 330,
+   "height": 332,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/db1tjMhmiA",
+    "site": "Poly Pizza",
+    "title": "Mushroom",
+    "sha256_original": "bd77010f2d3844ec82b9f026e576f53b5b0e4abadf3ec7c5cbadef5864ac7e71",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "bd77010f2d3844ec82b9f026e576f53b5b0e4abadf3ec7c5cbadef5864ac7e71",
+   "library_version": 1
+  },
+  {
+   "id": "orange",
+   "kind": "sticker",
+   "label": {
+    "en": "an orange",
+    "fr": "une orange"
+   },
+   "tags": [
+    "fruit",
+    "citrus"
+   ],
+   "files": {
+    "src": {
+     "file": "orange.webp",
+     "bytes": 6134
+    }
+   },
+   "width": 329,
+   "height": 343,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/UnygaDfm1J",
+    "site": "Poly Pizza",
+    "title": "Orange",
+    "sha256_original": "bce43d672f18d9403868a05bb5ae6b25d8466945d9bfbb8a03156afb7ca9ddc3",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "bce43d672f18d9403868a05bb5ae6b25d8466945d9bfbb8a03156afb7ca9ddc3",
+   "library_version": 1
+  },
+  {
+   "id": "paddle",
+   "kind": "sticker",
+   "label": {
+    "en": "a paddle",
+    "fr": "une pagaie"
+   },
+   "tags": [
+    "boat",
+    "river"
+   ],
+   "files": {
+    "src": {
+     "file": "paddle.webp",
+     "bytes": 7908
+    }
+   },
+   "width": 400,
+   "height": 201,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/XLwljDJQZ7",
+    "site": "Poly Pizza",
+    "title": "Raft Paddle",
+    "sha256_original": "077215574dd537a1951e4faaeb0ed9742545388530d460d426d10ba3a2238a94",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "077215574dd537a1951e4faaeb0ed9742545388530d460d426d10ba3a2238a94",
+   "library_version": 1
+  },
+  {
+   "id": "palm_tree",
+   "kind": "sticker",
+   "label": {
+    "en": "a palm tree",
+    "fr": "un palmier"
+   },
+   "tags": [
+    "tree",
+    "plant"
+   ],
+   "files": {
+    "src": {
+     "file": "palm_tree.webp",
+     "bytes": 10450
+    }
+   },
+   "width": 311,
+   "height": 346,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/A6cKJYFsIb",
+    "site": "Poly Pizza",
+    "title": "Palm Tree",
+    "sha256_original": "ae8c66e5e2206c5efd12c2cf96b9064f643076c2d8bac5f3c5f457b2ee6491ca",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "ae8c66e5e2206c5efd12c2cf96b9064f643076c2d8bac5f3c5f457b2ee6491ca",
+   "library_version": 1
+  },
+  {
+   "id": "pan",
+   "kind": "sticker",
+   "label": {
+    "en": "a frying pan",
+    "fr": "une poele"
+   },
+   "tags": [
+    "cooking",
+    "kitchen"
+   ],
+   "files": {
+    "src": {
+     "file": "pan.webp",
+     "bytes": 3152
+    }
+   },
+   "width": 367,
+   "height": 198,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/f9my9iJZMv",
+    "site": "Poly Pizza",
+    "title": "Pan",
+    "sha256_original": "9dd43116c063db40bdf367935b9a47e0ae464f5ebdca7a83b8035bb597f9d94a",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "9dd43116c063db40bdf367935b9a47e0ae464f5ebdca7a83b8035bb597f9d94a",
+   "library_version": 1
+  },
+  {
+   "id": "pepper",
+   "kind": "sticker",
+   "label": {
+    "en": "a pepper",
+    "fr": "un piment"
+   },
+   "tags": [
+    "vegetable",
+    "chili"
+   ],
+   "files": {
+    "src": {
+     "file": "pepper.webp",
+     "bytes": 11114
+    }
+   },
+   "width": 290,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/fh3RxFIH3j",
+    "site": "Poly Pizza",
+    "title": "Pepper Green",
+    "sha256_original": "65967854336cfe7a3d24cb9988b5d1c8ef5f5fde6a7262770bf64b2dcc42c6e0",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "65967854336cfe7a3d24cb9988b5d1c8ef5f5fde6a7262770bf64b2dcc42c6e0",
+   "library_version": 1
+  },
+  {
+   "id": "pickaxe",
+   "kind": "sticker",
+   "label": {
+    "en": "a pickaxe",
+    "fr": "une pioche"
+   },
+   "tags": [
+    "tool",
+    "dig"
+   ],
+   "files": {
+    "src": {
+     "file": "pickaxe.webp",
+     "bytes": 7122
+    }
+   },
+   "width": 278,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/UHZH2OoWCS",
+    "site": "Poly Pizza",
+    "title": "Pickaxe",
+    "sha256_original": "6cb24971eef0ce55cc2468155c47db9a93bf55ff811b4640ced59a51bab53378",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "6cb24971eef0ce55cc2468155c47db9a93bf55ff811b4640ced59a51bab53378",
+   "library_version": 1
+  },
+  {
+   "id": "pig",
+   "kind": "sticker",
+   "label": {
+    "en": "a pig",
+    "fr": "un cochon"
+   },
+   "tags": [
+    "farm",
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "pig.webp",
+     "bytes": 5834
+    }
+   },
+   "width": 327,
+   "height": 280,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/TNvG3QUFlp",
+    "site": "Poly Pizza",
+    "title": "Pig",
+    "sha256_original": "4bb5fc230a35db446fa2ea043f77dfc077f0b21d6e59d0235b15f01d01b05525",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "4bb5fc230a35db446fa2ea043f77dfc077f0b21d6e59d0235b15f01d01b05525",
+   "library_version": 1
+  },
+  {
+   "id": "pine_tree",
+   "kind": "sticker",
+   "label": {
+    "en": "a pine tree",
+    "fr": "un pin"
+   },
+   "tags": [
+    "tree",
+    "forest"
+   ],
+   "files": {
+    "src": {
+     "file": "pine_tree.webp",
+     "bytes": 13990
+    }
+   },
+   "width": 224,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/79gmlLnweB",
+    "site": "Poly Pizza",
+    "title": "Pine",
+    "sha256_original": "240e6f60c5b106a892c80490d7c710f20ef902b328b5e173c0a567334e4df972",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "240e6f60c5b106a892c80490d7c710f20ef902b328b5e173c0a567334e4df972",
+   "library_version": 1
+  },
+  {
+   "id": "pineapple",
+   "kind": "sticker",
+   "label": {
+    "en": "a pineapple",
+    "fr": "un ananas"
+   },
+   "tags": [
+    "fruit"
+   ],
+   "files": {
+    "src": {
+     "file": "pineapple.webp",
+     "bytes": 11960
+    }
+   },
+   "width": 174,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/VFFBOLXqB2",
+    "site": "Poly Pizza",
+    "title": "Pineapple",
+    "sha256_original": "92b2bd24305128ab570b1ae6321572cf466e39a87dfe8c29dca84f6e15870c37",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "92b2bd24305128ab570b1ae6321572cf466e39a87dfe8c29dca84f6e15870c37",
+   "library_version": 1
+  },
+  {
+   "id": "plate",
+   "kind": "sticker",
+   "label": {
+    "en": "a plate",
+    "fr": "une assiette"
+   },
+   "tags": [
+    "dish",
+    "meal"
+   ],
+   "files": {
+    "src": {
+     "file": "plate.webp",
+     "bytes": 3846
+    }
+   },
+   "width": 371,
+   "height": 144,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/JyOqlmg0O8",
+    "site": "Poly Pizza",
+    "title": "Plate",
+    "sha256_original": "c1333ee34e76d616ad6b800d9e8e22e6a3307fce79de2fc5159e836aa70902e6",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "c1333ee34e76d616ad6b800d9e8e22e6a3307fce79de2fc5159e836aa70902e6",
+   "library_version": 1
+  },
+  {
+   "id": "police_car",
+   "kind": "sticker",
+   "label": {
+    "en": "a police car",
+    "fr": "une voiture de police"
+   },
+   "tags": [
+    "car",
+    "vehicle",
+    "police"
+   ],
+   "files": {
+    "src": {
+     "file": "police_car.webp",
+     "bytes": 7032
+    }
+   },
+   "width": 389,
+   "height": 262,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/BwwnUrWGmV",
+    "site": "Poly Pizza",
+    "title": "Police Car",
+    "sha256_original": "2ad6705f58bae2acf806eddb28acd9fc2ff6dc65a726575be5c180631b3132d0",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "2ad6705f58bae2acf806eddb28acd9fc2ff6dc65a726575be5c180631b3132d0",
+   "library_version": 1
+  },
+  {
+   "id": "pot",
+   "kind": "sticker",
+   "label": {
+    "en": "a cooking pot",
+    "fr": "une marmite"
+   },
+   "tags": [
+    "cooking",
+    "kitchen"
+   ],
+   "files": {
+    "src": {
+     "file": "pot.webp",
+     "bytes": 2916
+    }
+   },
+   "width": 364,
+   "height": 264,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/jAUb3FoCN7",
+    "site": "Poly Pizza",
+    "title": "Cooking Pot",
+    "sha256_original": "3836f63ea0a1135d1dbb6f8a942af6a1bc27912c21d5112c1820e88c64779995",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "3836f63ea0a1135d1dbb6f8a942af6a1bc27912c21d5112c1820e88c64779995",
+   "library_version": 1
+  },
+  {
+   "id": "pumpkin",
+   "kind": "sticker",
+   "label": {
+    "en": "a pumpkin",
+    "fr": "une citrouille"
+   },
+   "tags": [
+    "vegetable",
+    "squash"
+   ],
+   "files": {
+    "src": {
+     "file": "pumpkin.webp",
+     "bytes": 5466
+    }
+   },
+   "width": 348,
+   "height": 262,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/bvLvqnU1jX",
+    "site": "Poly Pizza",
+    "title": "Pumpkin",
+    "sha256_original": "af4ae31ba704f8b05b69bec18726468feaf527a221e929bbfdf11d6b4c26bd0b",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "af4ae31ba704f8b05b69bec18726468feaf527a221e929bbfdf11d6b4c26bd0b",
+   "library_version": 1
+  },
+  {
+   "id": "radio",
+   "kind": "sticker",
+   "label": {
+    "en": "a radio",
+    "fr": "une radio"
+   },
+   "tags": [
+    "music",
+    "news"
+   ],
+   "files": {
+    "src": {
+     "file": "radio.webp",
+     "bytes": 7170
+    }
+   },
+   "width": 282,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/TPqvwkyWdV",
+    "site": "Poly Pizza",
+    "title": "Radio",
+    "sha256_original": "9e5c7934f44ee538446e6f54cbe9c09d4e49a7e78ee2e7f16d4cc7483c43e710",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "9e5c7934f44ee538446e6f54cbe9c09d4e49a7e78ee2e7f16d4cc7483c43e710",
+   "library_version": 1
+  },
+  {
+   "id": "rock",
+   "kind": "sticker",
+   "label": {
+    "en": "a rock",
+    "fr": "un rocher"
+   },
+   "tags": [
+    "stone",
+    "boulder"
+   ],
+   "files": {
+    "src": {
+     "file": "rock.webp",
+     "bytes": 4484
+    }
+   },
+   "width": 374,
+   "height": 191,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/OQvi8PIZ40",
+    "site": "Poly Pizza",
+    "title": "Rocks",
+    "sha256_original": "f2085fb5edfe6ec33b7fe9dd8969fdc016900c18649b94c9ba703d8413cdcd97",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "f2085fb5edfe6ec33b7fe9dd8969fdc016900c18649b94c9ba703d8413cdcd97",
+   "library_version": 1
+  },
+  {
+   "id": "sheep",
+   "kind": "sticker",
+   "label": {
+    "en": "a sheep",
+    "fr": "un mouton"
+   },
+   "tags": [
+    "farm",
+    "animal",
+    "wool"
+   ],
+   "files": {
+    "src": {
+     "file": "sheep.webp",
+     "bytes": 6920
+    }
+   },
+   "width": 318,
+   "height": 344,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/C39AUXUUes",
+    "site": "Poly Pizza",
+    "title": "Sheep",
+    "sha256_original": "91aedec323b54d42b802b065b2f5005daea527b0a379a9f3fe90f3258f3c2382",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "91aedec323b54d42b802b065b2f5005daea527b0a379a9f3fe90f3258f3c2382",
+   "library_version": 1
+  },
+  {
+   "id": "shelf",
+   "kind": "sticker",
+   "label": {
+    "en": "a shelf",
+    "fr": "une etagere"
+   },
+   "tags": [
+    "furniture",
+    "storage"
+   ],
+   "files": {
+    "src": {
+     "file": "shelf.webp",
+     "bytes": 23340
+    }
+   },
+   "width": 263,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/TDgvIuorcX",
+    "site": "Poly Pizza",
+    "title": "Shelf Tall",
+    "sha256_original": "e57a99b889abb509aee0773adac4a3d6cbddca742f0f7fad614a06408200bb29",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "e57a99b889abb509aee0773adac4a3d6cbddca742f0f7fad614a06408200bb29",
+   "library_version": 1
+  },
+  {
+   "id": "shovel",
+   "kind": "sticker",
+   "label": {
+    "en": "a shovel",
+    "fr": "une pelle"
+   },
+   "tags": [
+    "dig",
+    "tool"
+   ],
+   "files": {
+    "src": {
+     "file": "shovel.webp",
+     "bytes": 5270
+    }
+   },
+   "width": 80,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/oNBQSf87ZJ",
+    "site": "Poly Pizza",
+    "title": "Shovel",
+    "sha256_original": "768f33c6bcd41e65208c7f0513d2a7010313fa44a932b4f5327a5bc66d22149b",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "768f33c6bcd41e65208c7f0513d2a7010313fa44a932b4f5327a5bc66d22149b",
+   "library_version": 1
+  },
+  {
+   "id": "signpost",
+   "kind": "sticker",
+   "label": {
+    "en": "a signpost",
+    "fr": "un panneau"
+   },
+   "tags": [
+    "sign",
+    "direction"
+   ],
+   "files": {
+    "src": {
+     "file": "signpost.webp",
+     "bytes": 5858
+    }
+   },
+   "width": 177,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/3U2lj1gpeH",
+    "site": "Poly Pizza",
+    "title": "Signpost",
+    "sha256_original": "22dfa49158f1912622190d4e3c46d40f320e77fe742994e5b1f2839c75163697",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "22dfa49158f1912622190d4e3c46d40f320e77fe742994e5b1f2839c75163697",
+   "library_version": 1
+  },
+  {
+   "id": "silo",
+   "kind": "sticker",
+   "label": {
+    "en": "a silo",
+    "fr": "un silo"
+   },
+   "tags": [
+    "farm",
+    "grain"
+   ],
+   "files": {
+    "src": {
+     "file": "silo.webp",
+     "bytes": 10236
+    }
+   },
+   "width": 161,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/5GhLrv5Ce3",
+    "site": "Poly Pizza",
+    "title": "Silo",
+    "sha256_original": "5894991c0371129fa12b858181b60dfb2c732494c07fa2a5b3afbba0f25d4e1d",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "5894991c0371129fa12b858181b60dfb2c732494c07fa2a5b3afbba0f25d4e1d",
+   "library_version": 1
+  },
+  {
+   "id": "snake",
+   "kind": "sticker",
+   "label": {
+    "en": "a snake",
+    "fr": "un serpent"
+   },
+   "tags": [
+    "reptile",
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "snake.webp",
+     "bytes": 11874
+    }
+   },
+   "width": 217,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/x9x0viZs8V",
+    "site": "Poly Pizza",
+    "title": "Snake",
+    "sha256_original": "70b4af1088dec939e167b07c0a5e69992a4851beac8bd24a9da1189b65ae101c",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "70b4af1088dec939e167b07c0a5e69992a4851beac8bd24a9da1189b65ae101c",
+   "library_version": 1
+  },
+  {
+   "id": "sofa",
+   "kind": "sticker",
+   "label": {
+    "en": "a sofa",
+    "fr": "un canape"
+   },
+   "tags": [
+    "couch",
+    "furniture"
+   ],
+   "files": {
+    "src": {
+     "file": "sofa.webp",
+     "bytes": 6824
+    }
+   },
+   "width": 400,
+   "height": 190,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/X5kQPKzAWp",
+    "site": "Poly Pizza",
+    "title": "Sofa",
+    "sha256_original": "0a81a9e0532f1ccb51a39d6a71bbc3fa2506dac22fa762b58194ed4741c2f5a0",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "0a81a9e0532f1ccb51a39d6a71bbc3fa2506dac22fa762b58194ed4741c2f5a0",
+   "library_version": 1
+  },
+  {
+   "id": "solar_panel",
+   "kind": "sticker",
+   "label": {
+    "en": "a solar panel",
+    "fr": "un panneau solaire"
+   },
+   "tags": [
+    "energy",
+    "power"
+   ],
+   "files": {
+    "src": {
+     "file": "solar_panel.webp",
+     "bytes": 21528
+    }
+   },
+   "width": 400,
+   "height": 326,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/ah89Y79JdT",
+    "site": "Poly Pizza",
+    "title": "Solar Panel",
+    "sha256_original": "2e7d429ad216bb8d2ac08d6d11c4d56359264ee1067d8b32726c387f284dd2ff",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "2e7d429ad216bb8d2ac08d6d11c4d56359264ee1067d8b32726c387f284dd2ff",
+   "library_version": 1
+  },
+  {
+   "id": "spoon",
+   "kind": "sticker",
+   "label": {
+    "en": "a spoon",
+    "fr": "une cuillere"
+   },
+   "tags": [
+    "kitchen",
+    "cutlery"
+   ],
+   "files": {
+    "src": {
+     "file": "spoon.webp",
+     "bytes": 3268
+    }
+   },
+   "width": 372,
+   "height": 191,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/eqvrf6TrB6",
+    "site": "Poly Pizza",
+    "title": "Spoon",
+    "sha256_original": "083c09f6d86f7aa0d82254e347e158838ab2b272aca509275546d5477e172776",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "083c09f6d86f7aa0d82254e347e158838ab2b272aca509275546d5477e172776",
+   "library_version": 1
+  },
+  {
+   "id": "stool",
+   "kind": "sticker",
+   "label": {
+    "en": "a stool",
+    "fr": "un tabouret"
+   },
+   "tags": [
+    "seat",
+    "furniture"
+   ],
+   "files": {
+    "src": {
+     "file": "stool.webp",
+     "bytes": 10858
+    }
+   },
+   "width": 200,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/TvaOenUAni",
+    "site": "Poly Pizza",
+    "title": "Stool",
+    "sha256_original": "f17ca68ee52a5c5f8dcb2b919ac580483ecbb53da26c2d1dcde4f97c7c409c6d",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "f17ca68ee52a5c5f8dcb2b919ac580483ecbb53da26c2d1dcde4f97c7c409c6d",
+   "library_version": 1
+  },
+  {
+   "id": "strawberry",
+   "kind": "sticker",
+   "label": {
+    "en": "a strawberry",
+    "fr": "une fraise"
+   },
+   "tags": [
+    "fruit",
+    "berry"
+   ],
+   "files": {
+    "src": {
+     "file": "strawberry.webp",
+     "bytes": 12654
+    }
+   },
+   "width": 298,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/xT1XIhtdju",
+    "site": "Poly Pizza",
+    "title": "Strawberry",
+    "sha256_original": "019945f29f49a5224703e11fd1eb3b3025933d9dbe078d9e674828ad9b631549",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "019945f29f49a5224703e11fd1eb3b3025933d9dbe078d9e674828ad9b631549",
+   "library_version": 1
+  },
+  {
+   "id": "stump",
+   "kind": "sticker",
+   "label": {
+    "en": "a tree stump",
+    "fr": "une souche"
+   },
+   "tags": [
+    "wood"
+   ],
+   "files": {
+    "src": {
+     "file": "stump.webp",
+     "bytes": 9508
+    }
+   },
+   "width": 400,
+   "height": 244,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/nFvEbUX6LE",
+    "site": "Poly Pizza",
+    "title": "Tree Stump with Moss",
+    "sha256_original": "194f67985d88a6e4a0857971772a292ab517306c3f6c7820a7302bba4ee40803",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "194f67985d88a6e4a0857971772a292ab517306c3f6c7820a7302bba4ee40803",
+   "library_version": 1
+  },
+  {
+   "id": "table",
+   "kind": "sticker",
+   "label": {
+    "en": "a table",
+    "fr": "une table"
+   },
+   "tags": [
+    "desk",
+    "furniture"
+   ],
+   "files": {
+    "src": {
+     "file": "table.webp",
+     "bytes": 14830
+    }
+   },
+   "width": 400,
+   "height": 279,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/rAEBvfb1FT",
+    "site": "Poly Pizza",
+    "title": "Small Table",
+    "sha256_original": "fd3c98a8293913697b3942d74897263d27352bd1ec4513aa3489f6e1470e59f9",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "fd3c98a8293913697b3942d74897263d27352bd1ec4513aa3489f6e1470e59f9",
+   "library_version": 1
+  },
+  {
+   "id": "taxi",
+   "kind": "sticker",
+   "label": {
+    "en": "a taxi",
+    "fr": "un taxi"
+   },
+   "tags": [
+    "vehicle",
+    "transport"
+   ],
+   "files": {
+    "src": {
+     "file": "taxi.webp",
+     "bytes": 10354
+    }
+   },
+   "width": 397,
+   "height": 246,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/x43lOScTpN",
+    "site": "Poly Pizza",
+    "title": "Taxi",
+    "sha256_original": "14b2f982f8a501565702ecb56f917c82e9abae914fa3f76d2f622a8670598af1",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "14b2f982f8a501565702ecb56f917c82e9abae914fa3f76d2f622a8670598af1",
+   "library_version": 1
+  },
+  {
+   "id": "telephone",
+   "kind": "sticker",
+   "label": {
+    "en": "a telephone",
+    "fr": "un telephone"
+   },
+   "tags": [
+    "call",
+    "mobile"
+   ],
+   "files": {
+    "src": {
+     "file": "telephone.webp",
+     "bytes": 6320
+    }
+   },
+   "width": 178,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/k2kgBepoMU",
+    "site": "Poly Pizza",
+    "title": "Phone",
+    "sha256_original": "7fcaf1ebff050a793f4083e5c4daacd4a7708a4938a97ac2b33b3677e9e0c2e8",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "7fcaf1ebff050a793f4083e5c4daacd4a7708a4938a97ac2b33b3677e9e0c2e8",
+   "library_version": 1
+  },
+  {
+   "id": "television",
+   "kind": "sticker",
+   "label": {
+    "en": "a television",
+    "fr": "une television"
+   },
+   "tags": [
+    "tv",
+    "screen"
+   ],
+   "files": {
+    "src": {
+     "file": "television.webp",
+     "bytes": 10002
+    }
+   },
+   "width": 400,
+   "height": 335,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/aSmz6H8aeu",
+    "site": "Poly Pizza",
+    "title": "Television Vintage",
+    "sha256_original": "9328f7156abb65be1d576e1dee5bdc46b45700b5eedd01207bd647cbc44f6dee",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "9328f7156abb65be1d576e1dee5bdc46b45700b5eedd01207bd647cbc44f6dee",
+   "library_version": 1
+  },
+  {
+   "id": "tent",
+   "kind": "sticker",
+   "label": {
+    "en": "a tent",
+    "fr": "une tente"
+   },
+   "tags": [
+    "camp"
+   ],
+   "files": {
+    "src": {
+     "file": "tent.webp",
+     "bytes": 14418
+    }
+   },
+   "width": 342,
+   "height": 281,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/5Q7qIrfDxA",
+    "site": "Poly Pizza",
+    "title": "Tent",
+    "sha256_original": "2f3519156ebbd28ab47a3d8600cecfcbbea63cc25eba044effa154b280d87d48",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "2f3519156ebbd28ab47a3d8600cecfcbbea63cc25eba044effa154b280d87d48",
+   "library_version": 1
+  },
+  {
+   "id": "toilet",
+   "kind": "sticker",
+   "label": {
+    "en": "a toilet",
+    "fr": "des toilettes"
+   },
+   "tags": [
+    "sanitation",
+    "hygiene"
+   ],
+   "files": {
+    "src": {
+     "file": "toilet.webp",
+     "bytes": 9334
+    }
+   },
+   "width": 311,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/WAu50yGFVt",
+    "site": "Poly Pizza",
+    "title": "Toilet",
+    "sha256_original": "c81348cadc00f84f8cd5df3db31e872280a6b969feb993f45b385ff491ead29b",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "c81348cadc00f84f8cd5df3db31e872280a6b969feb993f45b385ff491ead29b",
+   "library_version": 1
+  },
+  {
+   "id": "tomato",
+   "kind": "sticker",
+   "label": {
+    "en": "a tomato",
+    "fr": "une tomate"
+   },
+   "tags": [
+    "vegetable"
+   ],
+   "files": {
+    "src": {
+     "file": "tomato.webp",
+     "bytes": 6428
+    }
+   },
+   "width": 338,
+   "height": 320,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Kenney (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Kenney (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Kenney",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/TZWJgWJs8V",
+    "site": "Poly Pizza",
+    "title": "Tomato",
+    "sha256_original": "b4ed2aa318696043497cf7b8a44e0ee316d9ae77c64494176b5325e4d0389559",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Kenney"
+   },
+   "model_sha256": "b4ed2aa318696043497cf7b8a44e0ee316d9ae77c64494176b5325e4d0389559",
+   "library_version": 1
+  },
+  {
+   "id": "traffic_light",
+   "kind": "sticker",
+   "label": {
+    "en": "a traffic light",
+    "fr": "un feu tricolore"
+   },
+   "tags": [
+    "street",
+    "road"
+   ],
+   "files": {
+    "src": {
+     "file": "traffic_light.webp",
+     "bytes": 7996
+    }
+   },
+   "width": 387,
+   "height": 368,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/lg9AKWejnF",
+    "site": "Poly Pizza",
+    "title": "Traffic Light",
+    "sha256_original": "948cae85241d59b35bde0e585e6da6894055da791efa37a06cd75eac82786079",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "948cae85241d59b35bde0e585e6da6894055da791efa37a06cd75eac82786079",
+   "library_version": 1
+  },
+  {
+   "id": "truck",
+   "kind": "sticker",
+   "label": {
+    "en": "a truck",
+    "fr": "un camion"
+   },
+   "tags": [
+    "vehicle",
+    "transport"
+   ],
+   "files": {
+    "src": {
+     "file": "truck.webp",
+     "bytes": 14412
+    }
+   },
+   "width": 400,
+   "height": 332,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/cXw6oiFtZ8",
+    "site": "Poly Pizza",
+    "title": "Truck",
+    "sha256_original": "a5d107b5b06f8ca2d8d7e66ae6309f2e1a25cac577c5db8ebb661b3f0ca5ed8f",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "a5d107b5b06f8ca2d8d7e66ae6309f2e1a25cac577c5db8ebb661b3f0ca5ed8f",
+   "library_version": 1
+  },
+  {
+   "id": "water_tower",
+   "kind": "sticker",
+   "label": {
+    "en": "a water tower",
+    "fr": "un chateau d'eau"
+   },
+   "tags": [
+    "water",
+    "village"
+   ],
+   "files": {
+    "src": {
+     "file": "water_tower.webp",
+     "bytes": 14292
+    }
+   },
+   "width": 149,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/tMK8bhapAK",
+    "site": "Poly Pizza",
+    "title": "Water Tower",
+    "sha256_original": "d340f6c9d872bdd2eb8cba3f1192c1a745910eddd99fadcf90294cf61c5d141d",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "d340f6c9d872bdd2eb8cba3f1192c1a745910eddd99fadcf90294cf61c5d141d",
+   "library_version": 1
+  },
+  {
+   "id": "well",
+   "kind": "sticker",
+   "label": {
+    "en": "a well",
+    "fr": "un puits"
+   },
+   "tags": [
+    "water",
+    "village"
+   ],
+   "files": {
+    "src": {
+     "file": "well.webp",
+     "bytes": 15476
+    }
+   },
+   "width": 278,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/QlqncKYxXb",
+    "site": "Poly Pizza",
+    "title": "Well",
+    "sha256_original": "8e5158984421cfd8ec5040a318a2627911a6dcd7e4b43172bdd7d36f367ad3db",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "8e5158984421cfd8ec5040a318a2627911a6dcd7e4b43172bdd7d36f367ad3db",
+   "library_version": 1
+  },
+  {
+   "id": "whale",
+   "kind": "sticker",
+   "label": {
+    "en": "a whale",
+    "fr": "une baleine"
+   },
+   "tags": [
+    "sea",
+    "animal"
+   ],
+   "files": {
+    "src": {
+     "file": "whale.webp",
+     "bytes": 3816
+    }
+   },
+   "width": 319,
+   "height": 179,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/JGFwp6xWgk",
+    "site": "Poly Pizza",
+    "title": "Whale",
+    "sha256_original": "153d6814c67039378fce22d4c347ed35d7febf2bedac866de91cf9b5dd7945f2",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "153d6814c67039378fce22d4c347ed35d7febf2bedac866de91cf9b5dd7945f2",
+   "library_version": 1
+  },
+  {
+   "id": "wheat",
+   "kind": "sticker",
+   "label": {
+    "en": "wheat",
+    "fr": "du ble"
+   },
+   "tags": [
+    "cereal",
+    "crop",
+    "grain"
+   ],
+   "files": {
+    "src": {
+     "file": "wheat.webp",
+     "bytes": 10436
+    }
+   },
+   "width": 149,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/lPspzfC8Pu",
+    "site": "Poly Pizza",
+    "title": "Wheat",
+    "sha256_original": "b91e74eafc42666e7effe60f346fcbb211bfacad1e0c68476cf354d2727671f9",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "b91e74eafc42666e7effe60f346fcbb211bfacad1e0c68476cf354d2727671f9",
+   "library_version": 1
+  },
+  {
+   "id": "windmill",
+   "kind": "sticker",
+   "label": {
+    "en": "a windmill",
+    "fr": "un moulin a vent"
+   },
+   "tags": [
+    "wind",
+    "mill"
+   ],
+   "files": {
+    "src": {
+     "file": "windmill.webp",
+     "bytes": 21670
+    }
+   },
+   "width": 246,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/52yaPyaAAG",
+    "site": "Poly Pizza",
+    "title": "Tower Windmill",
+    "sha256_original": "a547212fff5b4c99b34ccea01adbc1dc8d820b83affbd006f1cf856cc14d98bd",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "a547212fff5b4c99b34ccea01adbc1dc8d820b83affbd006f1cf856cc14d98bd",
+   "library_version": 1
+  },
+  {
+   "id": "window",
+   "kind": "sticker",
+   "label": {
+    "en": "a window",
+    "fr": "une fenetre"
+   },
+   "tags": [
+    "glass",
+    "house"
+   ],
+   "files": {
+    "src": {
+     "file": "window.webp",
+     "bytes": 7686
+    }
+   },
+   "width": 253,
+   "height": 400,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/n88WAcjzTv",
+    "site": "Poly Pizza",
+    "title": "Window Small",
+    "sha256_original": "08a621c03caf8a1dec0b384b1779a9b651fa22a723d9e3eac0d7368318209cbb",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "08a621c03caf8a1dec0b384b1779a9b651fa22a723d9e3eac0d7368318209cbb",
+   "library_version": 1
+  },
+  {
+   "id": "zebra",
+   "kind": "sticker",
+   "label": {
+    "en": "a zebra",
+    "fr": "un zebre"
+   },
+   "tags": [
+    "animal",
+    "savanna"
+   ],
+   "files": {
+    "src": {
+     "file": "zebra.webp",
+     "bytes": 14242
+    }
+   },
+   "width": 289,
+   "height": 344,
+   "licence": "CC0-1.0",
+   "attribution_required": false,
+   "ai_restyle_allowed": true,
+   "credit": {
+    "en": "3D model: Quaternius (CC0 1.0), Poly Pizza",
+    "fr": "Modèle 3D : Quaternius (CC0 1.0), Poly Pizza"
+   },
+   "source": {
+    "author": "Quaternius",
+    "license": "CC0-1.0",
+    "page": "https://poly.pizza/m/iclPBR6SBZ",
+    "site": "Poly Pizza",
+    "title": "Zebra",
+    "sha256_original": "12c48d4d2e8fe43cf686a7debb613a51a805efbb0b1eee9a3d38328a9d516c9b",
+    "licence_read": "Poly Pizza model page: Licence CC0 1.0, creator Quaternius"
+   },
+   "model_sha256": "12c48d4d2e8fe43cf686a7debb613a51a805efbb0b1eee9a3d38328a9d516c9b",
+   "library_version": 1
+  }
+ ]
+}

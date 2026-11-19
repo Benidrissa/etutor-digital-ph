@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import sentry_sdk
@@ -67,7 +68,18 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("settings_cache load skipped", error=str(exc))
 
+    # The shared prop library bundled in the image (#2714): imported in the
+    # background so no start waits for it, and logged, never raised, on failure.
+    seed_task = None
+    if settings.story_library_autoseed:
+        from app.domain.services.story_library_seed import run_story_library_seed
+
+        seed_task = asyncio.create_task(run_story_library_seed())
+
     yield
+
+    if seed_task is not None and not seed_task.done():
+        seed_task.cancel()
 
 
 app = FastAPI(
