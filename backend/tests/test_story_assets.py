@@ -952,3 +952,25 @@ async def test_the_catalogue_build_fails_inside_a_savepoint_and_never_rolls_back
     session = _Savepoint()
     assert await svc._build_catalogue(_Run(), session, []) is None
     assert (session.entered, session.failed, session.rolled_back) == (1, 1, False)
+
+
+# --------------------------------------------------------------------------
+# Imports made inside functions (found on staging: a wrong module path only
+# fails when the function runs, and the fakes above never ran that line)
+# --------------------------------------------------------------------------
+
+
+def test_every_import_made_inside_a_function_resolves():
+    import ast
+    import importlib
+    from pathlib import Path
+
+    backend = Path(__file__).resolve().parent.parent
+    for relative in ("app/domain/services/story_assets.py", "scripts/rebind_story_assets.py"):
+        tree = ast.parse((backend / relative).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module or node.level:
+                continue
+            module = importlib.import_module(node.module)
+            for alias in node.names:
+                assert hasattr(module, alias.name), f"{relative}: {node.module}.{alias.name}"

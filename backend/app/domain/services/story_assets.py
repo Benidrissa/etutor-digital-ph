@@ -761,7 +761,7 @@ async def _source_rows(
 ) -> dict[str, dict[str, Any]]:
     if not ids:
         return {}
-    from app.domain.models.course import CourseResource  # noqa: PLC0415
+    from app.domain.models.course_resource import CourseResource  # noqa: PLC0415
     from app.domain.models.source_image import SourceImage  # noqa: PLC0415
 
     columns = [getattr(SourceImage, name) for name in _SOURCE_COLUMNS]
