@@ -72,7 +72,7 @@ export function CreditLine({ credit, target, home }: { credit: MediaCredit; targ
   const pageUrl = safeLink(credit.page_url);
   const license = licenseLabel(credit.license) ?? (credit.license ? t("publicDomain") : undefined);
   return (
-    <p className="text-xs leading-snug text-gray-600" data-credit={credit.kind}>
+    <p className="min-w-0 break-words text-xs leading-snug text-gray-600 [overflow-wrap:anywhere]" data-credit={credit.kind}>
       {line}
       {licenseUrl && license ? (
         <>
@@ -144,7 +144,7 @@ function LookCloserBody({
   const kb = picture?.bytes ? Math.max(1, Math.round(picture.bytes / 1024)) : undefined;
 
   return (
-    <figure className="m-0" data-step-panel="look" data-look={stage}>
+    <figure className="m-0 min-w-0 max-w-full break-words [overflow-wrap:anywhere]" data-step-panel="look" data-look={stage}>
       <div
         className="-mx-3 flex min-h-9 items-center justify-between gap-2 rounded-t-[0.85rem] px-4 py-1 text-sm font-extrabold uppercase tracking-wide text-white"
         style={{ background: TEAL }}
@@ -174,7 +174,7 @@ function LookCloserBody({
         ) : showsPicture ? (
           <div
             className="mx-auto overflow-hidden rounded-lg bg-gray-100"
-            style={{ aspectRatio: `${width} / ${height}`, maxHeight: "min(22rem, 55vh)", maxWidth: "100%" }}
+            style={{ aspectRatio: `${width} / ${height}`, maxHeight: "min(18rem, 38vh)", maxWidth: "100%" }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- same-origin story media with its own sizes */}
             <img

@@ -33,11 +33,14 @@ function idOf(value: unknown): string | undefined {
 
 /** The url of the picture a `show image` step (or a prop's figure) names, if any. */
 export function figureUrl(
-  figure: { source_image_id?: unknown; generated_image_id?: unknown } | undefined,
+  figure: { source_image_id?: unknown; generated_image_id?: unknown; original?: unknown } | undefined,
   lang: "fr" | "en",
 ): string | undefined {
   const sourceId = idOf(figure?.source_image_id);
-  if (sourceId) return `/api/v1/source-images/${sourceId}/data?lang=${lang}`;
+  if (sourceId) {
+    // The localised variant only when asked for: it can be a smaller render (#2709).
+    return `/api/v1/source-images/${sourceId}/data${figure?.original ? "" : `?lang=${lang}`}`;
+  }
   const generatedId = idOf(figure?.generated_image_id);
   return generatedId ? `/api/v1/images/${generatedId}/data` : undefined;
 }
@@ -46,7 +49,9 @@ export function figureUrl(
 export function storyFigureUrls(story: StoryCourse): string[] {
   const lang = figureLanguage(story.languages?.target ?? "", story.languages?.home ?? "");
   const urls = new Set<string>();
-  const add = (figure: { source_image_id?: unknown; generated_image_id?: unknown } | undefined) => {
+  const add = (
+    figure: { source_image_id?: unknown; generated_image_id?: unknown; original?: unknown } | undefined,
+  ) => {
     const url = figureUrl(figure, lang);
     if (url) urls.add(url);
   };
@@ -63,4 +68,30 @@ export function storyFigureUrls(story: StoryCourse): string[] {
     }
   }
   return [...urls];
+}
+
+/**
+ * A file name made readable as a credit: no extension, underscores and hyphen
+ * runs as spaces, cut at about 60 characters on a word boundary. Text that is
+ * already a title is left as it is (apart from the cut).
+ */
+export function humanSource(value: string | undefined, limit = 60): string | undefined {
+  if (!value) return undefined;
+  let name = value.trim().replace(/\.(pdf|docx?|pptx?|epub|csv|txt)\b/gi, "");
+  if (/[_]|-{2,}/.test(name) || /\.(pdf)$/i.test(value.trim())) name = name.replace(/[_]+|-{2,}/g, " ");
+  name = name.replace(/\s+/g, " ").trim();
+  if (name.length > limit) {
+    const cut = name.slice(0, limit);
+    const space = cut.lastIndexOf(" ");
+    name = (space > limit / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.\-–—]+$/, "") + "…";
+  }
+  return name || undefined;
+}
+
+/** "Mindware__Tools….pdf, p.21": the file name made readable, the page kept. */
+export function humanAttribution(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const page = /(?:,\s*|\s)(p\.?\s*\d+(?:[-–]\d+)?)\s*$/i.exec(value);
+  const title = humanSource(page ? value.slice(0, page.index) : value);
+  return [title, page?.[1]].filter(Boolean).join(", ") || undefined;
 }

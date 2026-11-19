@@ -952,6 +952,8 @@ def figure_of(ref: dict[str, Any]) -> dict[str, Any]:
         figure: dict[str, Any] = {"generated_image_id": _str(ref.get("id"))}
     else:
         figure = {"source_image_id": _str(ref.get("id"))}
+        if ref.get("original"):
+            figure["original"] = True
     if ref.get("figure_number"):
         figure["figure_number"] = _str(ref.get("figure_number"))
     if ref.get("image_hash"):

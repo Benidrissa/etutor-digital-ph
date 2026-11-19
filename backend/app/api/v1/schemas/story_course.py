@@ -367,6 +367,8 @@ class PropFigure(_Loose):
     #: ...or a lesson illustration (``generated_images``, #2709): exactly one of the two.
     generated_image_id: str | None = None
     figure_number: str | None = None
+    #: Ask for the original picture, not the ``?lang=`` variant (#2709).
+    original: bool | None = None
     #: ``source_images.image_hash``: finds the figure again after a re-index.
     image_hash: str | None = None
     alt: TextObject | None = None
