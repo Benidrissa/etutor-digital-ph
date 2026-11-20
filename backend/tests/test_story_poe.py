@@ -59,11 +59,13 @@ def test_a_legacy_chapter_is_built_byte_for_byte_as_before(unit):
     assert sha(result.doc) == GOLDEN[f"chapter_{unit}"]
 
 
-def test_a_stored_story_parses_dumps_and_validates_as_before():
+def test_a_stored_story_parses_dumps_and_validates_as_before(story_golden_day):
     course = StoryCourse.model_validate(json.loads(STORED.read_text()))
     assert sha(course.model_dump(mode="json")) == GOLDEN["stored_dump"]
     report = validate_story_course(course, generated=True)
     dump = report.model_dump(mode="json")
+    # The report carries the day it ran (#2771): the digest was taken on the pinned day.
+    assert dump["checks"]["date"] == story_golden_day.isoformat()
     # #2750 added warnings on module stories (and nothing else): without them the
     # report is the one digested before. Errors and ``ok`` are not touched.
     added = [w for w in dump["warnings"] if w["code"] in PICTURE_CODES]

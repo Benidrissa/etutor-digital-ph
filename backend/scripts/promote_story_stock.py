@@ -59,6 +59,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import select  # noqa: E402
+from sqlalchemy.orm import undefer  # noqa: E402
 
 from app.domain.models.story_art import (  # noqa: E402
     CHARACTER_POSES,
@@ -437,10 +438,14 @@ def _contact_sheet(pairs: list[tuple[str, bytes, bytes]]):
 async def review(session, args) -> int:
     """Write each candidate beside its idle into ``--out`` (reads only)."""
     out = Path(args.out)
+    # ``image_data`` is a deferred column: on the async engine it must come with the row,
+    # a later attribute access cannot load it (MissingGreenlet).
+    with_image = undefer(StoryStockArt.image_data)
     cands = (
         (
             await session.execute(
                 select(StoryStockArt)
+                .options(with_image)
                 .where(
                     StoryStockArt.status == STOCK_CANDIDATE, StoryStockArt.kind == KIND_CHARACTER
                 )
@@ -458,13 +463,17 @@ async def review(session, args) -> int:
         if cand.source_art_id:
             idle = (
                 await session.execute(
-                    select(StoryStockArt).where(StoryStockArt.id == cand.source_art_id)
+                    select(StoryStockArt)
+                    .options(with_image)
+                    .where(StoryStockArt.id == cand.source_art_id)
                 )
             ).scalar_one_or_none()
         if idle is None:  # the slot's live idle
             idle = (
                 await session.execute(
-                    select(StoryStockArt).where(
+                    select(StoryStockArt)
+                    .options(with_image)
+                    .where(
                         StoryStockArt.kind == cand.kind,
                         StoryStockArt.theme == cand.theme,
                         StoryStockArt.variant == cand.variant,

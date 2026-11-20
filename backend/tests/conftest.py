@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -7,6 +9,32 @@ from app.domain.models import Base
 from app.domain.services.jwt_auth_service import JWTAuthService
 from app.infrastructure.config.settings import settings
 from app.main import app
+
+# ---------------------------------------------------------------------------
+# The day the story golden digests were taken (#2771)
+# ---------------------------------------------------------------------------
+
+STORY_GOLDEN_DAY = date(2026, 11, 19)
+
+
+@pytest.fixture
+def story_golden_day(monkeypatch) -> date:
+    """Pin the day the story validator stamps on its report.
+
+    ``Checks.date`` is today's date, so a digest of a validated story only
+    matches on the day it was taken. A test that compares such a digest to a
+    golden value asks for this fixture.
+    """
+    from app.domain.services import story_course_validator
+
+    class _GoldenDay(date):
+        @classmethod
+        def today(cls):
+            return STORY_GOLDEN_DAY
+
+    monkeypatch.setattr(story_course_validator, "date", _GoldenDay)
+    return STORY_GOLDEN_DAY
+
 
 # ---------------------------------------------------------------------------
 # Simple client (no DB) — for health checks and endpoints that don't hit DB
