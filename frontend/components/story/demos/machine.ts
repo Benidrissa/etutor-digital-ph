@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-/** What the two idea machines (#2740) are given by the player. */
+/** What an idea machine (#2740, #2756) is given by the player. */
 export interface MachineProps {
   params: Record<string, unknown>;
   lang: "fr" | "en";

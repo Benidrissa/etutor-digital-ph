@@ -47,7 +47,8 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // v16 preloads the surprised and sad poses of the cast on stage (#2741).
 // v17 plays the animation cues of story steps (#2739).
 // v18 draws the place-value and number-line idea machines (#2740).
-const CACHE_VERSION = "v18-story-machines";
+// v19 draws the balance, cycle and cause-chain idea machines (#2756).
+const CACHE_VERSION = "v19-story-idea-machines";
 
 // Story pictures (#2681): character poses, backdrops, prop stickers and
 // photos. Not versioned with CACHE_VERSION on purpose, so a downloaded story
