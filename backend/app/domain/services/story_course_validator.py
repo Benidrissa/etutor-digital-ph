@@ -57,7 +57,7 @@ from app.api.v1.schemas.story_course import (
     ValidationReport,
 )
 from app.domain.services import mcq_checks, story_metrics
-from app.domain.services.story_poe import demo_problem
+from app.domain.services.story_poe import LABEL_LIMIT, MAX_VALUE, demo_problem
 from app.domain.services.story_props import is_one_emoji
 
 logger = structlog.get_logger(__name__)
@@ -228,6 +228,9 @@ PLACE_VALUE_MAX_DIGITS = 12
 PLACE_VALUE_GROUPS = ("ones", "thousands", "millions", "billions")
 #: Most ticks a ``number_line`` draws between ``from`` and ``to``.
 NUMBER_LINE_MAX_TICKS = 20
+#: Stages of a ``cycle`` and links of a ``cause_chain`` (#2756), both ends included.
+CYCLE_STAGES = (3, 6)
+CAUSE_CHAIN_LINKS = (2, 5)
 
 
 def _number(value: Any) -> bool:
@@ -247,12 +250,46 @@ def _place_value_digits(n: Any) -> int | None:
     return len(str(int(n)))
 
 
+def _label_ok(label: Any) -> bool:
+    """``{"en", "fr"}`` of non-empty strings, each at most ``LABEL_LIMIT`` characters.
+
+    Unlike the demos, which cut a long label, a machine rejects it.
+    """
+    return isinstance(label, dict) and all(
+        isinstance(label.get(lang), str) and 0 < len(" ".join(label[lang].split())) <= LABEL_LIMIT
+        for lang in ("en", "fr")
+    )
+
+
+def _labels_ok(items: Any, bounds: tuple[int, int]) -> bool:
+    """A list of valid labels whose length is within ``bounds``."""
+    return (
+        isinstance(items, list)
+        and bounds[0] <= len(items) <= bounds[1]
+        and all(_label_ok(item) for item in items)
+    )
+
+
+def _side_ok(side: Any) -> bool:
+    """A ``balance`` side: ``{"label": {en, fr}, "value": a number from 0 to 100000}``."""
+    return (
+        isinstance(side, dict)
+        and _label_ok(side.get("label"))
+        and _number(side.get("value"))
+        and 0 <= side["value"] <= MAX_VALUE
+    )
+
+
 def machine_parts(visual: str, params: Any) -> list[str]:
     """The named parts of an idea machine, for a character to point at (``machine.<part>``).
 
     ``place_value``: the groups present in ``n``, smallest first (``ones``,
     then ``thousands``, ``millions``, ``billions``; 0 gives ``["ones"]``).
     ``number_line``: ``from``, ``to`` and, when a mark is set, ``mark``.
+    ``balance``: ``left``, ``right``, ``beam`` (#2756).
+    ``cycle``: ``stage1`` to ``stageN``, one per stage; ``cause_chain``:
+    ``link1`` to ``linkN``, one per link. The parts depend on the sides, stages
+    or links only, not on ``start`` or ``highlight``.
     Any other visual, or params that are not valid, gives ``[]``.
     Mirrored by ``partsOf`` in the frontend; both read
     ``tests/fixtures/machine_parts_2740.json``.
@@ -270,17 +307,55 @@ def machine_parts(visual: str, params: Any) -> list[str]:
         if params.get("mark") is not None:
             parts.append("mark")
         return parts
+    if visual == "balance":
+        if not (_side_ok(params.get("left")) and _side_ok(params.get("right"))):
+            return []
+        return ["left", "right", "beam"]
+    if visual == "cycle":
+        if not _labels_ok(params.get("stages"), CYCLE_STAGES):
+            return []
+        return [f"stage{i}" for i in range(1, len(params["stages"]) + 1)]
+    if visual == "cause_chain":
+        if not _labels_ok(params.get("links"), CAUSE_CHAIN_LINKS):
+            return []
+        return [f"link{i}" for i in range(1, len(params["links"]) + 1)]
     return []
 
 
 def _machine_problem(visual: str, params: dict[str, Any]) -> str | None:
-    """Why the params of a ``place_value`` or ``number_line`` cannot be drawn, or ``None``."""
+    """Why the params of an idea machine cannot be drawn, or ``None``."""
     highlight = params.get("highlight")
     if visual == "place_value":
         if _place_value_digits(params.get("n")) is None:
             return "params.n of place_value is a whole number of 0 to 12 digits, never negative"
         if params.get("reveal") not in (None, "groups", "all"):
             return 'params.reveal of place_value is "groups" or "all"'
+    elif visual == "balance":
+        for side in ("left", "right"):
+            if not _side_ok(params.get(side)):
+                return (
+                    f"params.{side} of balance is a label with en and fr of 1 to {LABEL_LIMIT} "
+                    f"characters, and a value that is a number from 0 to {MAX_VALUE}"
+                )
+    elif visual == "cycle":
+        low, high = CYCLE_STAGES
+        if not _labels_ok(params.get("stages"), CYCLE_STAGES):
+            return (
+                f"params.stages of cycle is {low} to {high} labels, each with en and fr of "
+                f"1 to {LABEL_LIMIT} characters"
+            )
+        start = params.get("start")
+        if start is not None and not (
+            _number(start) and start == int(start) and 1 <= start <= len(params["stages"])
+        ):
+            return "params.start of cycle is a whole number from 1 to the number of stages"
+    elif visual == "cause_chain":
+        low, high = CAUSE_CHAIN_LINKS
+        if not _labels_ok(params.get("links"), CAUSE_CHAIN_LINKS):
+            return (
+                f"params.links of cause_chain is {low} to {high} labels, each with en and fr of "
+                f"1 to {LABEL_LIMIT} characters"
+            )
     else:
         start, end, mark, step = (params.get(k) for k in ("from", "to", "mark", "step"))
         if not (_number(start) and _number(end) and start < end):
@@ -314,7 +389,7 @@ def drawn_visual_problem(visual: str, params: Any) -> str | None:
     for name, (required, description) in spec.items():
         if required and name not in params:
             return f"{visual} needs params.{name}: {description}"
-    if visual in ("place_value", "number_line"):
+    if visual in ("place_value", "number_line", "balance", "cycle", "cause_chain"):
         return _machine_problem(visual, params)
     if visual == "hundred_square":
         highlight = str(params.get("highlight"))

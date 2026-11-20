@@ -56,6 +56,10 @@ VISUALS = (
     "sort",
     # #2681: the close-up of a prop, ``params.prop`` names it ("Look closely").
     "prop",
+    # #2756: idea machines for courses outside mathematics (not offered to a model).
+    "balance",
+    "cycle",
+    "cause_chain",
 )
 
 # --- Animation cues (#2739): what a step makes the stage do ------------------
@@ -172,6 +176,21 @@ DRAWN_VISUALS: dict[str, dict[str, tuple[bool, str]]] = {
         "mark": (False, "where the ball stops, from and to included"),
         "step": (False, "tick spacing above 0, at most 20 ticks between from and to"),
         "highlight": (False, 'a part: "from", "to" or "mark" (only if mark is set)'),
+    },
+    # #2756, the machines for ideas outside mathematics. Same rules: drawn, not offered.
+    "balance": {
+        "left": (True, '{"label": {"en": ..., "fr": ...}, "value": a number from 0 to 100000}'),
+        "right": (True, '{"label": {"en": ..., "fr": ...}, "value": a number from 0 to 100000}'),
+        "highlight": (False, 'a part: "left", "right" or "beam"'),
+    },
+    "cycle": {
+        "stages": (True, '3 to 6 labels: [{"en": ..., "fr": ...}], each at most 40 characters'),
+        "start": (False, "the stage the marker starts from, a whole number from 1 (default 1)"),
+        "highlight": (False, "a part: stage1 to stageN, one per stage"),
+    },
+    "cause_chain": {
+        "links": (True, '2 to 5 labels: [{"en": ..., "fr": ...}], each at most 40 characters'),
+        "highlight": (False, "a part: link1 to linkN, one per link"),
     },
 }
 

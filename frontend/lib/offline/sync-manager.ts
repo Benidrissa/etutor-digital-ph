@@ -64,6 +64,13 @@ export const PREWARM_V18_RUNS_KEY = 'offline_prewarm_v18_runs';
 export const PREWARM_V18_NEXT_KEY = 'offline_prewarm_v18_next';
 export const PREWARM_V18_MAX_RUNS = 3;
 export const PREWARM_V18_BACKOFF_MS = 5 * 60 * 1000;
+// The v19 prewarm (#2756): the story pages again, for the pages cache renamed
+// with the player that draws the balance, cycle and cause-chain machines.
+const PREWARM_V19_DONE_KEY = 'offline_prewarm_v19_done';
+export const PREWARM_V19_RUNS_KEY = 'offline_prewarm_v19_runs';
+export const PREWARM_V19_NEXT_KEY = 'offline_prewarm_v19_next';
+export const PREWARM_V19_MAX_RUNS = 3;
+export const PREWARM_V19_BACKOFF_MS = 5 * 60 * 1000;
 
 interface PrewarmKeys {
   done: string;
@@ -106,6 +113,13 @@ const V18_KEYS: PrewarmKeys = {
   next: PREWARM_V18_NEXT_KEY,
   maxRuns: PREWARM_V18_MAX_RUNS,
   backoffMs: PREWARM_V18_BACKOFF_MS,
+};
+const V19_KEYS: PrewarmKeys = {
+  done: PREWARM_V19_DONE_KEY,
+  runs: PREWARM_V19_RUNS_KEY,
+  next: PREWARM_V19_NEXT_KEY,
+  maxRuns: PREWARM_V19_MAX_RUNS,
+  backoffMs: PREWARM_V19_BACKOFF_MS,
 };
 
 export type SyncStatus =
@@ -195,6 +209,7 @@ class SyncManager {
       this.runV16PrewarmMigration();
       this.runV17PrewarmMigration();
       this.runV18PrewarmMigration();
+      this.runV19PrewarmMigration();
     };
     window.addEventListener('online', this.onlineHandler);
 
@@ -220,6 +235,7 @@ class SyncManager {
       this.runV16PrewarmMigration();
       this.runV17PrewarmMigration();
       this.runV18PrewarmMigration();
+      this.runV19PrewarmMigration();
     }
   }
 
@@ -456,7 +472,7 @@ class SyncManager {
    * One-shot migration for users who downloaded a module before SW v14.
    * The v10 bump (the story media cache, #2681/#2682), the v12 bump (the
    * story player fixes, #2688) and the v12 bump (the AI read-aloud voice,
-   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, then the v15 bump (lazy story player, #2738), the v16 bump (surprised and sad poses, #2741) the v17 bump (animation cues, #2739) and the v18 bump (idea machines, #2740) to `pages-v18-story-machines`. Without this, previously-prewarmed pages, the
+   * #2704) the v13 bump (close-ups never dropped, #2708) and the v14 bump (course figures, bets and demos, #2709/#2711) renamed the pages cache, then the v15 bump (lazy story player, #2738), the v16 bump (surprised and sad poses, #2741) the v17 bump (animation cues, #2739) the v18 bump (idea machines, #2740) and the v19 bump (idea machines of #2756) to `pages-v19-story-idea-machines`. Without this, previously-prewarmed pages, the
    * module story page among them, are invisible to the SW and an offline
    * navigation falls through to /offline.html.
    *
@@ -486,7 +502,7 @@ class SyncManager {
   /**
    * One-shot migration for users who downloaded a module before SW v15, which
    * loads the story player on demand and renamed the pages cache (#2738; the
-   * cache is `pages-v18-story-machines` since #2740). Same job and same retry rules as
+   * cache is `pages-v19-story-idea-machines` since #2756). Same job and same retry rules as
    * the v14 one; the player's chunk itself is in the service worker precache.
    */
   runV15PrewarmMigration(): Promise<void> {
@@ -566,6 +582,27 @@ class SyncManager {
   }
 
   private v18Run: Promise<void> | null = null;
+
+  /**
+   * One-shot migration for users who downloaded a module before SW v19, whose
+   * story player draws the balance, cycle and cause-chain machines and which
+   * renames the pages cache to `pages-v19-story-idea-machines` (#2756). Same
+   * job and same retry rules as the v14 to v18 ones.
+   */
+  runV19PrewarmMigration(): Promise<void> {
+    if (!this.v19Run) {
+      // After the v18 run (itself after v17 to v14): the six fill the same
+      // pages cache, and a page an earlier one stored is not fetched again.
+      this.v19Run = this.runV18PrewarmMigration()
+        .then(() => this.prewarmDownloadedPages(V19_KEYS))
+        .finally(() => {
+          this.v19Run = null;
+        });
+    }
+    return this.v19Run;
+  }
+
+  private v19Run: Promise<void> | null = null;
 
   private async prewarmDownloadedPages(keys: PrewarmKeys): Promise<void> {
     if (typeof window === 'undefined') return;
