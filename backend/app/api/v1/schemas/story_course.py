@@ -58,6 +58,51 @@ VISUALS = (
     "prop",
 )
 
+# --- Animation cues (#2739): what a step makes the stage do ------------------
+
+#: The cue primitives. A cue is ``{"do": <primitive>, ...arguments}``, kept in
+#: the optional ``cues`` list of a step (an extra key of ``Step``, never
+#: declared, so a stored story without cues dumps exactly as before).
+#: Arguments, by primitive:
+#:   enter   {who, at?}      an actor walks on, to a mark (left, centre, right)
+#:   exit    {who}           an actor walks off
+#:   move    {who, to}       an actor goes to a mark
+#:   face    {who, toward}   an actor turns toward another actor id or a mark
+#:   costume {who, pose}     an actor takes a pose (a MOODS value) for the beat
+#:   show    {prop}          a prop of the scene is pointed at in this beat
+#:   camera  {shot}         the shot of this beat (a CUE_SHOTS value)
+#:   sound   {name}          a sound effect (a CUE_SOUNDS value)
+#:   wait    {ms}            a pause, in whole milliseconds
+#:   machine {}              starts the machine of the step's own ``show`` visual
+#:   music   {...}           accepted, plays nothing yet (#2745)
+CUE_PRIMITIVES = (
+    "enter",
+    "exit",
+    "move",
+    "face",
+    "costume",
+    "show",
+    "camera",
+    "sound",
+    "wait",
+    "machine",
+    "music",
+)
+
+#: Where an actor can stand. ``off`` is beyond the edge of the stage.
+CUE_MARKS = ("left", "centre", "right", "off")
+
+#: The sound effects the player synthesises (``Sfx`` in ``stage/sound.ts``).
+CUE_SOUNDS = ("pop", "whoosh", "correct", "oops", "coin", "fanfare", "star")
+
+#: The camera shots of the player (``Shot`` in ``stage/scene-plan.ts``).
+CUE_SHOTS = ("wide", "two", "close", "insert", "split")
+
+#: Per step: at most this many cues, and this many milliseconds of ``wait``
+#: (the sum of all its ``wait`` cues).
+MAX_CUES_PER_STEP = 8
+MAX_CUE_WAIT_MS = 2000
+
 # --- Props (#2681): the concrete things a story shows ------------------------
 
 #: What a prop is shown as. Closed, like cast kinds: ``real`` (a photo of the
@@ -334,6 +379,8 @@ class Step(_Loose):
     #: picks one itself. Unknown values are ignored by the player.
     shot: str | None = None
     # Optional keys a generated story may carry (extra keys are kept):
+    # ``cues`` (any step, #2739): a list of animation cues, see CUE_PRIMITIVES;
+    #   never declared as a field, a bad cue is a validator warning only;
     # ``teaches`` (concept): the lesson IDEA numbers the card names, an int or
     #   a list of ints (#2680);
     # ``refrain`` (say): a catchphrase of the episode, which may come back word

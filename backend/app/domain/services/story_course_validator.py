@@ -32,10 +32,16 @@ from app.api.v1.schemas.story_course import (
     ART_KEYS,
     CAST_ROLES,
     COPY_SHAPES,
+    CUE_MARKS,
+    CUE_PRIMITIVES,
+    CUE_SHOTS,
+    CUE_SOUNDS,
     DEMO_VISUALS,
     DRAWN_VISUALS,
     LENGTH_LIMITS,
     MAX_CLOSEUPS_PER_SCENE,
+    MAX_CUE_WAIT_MS,
+    MAX_CUES_PER_STEP,
     MAX_PROPS_PER_LINE,
     MAX_PROPS_PER_MODULE,
     MAX_PROPS_PER_SCENE,
@@ -588,6 +594,7 @@ class StoryCourseValidator:
     def _check_scene(self, chapter_id: str, scene: Any) -> None:
         path = f"chapters[{chapter_id}].scenes[{scene.id}]"
         self._check_scene_props(scene, path)
+        self._check_cues(scene, path)
         if (
             scene.place not in PLACES
             and scene.place not in self._place_ids
@@ -637,6 +644,138 @@ class StoryCourseValidator:
                     f"{step_path}.mood",
                     f"{step.mood!r} is not a mood: use one of {', '.join(MOODS)}",
                 )
+
+    def _check_cues(self, scene: Any, path: str) -> None:
+        """Animation cues (#2739): a bad one is only ever a warning, generated or not.
+
+        The player drops the whole cue list of a step with a bad cue, so the
+        warning says which cue to fix. A scene without cues adds nothing.
+        """
+        stage: set[str] | None = None
+        for index, step in enumerate(scene.steps):
+            cues = (step.model_extra or {}).get("cues")
+            if cues is None:
+                continue
+            base = f"{path}.steps[{index}].cues"
+            if not isinstance(cues, list):
+                self._warn("cue_bad_shape", base, "'cues' must be a list")
+                continue
+            if stage is None:
+                stage = set(scene.cast or []) | {s.who for s in scene.steps if s.who}
+                stage = stage or set(self._cast_ids)
+            if len(cues) > MAX_CUES_PER_STEP:
+                self._warn(
+                    "cue_too_many",
+                    base,
+                    f"{len(cues)} cues: at most {MAX_CUES_PER_STEP} in a step",
+                )
+            waited = 0
+            for number, cue in enumerate(cues):
+                waited += self._check_cue(cue, f"{base}[{number}]", step, scene, stage)
+            if waited > MAX_CUE_WAIT_MS:
+                self._warn(
+                    "cue_wait_over_limit",
+                    base,
+                    f"{waited} ms of wait: at most {MAX_CUE_WAIT_MS} ms in a step",
+                )
+            shown = {
+                c.get("prop")
+                for c in cues
+                if isinstance(c, dict) and c.get("do") == "show" and isinstance(c.get("prop"), str)
+            }
+            # Distinct props, like the player counts them.
+            if shown and len(shown | set(step.props or [])) > MAX_PROPS_PER_LINE:
+                self._warn(
+                    "cue_too_many",
+                    base,
+                    f"a beat points at {MAX_PROPS_PER_LINE} props at most, counting 'props'",
+                )
+
+    def _check_cue(self, cue: Any, path: str, step: Any, scene: Any, stage: set[str]) -> int:
+        """Warn about one cue; return the milliseconds of wait it asks for."""
+        if not isinstance(cue, dict):
+            self._warn("cue_bad_shape", path, "a cue must be an object with a 'do'")
+            return 0
+        action = cue.get("do")
+        if action not in CUE_PRIMITIVES:
+            self._warn(
+                "cue_unknown_do",
+                f"{path}.do",
+                f"{action!r} is not a cue: use one of {', '.join(CUE_PRIMITIVES)}",
+            )
+            return 0
+
+        def actor(key: str) -> None:
+            value = cue.get(key)
+            if not isinstance(value, str) or value not in stage:
+                self._warn(
+                    "cue_unknown_actor",
+                    f"{path}.{key}",
+                    f"{value!r} is not on stage in this scene",
+                )
+
+        def mark(key: str, allowed: tuple[str, ...], required: bool) -> None:
+            value = cue.get(key)
+            # An absent optional mark is fine; a null one is dropped by the player.
+            if key not in cue and not required:
+                return
+            if not isinstance(value, str) or value not in allowed:
+                self._warn(
+                    "cue_bad_mark",
+                    f"{path}.{key}",
+                    f"{value!r} is not a mark: use one of {', '.join(allowed)}",
+                )
+
+        def choice(key: str, allowed: tuple[str, ...]) -> None:
+            value = cue.get(key)
+            if not isinstance(value, str) or value not in allowed:
+                self._warn(
+                    "cue_bad_arg",
+                    f"{path}.{key}",
+                    f"{value!r} is not valid: use one of {', '.join(allowed)}",
+                )
+
+        if action in ("enter", "exit", "move", "face", "costume"):
+            actor("who")
+        if action == "enter":
+            mark("at", tuple(m for m in CUE_MARKS if m != "off"), required=False)
+        elif action == "move":
+            mark("to", CUE_MARKS, required=True)
+        elif action == "face":
+            toward = cue.get("toward")
+            if not (isinstance(toward, str) and (toward in stage or toward in CUE_MARKS)):
+                self._warn(
+                    "cue_bad_arg",
+                    f"{path}.toward",
+                    f"{toward!r} is neither an actor on stage nor a mark",
+                )
+        elif action == "costume":
+            choice("pose", MOODS)
+        elif action == "show":
+            prop = cue.get("prop")
+            if not isinstance(prop, str) or prop not in (scene.props or []):
+                self._warn(
+                    "cue_unknown_prop",
+                    f"{path}.prop",
+                    f"{prop!r} is not among the scene's props",
+                )
+        elif action == "camera":
+            choice("shot", CUE_SHOTS)
+        elif action == "sound":
+            choice("name", CUE_SOUNDS)
+        elif action == "wait":
+            ms = cue.get("ms")
+            if isinstance(ms, bool) or not isinstance(ms, int) or ms <= 0:
+                self._warn("cue_bad_arg", f"{path}.ms", f"{ms!r} is not a whole number of ms")
+            else:
+                return ms
+        elif action == "machine" and not (step.type == "show" and step.visual):
+            self._warn(
+                "cue_machine_without_show",
+                path,
+                "'machine' needs a 'show' step with a visual to start",
+            )
+        return 0
 
     def _check_speaker_prefix(self, step: Any, step_path: str) -> None:
         """A ``say`` line is the words alone: never "Awa: ..." or "M. Kaboré dit : ..."."""

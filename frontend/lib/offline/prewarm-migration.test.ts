@@ -51,12 +51,14 @@ import {
   PREWARM_V15_MAX_RUNS,
   PREWARM_V15_RUNS_KEY,
   PREWARM_V16_RUNS_KEY,
+  PREWARM_V17_RUNS_KEY,
   SyncManager,
 } from "./sync-manager";
 
 const DONE = "offline_prewarm_v14_done";
 const DONE_V15 = "offline_prewarm_v15_done";
 const DONE_V16 = "offline_prewarm_v16_done";
+const DONE_V17 = "offline_prewarm_v17_done";
 const UNIT_GONE = "/fr/modules/mod-1/units/1.6";
 const fetched = () => vi.mocked(prewarmPage).mock.calls.map(([url]) => url);
 const manager = SyncManager.getInstance();
@@ -235,5 +237,49 @@ describe("v16 page prewarm (surprised and sad poses, #2741)", () => {
     expect(window.localStorage.getItem(DONE_V16)).toBeNull();
     expect(window.localStorage.getItem(PREWARM_V16_RUNS_KEY)).toBe("1");
     expect(window.localStorage.getItem(PREWARM_V15_RUNS_KEY)).toBeNull();
+  });
+});
+
+describe("v17 page prewarm (animation cues, #2739)", () => {
+  it("warms the pages of a downloaded module once, then is done, whatever v14, v15 and v16 did", async () => {
+    window.localStorage.setItem(DONE, "1");
+    window.localStorage.setItem(DONE_V15, "1");
+    window.localStorage.setItem(DONE_V16, "1");
+    await manager.runV17PrewarmMigration();
+    expect(fetched()).toEqual([
+      "/fr/modules/mod-1/units/1.1",
+      UNIT_GONE,
+      "/fr/modules/mod-1",
+      "/fr/modules/mod-1/story",
+    ]);
+    expect(window.localStorage.getItem(DONE_V17)).toBe("1");
+
+    vi.mocked(prewarmPage).mockClear();
+    await manager.runV17PrewarmMigration();
+    expect(fetched()).toEqual([]);
+  });
+
+  it("runs after v14, v15 and v16 and does not fetch a page they stored", async () => {
+    await Promise.all([
+      manager.runV14PrewarmMigration(),
+      manager.runV15PrewarmMigration(),
+      manager.runV16PrewarmMigration(),
+      manager.runV17PrewarmMigration(),
+    ]);
+    expect(fetched()).toHaveLength(4);
+    for (const key of [DONE, DONE_V15, DONE_V16, DONE_V17]) {
+      expect(window.localStorage.getItem(key)).toBe("1");
+    }
+  });
+
+  it("keeps its own retry count when a page may still come", async () => {
+    window.localStorage.setItem(DONE, "1");
+    window.localStorage.setItem(DONE_V15, "1");
+    window.localStorage.setItem(DONE_V16, "1");
+    state.outcomes.set(UNIT_GONE, "network_error");
+    await manager.runV17PrewarmMigration();
+    expect(window.localStorage.getItem(DONE_V17)).toBeNull();
+    expect(window.localStorage.getItem(PREWARM_V17_RUNS_KEY)).toBe("1");
+    expect(window.localStorage.getItem(PREWARM_V16_RUNS_KEY)).toBeNull();
   });
 });

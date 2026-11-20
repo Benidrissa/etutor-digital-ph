@@ -321,6 +321,21 @@ export interface Exercise {
   stimulus?: Stimulus;
 }
 
+/** One animation cue (#2739): `do` plus the arguments of that primitive. */
+export interface Cue {
+  do: "enter" | "exit" | "move" | "face" | "costume" | "show" | "camera" | "sound" | "wait" | "machine" | "music";
+  who?: string;
+  at?: "left" | "centre" | "right";
+  to?: "left" | "centre" | "right" | "off";
+  toward?: string;
+  pose?: Mood;
+  prop?: string;
+  shot?: "wide" | "two" | "close" | "insert" | "split";
+  name?: string;
+  ms?: number;
+  [extra: string]: unknown;
+}
+
 export interface Step {
   type: StepType;
   /** narrate/say carry flat strings; concept carries a row array. */
@@ -343,6 +358,8 @@ export interface Step {
   props?: string[];
   /** Forces the camera shot of this beat; absent, the player picks one (#2712). */
   shot?: "wide" | "two" | "close" | "insert" | "split";
+  /** Animation cues of this beat (#2739); one bad cue drops the whole list. */
+  cues?: Cue[];
   /** An `ask` that is a bet (#2711): ungraded, 0 points. */
   predict?: boolean;
   /** A demo `show` (#2711): the id of the bet it observes. */
