@@ -2798,6 +2798,11 @@
     "machineLabel_ones": "ones",
     "machineLabel_thousands": "thousands",
     "machineLabel_millions": "millions",
-    "machineLabel_billions": "billions"
+    "machineLabel_billions": "billions",
+    "machineBalanceAltLeft": "Scale comparing {left} ({leftValue}) with {right} ({rightValue}). The heavier side is {left}.",
+    "machineBalanceAltRight": "Scale comparing {left} ({leftValue}) with {right} ({rightValue}). The heavier side is {right}.",
+    "machineBalanceAltEqual": "Scale comparing {left} ({leftValue}) with {right} ({rightValue}). The two sides are balanced.",
+    "machineCycleAlt": "Cycle of {count} stages: {stages}, then back to {first}.",
+    "machineChainAlt": "Chain of {count} causes, each leading to the next: {links}."
   }
 }
