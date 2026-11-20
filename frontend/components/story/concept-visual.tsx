@@ -32,6 +32,9 @@ import {
   treeDepth,
   type TreeNode,
 } from "@/lib/story-course/numbers";
+import { isMachineVisual, machineAlt, numberLineModel, placeValueModel } from "@/lib/story-course/machines";
+
+import { useReducedMotion } from "./stage/prefs";
 
 // The demo primitives (#2711) are a chunk each, fetched when a story first shows one.
 const DEMOS = {
@@ -40,6 +43,10 @@ const DEMOS = {
   sort: lazy(() => import("./demos/sort")),
   timeline: lazy(() => import("./demos/timeline")),
 } as const;
+
+// The two idea machines (#2740) are a chunk each too, inside their own Suspense.
+const PlaceValue = lazy(() => import("./demos/place-value"));
+const NumberLine = lazy(() => import("./demos/number-line"));
 
 /** Whether `visual` is one of the demo primitives (#2711). */
 export function isDemoVisual(visual: unknown): visual is keyof typeof DEMOS {
@@ -62,6 +69,11 @@ interface ConceptVisualProps {
   onDone?: (outcome: { correct: boolean }) => void;
   /** A demo: show its answer state now (#2711). */
   reveal?: boolean;
+  /**
+   * An idea machine (#2740): it has been started, by the `machine` cue of its
+   * step or because the step appeared. Defaults to started.
+   */
+  play?: boolean;
 }
 
 const num = (value: unknown, fallback = 0): number => {
@@ -77,6 +89,7 @@ export function ConceptVisual({
   language = "en",
   onDone,
   reveal,
+  play = true,
 }: ConceptVisualProps) {
   if (isDemoVisual(visual)) {
     return (
@@ -89,7 +102,7 @@ export function ConceptVisual({
   if (visual === "image") {
     return <SourceFigure params={params} caption={caption} language={language} />;
   }
-  return <DrawnVisual visual={visual} params={params} caption={caption} label={label} />;
+  return <DrawnVisual visual={visual} params={params} caption={caption} label={label} language={language} play={play} reveal={reveal} />;
 }
 
 function DemoVisual({
@@ -130,8 +143,12 @@ function DrawnVisual({
   params,
   caption,
   label,
-}: Omit<ConceptVisualProps, "language">) {
+  language = "en",
+  play = true,
+  reveal,
+}: Omit<ConceptVisualProps, "onDone">) {
   const t = useTranslations("Story");
+  const reduced = useReducedMotion();
   const body = useMemo<ReactNode | null>(() => {
     switch (visual) {
       case "hundred_square":
@@ -151,10 +168,26 @@ function DrawnVisual({
         return <DivisionLadder n={num(params?.n, 12)} />;
       case "venn_primes":
         return <VennPrimes a={num(params?.a, 12)} b={num(params?.b, 18)} />;
+      case "place_value":
+      case "number_line": {
+        if (!(visual === "place_value" ? placeValueModel(params) : numberLineModel(params))) return null;
+        const Machine = visual === "place_value" ? PlaceValue : NumberLine;
+        return (
+          <Suspense
+            fallback={
+              <p role="status" className="p-4 text-center text-sm text-gray-600">
+                {t("demoLoading")}
+              </p>
+            }
+          >
+            <Machine params={params ?? {}} lang={language} play={play} reveal={reveal} reduced={reduced} />
+          </Suspense>
+        );
+      }
       default:
         return null;
     }
-  }, [visual, params]);
+  }, [visual, params, language, play, reveal, reduced, t]);
 
   useEffect(() => {
     if (body !== null) return;
@@ -162,6 +195,8 @@ function DrawnVisual({
     console.warn(`Story player: visual "${visual}" is not drawn yet`, params ?? {});
   }, [body, visual, params]);
 
+  // A machine describes itself from its params, in the learner's language.
+  const alt = machineAlt(visual, params, language, (key, values) => t(key as never, values as never));
   if (body === null) {
     return (
       <figure className="my-4">
@@ -178,8 +213,9 @@ function DrawnVisual({
   return (
     <figure className="my-4">
       <div
-        role="img"
-        aria-label={label ?? caption ?? `${visual} diagram`}
+        // A machine holds a button: a group keeps it reachable, an img would hide it from screen readers.
+        role={isMachineVisual(visual) ? "group" : "img"}
+        aria-label={label ?? alt ?? caption ?? `${visual} diagram`}
         className="w-full overflow-x-auto rounded-lg border border-teal-100 bg-white p-3"
       >
         {body}

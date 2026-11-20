@@ -159,6 +159,20 @@ DRAWN_VISUALS: dict[str, dict[str, tuple[bool, str]]] = {
     "timeline": {
         "events": (True, '2 to 6 events: [{"label": {"en": ..., "fr": ...}, "at": a number}]'),
     },
+    # #2740, the idea machines. Drawn by the player but not offered to a model
+    # (not in MATHS_VISUALS). ``highlight`` names a part: see ``machine_parts``.
+    "place_value": {
+        "n": (True, "a whole number of 0 to 12 digits, never negative"),
+        "reveal": (False, '"groups" (default, three digits at a time) or "all"'),
+        "highlight": (False, "a part present in n: ones, thousands, millions or billions"),
+    },
+    "number_line": {
+        "from": (True, "a number"),
+        "to": (True, "a number above from"),
+        "mark": (False, "where the ball stops, from and to included"),
+        "step": (False, "tick spacing above 0, at most 20 ticks between from and to"),
+        "highlight": (False, 'a part: "from", "to" or "mark" (only if mark is set)'),
+    },
 }
 
 #: The four number-theory widgets: what the story prompt offers a maths story

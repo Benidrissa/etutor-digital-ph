@@ -21,6 +21,7 @@ agrees with is exactly the failure mode this catches before a child sees it.
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import date
 from typing import Any
@@ -221,6 +222,83 @@ def line_key(text: Any) -> str:
     return value.strip(" .!?…,;:«»\"'“”‘’-–—")
 
 
+#: Most digits a ``place_value`` machine draws (four groups of three).
+PLACE_VALUE_MAX_DIGITS = 12
+#: Place-value groups, smallest first: the order of ``machine_parts``.
+PLACE_VALUE_GROUPS = ("ones", "thousands", "millions", "billions")
+#: Most ticks a ``number_line`` draws between ``from`` and ``to``.
+NUMBER_LINE_MAX_TICKS = 20
+
+
+def _number(value: Any) -> bool:
+    """A finite number: an int or a float, never a bool, NaN or infinity."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _place_value_digits(n: Any) -> int | None:
+    """Digit count of ``n`` (0 has one), or ``None`` if ``n`` is not a valid ``place_value`` n.
+
+    A whole number from 0 to 10**12 - 1. A float with no fraction (4.0, which is
+    what JSON can bring) counts as whole, so the player, which cannot tell 4.0
+    from 4, agrees with this check.
+    """
+    if not _number(n) or n != int(n) or not 0 <= n < 10**PLACE_VALUE_MAX_DIGITS:
+        return None
+    return len(str(int(n)))
+
+
+def machine_parts(visual: str, params: Any) -> list[str]:
+    """The named parts of an idea machine, for a character to point at (``machine.<part>``).
+
+    ``place_value``: the groups present in ``n``, smallest first (``ones``,
+    then ``thousands``, ``millions``, ``billions``; 0 gives ``["ones"]``).
+    ``number_line``: ``from``, ``to`` and, when a mark is set, ``mark``.
+    Any other visual, or params that are not valid, gives ``[]``.
+    Mirrored by ``partsOf`` in the frontend; both read
+    ``tests/fixtures/machine_parts_2740.json``.
+    """
+    params = params if isinstance(params, dict) else {}
+    if visual == "place_value":
+        digits = _place_value_digits(params.get("n"))
+        if digits is None:
+            return []
+        return list(PLACE_VALUE_GROUPS[: (digits + 2) // 3])
+    if visual == "number_line":
+        if not (_number(params.get("from")) and _number(params.get("to"))):
+            return []
+        parts = ["from", "to"]
+        if params.get("mark") is not None:
+            parts.append("mark")
+        return parts
+    return []
+
+
+def _machine_problem(visual: str, params: dict[str, Any]) -> str | None:
+    """Why the params of a ``place_value`` or ``number_line`` cannot be drawn, or ``None``."""
+    highlight = params.get("highlight")
+    if visual == "place_value":
+        if _place_value_digits(params.get("n")) is None:
+            return "params.n of place_value is a whole number of 0 to 12 digits, never negative"
+        if params.get("reveal") not in (None, "groups", "all"):
+            return 'params.reveal of place_value is "groups" or "all"'
+    else:
+        start, end, mark, step = (params.get(k) for k in ("from", "to", "mark", "step"))
+        if not (_number(start) and _number(end) and start < end):
+            return "params.from and params.to of number_line are numbers with from < to"
+        if mark is not None and not (_number(mark) and start <= mark <= end):
+            return "params.mark of number_line is a number from params.from to params.to"
+        if step is not None and not (
+            _number(step) and step > 0 and (end - start) / step <= NUMBER_LINE_MAX_TICKS + 1e-9
+        ):
+            return (
+                f"params.step of number_line is above 0, with at most "
+                f"{NUMBER_LINE_MAX_TICKS} ticks between from and to"
+            )
+    if highlight is not None and highlight not in machine_parts(visual, params):
+        return f"params.highlight of {visual} is one of {', '.join(machine_parts(visual, params))}"
+    return None
+
+
 def drawn_visual_problem(visual: str, params: Any) -> str | None:
     """Why the player cannot draw ``visual`` with ``params``, or ``None``.
 
@@ -236,6 +314,8 @@ def drawn_visual_problem(visual: str, params: Any) -> str | None:
     for name, (required, description) in spec.items():
         if required and name not in params:
             return f"{visual} needs params.{name}: {description}"
+    if visual in ("place_value", "number_line"):
+        return _machine_problem(visual, params)
     if visual == "hundred_square":
         highlight = str(params.get("highlight"))
         if highlight != "primes" and not re.fullmatch(r"multiples:[1-9]\d?", highlight):

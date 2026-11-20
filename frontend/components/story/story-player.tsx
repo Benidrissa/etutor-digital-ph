@@ -48,6 +48,7 @@ import {
   type StoryLanguage,
 } from "@/lib/story-course/personalize";
 import { figureLanguage, figureUrl } from "@/lib/story-course/media";
+import { isMachineVisual, machineStartDelay } from "@/lib/story-course/machines";
 import { chapterLocalId } from "@/lib/story-course/progress";
 import type { StoryEvent } from "@/lib/story-course/events";
 import type { Prop, Step, StoryCourse } from "@/lib/story-course/types";
@@ -696,6 +697,21 @@ export function StoryPlayer({
     return () => timers.forEach(clearTimeout);
   }, [current, introOpen, beatOn, revisit, cut, sfx]);
 
+  // The idea machine of a `show` step (#2740) starts when its `machine` cue
+  // plays (after the waits before it), or when the step appears without one.
+  // A step seen again shows its end state; a tap that cuts the beat short
+  // starts it now.
+  // The started machine is remembered by its planned step: an index comes
+  // back in the next chapter.
+  const [machineOn, setMachineOn] = useState<PlannedStep | null>(null);
+  const hasMachine = current?.step.type === "show" && isMachineVisual(current.step.visual);
+  useEffect(() => {
+    const delay = machineStartDelay({ hasMachine, introOpen, beatOn, revisit, cut, machineAt: current?.cues?.machineAt });
+    if (delay === null || !current) return;
+    const timer = setTimeout(() => setMachineOn(current), delay);
+    return () => clearTimeout(timer);
+  }, [hasMachine, current, introOpen, beatOn, revisit, cut]);
+
   // Ambient motion stands still while the stage is out of sight. Several
   // changes can come in one batch: the last one is the state now.
   const [onScreen, setOnScreen] = useState(true);
@@ -1313,6 +1329,8 @@ export function StoryPlayer({
               params={step.params}
               caption={step.caption ? text(step.caption, target, home) : undefined}
               language={figureLang}
+              play={machineOn === current}
+              reveal={revisit || reviewing}
             />
           </VisualPanel>
         );

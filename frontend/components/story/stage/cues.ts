@@ -50,6 +50,8 @@ export interface BeatCues {
   delay: Record<string, number>;
   /** When each actor's first entrance started, in ms after its beat; kept to the end of the scene. */
   enterAt: Record<string, number>;
+  /** When the idea machine of this beat's `show` starts, in ms after the beat (the waits before the cue); absent: when the step appears. */
+  machineAt?: number;
   /** Camera shot of this beat; it wins over every automatic rule. */
   shot?: Shot;
 }
@@ -129,7 +131,7 @@ const inView = (x: number) => x >= 0 && x <= 100;
  * One state per step of a scene (null for a step without valid cues leaves the
  * state as it was). Position and facing hold until a later cue or the end of
  * the scene; costume, show, camera and sounds belong to their beat only.
- * A `wait` holds back the entrances, exits, moves and sounds after it.
+ * A `wait` holds back the entrances, exits, moves, sounds and machine starts after it.
  * Whoever's first cue is `enter` starts the scene off stage; the others stand
  * at `slotsFor` of how many start on stage, and keep their place when others
  * arrive (an entrant may overlap them: the author picks the mark).
@@ -193,6 +195,9 @@ export function foldCues(lists: (Cue[] | null)[], cast: string[]): BeatCues[] | 
           break;
         case "sound":
           beat.sounds.push({ name: cue.name as Sfx, at: elapsed });
+          break;
+        case "machine":
+          beat.machineAt = elapsed;
           break;
         case "wait":
           elapsed += cue.ms as number;
