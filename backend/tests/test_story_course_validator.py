@@ -671,7 +671,7 @@ class TestGeneratedOnly:
         line = {"type": "narrate", "en": "Every chapter starts like this one.", "fr": "Pareil."}
         course["chapters"][0]["scenes"][0]["steps"].insert(1, dict(line))
         course["chapters"][1]["scenes"][0]["steps"].insert(0, dict(line))
-        course["chapters"][1]["scenes"][0]["steps"][2]["visual"] = "number_line"
+        course["chapters"][1]["scenes"][0]["steps"][2]["visual"] = "thermometer"
         return course
 
     CODES = {"unknown_mood", "speaker_prefix", "repeated_line", "visual_not_drawn"}

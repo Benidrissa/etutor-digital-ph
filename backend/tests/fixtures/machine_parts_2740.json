@@ -1,0 +1,175 @@
+[
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 0
+    },
+    "parts": [
+      "ones"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 7
+    },
+    "parts": [
+      "ones"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 999
+    },
+    "parts": [
+      "ones"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 1000
+    },
+    "parts": [
+      "ones",
+      "thousands"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 999999
+    },
+    "parts": [
+      "ones",
+      "thousands"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 1000000
+    },
+    "parts": [
+      "ones",
+      "thousands",
+      "millions"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 4305892176
+    },
+    "parts": [
+      "ones",
+      "thousands",
+      "millions",
+      "billions"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 999999999999
+    },
+    "parts": [
+      "ones",
+      "thousands",
+      "millions",
+      "billions"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 4.0
+    },
+    "parts": [
+      "ones"
+    ]
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 1000000000000
+    },
+    "parts": []
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": -5
+    },
+    "parts": []
+  },
+  {
+    "visual": "place_value",
+    "params": {
+      "n": 2.5
+    },
+    "parts": []
+  },
+  {
+    "visual": "place_value",
+    "params": {},
+    "parts": []
+  },
+  {
+    "visual": "number_line",
+    "params": {
+      "from": 0,
+      "to": 100
+    },
+    "parts": [
+      "from",
+      "to"
+    ]
+  },
+  {
+    "visual": "number_line",
+    "params": {
+      "from": 0,
+      "to": 100,
+      "mark": 37
+    },
+    "parts": [
+      "from",
+      "to",
+      "mark"
+    ]
+  },
+  {
+    "visual": "number_line",
+    "params": {
+      "from": -5,
+      "to": 5,
+      "mark": 0
+    },
+    "parts": [
+      "from",
+      "to",
+      "mark"
+    ]
+  },
+  {
+    "visual": "number_line",
+    "params": {
+      "from": 0
+    },
+    "parts": []
+  },
+  {
+    "visual": "hundred_square",
+    "params": {
+      "highlight": "primes"
+    },
+    "parts": []
+  },
+  {
+    "visual": "image",
+    "params": {},
+    "parts": []
+  }
+]
