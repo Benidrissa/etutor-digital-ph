@@ -106,6 +106,7 @@ import {
   tokenFor,
   type OnStageProp,
 } from "./stage/props";
+import { canAnimate } from "./stage/cues";
 import { planSteps, presenterOf, reactorOf, sceneShotOf, type PlannedStep } from "./stage/scene-plan";
 import { reveal } from "./stage/scroll";
 import { playSfx, unlockAudio, type Sfx } from "./stage/sound";
@@ -384,7 +385,7 @@ export function StoryPlayer({
   const propMedia = story.art?.props;
   const propContext = useMemo(() => ({ props: propsById, media: propMedia }), [propsById, propMedia]);
   const flat = useMemo<PlannedStep[]>(
-    () => planSteps(chapters, story.chapters ?? [], actors, propContext),
+    () => planSteps(chapters, story.chapters ?? [], actors, propContext, { cues: canAnimate() }),
     [chapters, story.chapters, actors, propContext],
   );
   const figureLang = figureLanguage(target, home);
@@ -680,6 +681,21 @@ export function StoryPlayer({
     lastPlaceRun.current = current.placeRun;
   }, [current, introOpen, beatOn, revisit, sfx]);
 
+  // The sounds of a beat's cues, after the waits before them; a step seen
+  // again is quiet, and a tap that cuts the beat short drops the rest.
+  const [cutAt, setCutAt] = useState<number | null>(null);
+  const cut = cutAt === index;
+  const beatAtRef = useRef(0);
+  useEffect(() => {
+    beatAtRef.current = Date.now();
+  }, [index]);
+  useEffect(() => {
+    const sounds = current?.cues?.sounds;
+    if (!sounds?.length || introOpen || beatOn || revisit || cut) return;
+    const timers = sounds.map((item) => setTimeout(() => sfx(item.name), item.at));
+    return () => timers.forEach(clearTimeout);
+  }, [current, introOpen, beatOn, revisit, cut, sfx]);
+
   // Ambient motion stands still while the stage is out of sight. Several
   // changes can come in one batch: the last one is the state now.
   const [onScreen, setOnScreen] = useState(true);
@@ -696,8 +712,14 @@ export function StoryPlayer({
   const paused = !active || !onScreen;
 
   // Who is on stage now, and who does what.
-  const cast = current?.cast ?? [];
-  const slots = slotsFor(cast.length);
+  // Animation cues (#2739) change who stands where; an actor sent off stage
+  // stays mounted, out of sight, so they can walk off, but is not "on stage".
+  const cueBeat = current?.cues;
+  const castAll = cueBeat?.ids ?? current?.cast ?? [];
+  const slotsAll = cueBeat?.x ?? slotsFor(castAll.length);
+  const seen = castAll.map((_, i) => !cueBeat || (slotsAll[i] >= 0 && slotsAll[i] <= 100));
+  const cast = castAll.filter((_, i) => seen[i]);
+  const slots = slotsAll.filter((_, i) => seen[i]);
   const reactor = reactorOf(cast, actors);
   const presenter = presenterOf(cast, actors);
   const step = current?.step;
@@ -926,6 +948,13 @@ export function StoryPlayer({
       advance();
       return;
     }
+    // A tap while the cues of this beat still play shows their end state: the
+    // last move starts after its waits and takes the 0.7 s of the slide.
+    const lastMove = current.cues?.moving ? Math.max(0, ...Object.values(current.cues.delay)) : 0;
+    if (current.cues?.moving && cutAt !== index && Date.now() < beatAtRef.current + lastMove + 800) {
+      setCutAt(index);
+      return;
+    }
     if (finished || !TAP_THROUGH.has(current.step.type)) return;
     // A demo (#2711) is something to do: a tap beside it never carries past it.
     if (current.step.type === "show" && isDemoVisual(current.step.visual)) return;
@@ -983,8 +1012,8 @@ export function StoryPlayer({
   const placeId = (current ?? firstStep)?.place ?? "";
   const theme = placeTheme(placeId, placeLook(story, placeId));
   const backdropUrl = safeArtUrl(story.art?.places?.[placeId]);
-  const stageCast = introOpen ? (firstStep?.cast ?? []) : cast;
-  const stageSlots = introOpen ? slotsFor(stageCast.length) : slots;
+  const stageCast = introOpen ? (firstStep?.cast ?? []) : castAll;
+  const stageSlots = introOpen ? slotsFor(stageCast.length) : slotsAll;
   // The title card never shares the stage with a speech bubble or a card:
   // with the start card, alone during its beat, or above a narrator's caption
   // (which sits at the bottom). After the start card it has been seen. Nor
@@ -1033,6 +1062,8 @@ export function StoryPlayer({
     if (celebrating) return "happy";
     if (introOpen || !step) return "idle";
     if (reaction && reaction.index === index && id === reactor) return reaction.correct ? "happy" : "think";
+    const worn = current?.cues?.costume[id];
+    if (worn && !(reaction && reaction.index === index && id === reactor)) return poseFor(worn, false);
     if (step.type === "say" && step.who === id) return poseFor(step.mood, true);
     if (step.type === "concept" && id === presenter) return "talk";
     if ((step.type === "ask" || step.type === "game" || step.type === "photo") && id === reactor) return "think";
@@ -1044,7 +1075,7 @@ export function StoryPlayer({
   // The camera (#2712): a shot per beat, off under reduced motion and data
   // saver. Only the scene's layers move; the speech and cards never do.
   const shot = !reducedMotion && !introOpen && !beatOn && !celebrating && !savesData() ? current?.shot : undefined;
-  const camSlot = speakerId ? cast.indexOf(speakerId) : -1;
+  const camSlot = speakerId ? castAll.indexOf(speakerId) : -1;
   const cameraStyle = (camSlot >= 0 ? { "--cam-x": `${stageSlots[camSlot] ?? 50}%` } : undefined) as CSSProperties | undefined;
   // An insert moves the picture in its panel only, never the scene behind it.
   const sceneShot = sceneShotOf(shot);
@@ -1079,10 +1110,14 @@ export function StoryPlayer({
         // A new key restarts the gesture's animation; standing still keeps one.
         gestureKey={gesture ? `${gesture}-${index}-${reacting ? reaction.n : 0}` : "still"}
         beats={speaking ? speakBeats : 0}
-        enterDelay={0.25 + slot * 0.3}
+        // An actor a cue walks on enters at the cue's moment, for the rest of the scene.
+        enterDelay={cueBeat?.enterAt[id] !== undefined ? cueBeat.enterAt[id] / 1000 : 0.25 + slot * 0.3}
         speaking={speaking && step?.type === "say"}
         still={reducedMotion || paused}
         moodMark={moodMarkFor(story.art, actor.artKey, pose)}
+        flip={!introOpen && !!cueBeat?.flip.includes(id)}
+        cut={cut}
+        moveDelay={introOpen ? undefined : cueBeat?.delay[id]}
       />
     );
   });

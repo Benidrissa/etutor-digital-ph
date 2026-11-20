@@ -11,6 +11,7 @@
 import type { Chapter, Prop, PropMedia, Step, TextObject } from "@/lib/story-course/types";
 
 import { stageOrder, type StageActor } from "./cast";
+import { cuesOf, foldCues, showsOf, type BeatCues } from "./cues";
 import { closeUpProp, pictureFor, planSceneProps, sameOriginMedia } from "./props";
 
 /** What the planner needs to know about the story's props (#2681). */
@@ -49,6 +50,8 @@ export interface PlannedStep {
   sceneProps: string[];
   /** The camera shot of this beat (#2712); absent: the camera stays put. */
   shot?: Shot;
+  /** The stage state of this beat, only in a scene whose steps carry valid cues (#2739). */
+  cues?: BeatCues;
 }
 
 /** A camera shot (#2712). */
@@ -129,6 +132,7 @@ export function planSteps(
   allChapters: Chapter[],
   actors: Map<string, StageActor>,
   context?: PropContext,
+  options?: { cues?: boolean },
 ): PlannedStep[] {
   const out: PlannedStep[] = [];
   const known = context?.props ?? new Map<string, Prop>();
@@ -160,7 +164,17 @@ export function planSteps(
       lastPlace = scene.place;
       const steps = (scene.steps ?? []).filter((step) => keepsStep(step, context));
       // Props carry over within a stretch at one place; a new place starts afresh.
-      const propPlan = planSceneProps(scene.props, steps, known, newPlace ? [] : carriedProps);
+      // A `show` cue points at a prop like a line's `props` does (#2739).
+      const lists = options?.cues === false ? [] : steps.map((step) => cuesOf(step, actors, known));
+      const beats = foldCues(lists, cast);
+      const pointing = beats
+        ? steps.map((step, i) => {
+            const shows = showsOf(lists[i]);
+            const talks = step.type === "say" || step.type === "narrate" || step.type === "concept";
+            return shows.length && talks ? { ...step, props: [...(Array.isArray(step.props) ? step.props : []), ...shows] } : step;
+          })
+        : steps;
+      const propPlan = planSceneProps(scene.props, pointing, known, newPlace ? [] : carriedProps);
       const sceneProps = unique([
         ...(scene.props ?? []).filter((id) => known.has(id)),
         ...propPlan.flatMap((entry) => entry.props),
@@ -185,6 +199,10 @@ export function planSteps(
           sceneProps,
         };
         planned.shot = shotFor(planned, steps[index + 1]);
+        if (beats) {
+          planned.cues = beats[index];
+          if (beats[index].shot) planned.shot = beats[index].shot;
+        }
         out.push(planned);
         firstOfChapter = false;
         firstOfScene = false;
