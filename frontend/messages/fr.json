@@ -2787,6 +2787,17 @@
     "publicDomain": "Domaine public",
     "loadPhoto": "Afficher la photo ({kb} Ko)",
     "loadPhotoUnsized": "Afficher la photo",
-    "imageCredits": "Crédits images"
+    "imageCredits": "Crédits images",
+    "machineGroup_billions": "{count, plural, one {# milliard} other {# milliards}}",
+    "machineGroup_millions": "{count, plural, one {# million} other {# millions}}",
+    "machineGroup_thousands": "{count, plural, one {mille} other {# mille}}",
+    "machinePlaceValueAlt": "{number} : {groups}",
+    "machineLineAlt": "Droite numérique de {from} à {to}.",
+    "machineLineAltMark": "Droite numérique de {from} à {to}. La balle s'arrête à {mark}.",
+    "machineNext": "Étape suivante",
+    "machineLabel_ones": "unités",
+    "machineLabel_thousands": "milliers",
+    "machineLabel_millions": "millions",
+    "machineLabel_billions": "milliards"
   }
 }
