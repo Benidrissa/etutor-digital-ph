@@ -45,7 +45,8 @@ const DAY_IN_SECONDS = 24 * 60 * 60;
 // v15 loads the story player on demand in both story routes (#2738): the
 // cached pages and the player chunk must come from the same build.
 // v16 preloads the surprised and sad poses of the cast on stage (#2741).
-const CACHE_VERSION = "v16-story-poses";
+// v17 plays the animation cues of story steps (#2739).
+const CACHE_VERSION = "v17-story-cues";
 
 // Story pictures (#2681): character poses, backdrops, prop stickers and
 // photos. Not versioned with CACHE_VERSION on purpose, so a downloaded story
