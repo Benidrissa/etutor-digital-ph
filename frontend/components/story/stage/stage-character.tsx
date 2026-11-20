@@ -38,6 +38,12 @@ interface StageCharacterProps {
   still: boolean;
   /** Marks a mood the art has no pose for (#2712): "!" or a sweat drop. */
   moodMark?: "surprised" | "sad";
+  /** Turned to face left (#2739): the picture is flipped, with no animation. */
+  flip?: boolean;
+  /** A tap during a cue: slides and walks finish at once (#2739). */
+  cut?: boolean;
+  /** A slide to a new place starts this many ms late: the waits of its cue (#2739). */
+  moveDelay?: number;
 }
 
 const GESTURES: Record<Exclude<Gesture, null>, { frames: Keyframe[]; duration: number }> = {
@@ -82,6 +88,9 @@ function StageCharacterView({
   speaking,
   still,
   moodMark,
+  flip,
+  cut,
+  moveDelay,
 }: StageCharacterProps) {
   const gestureRef = useRef<HTMLDivElement | null>(null);
   const faceRef = useRef<HTMLDivElement | null>(null);
@@ -153,17 +162,30 @@ function StageCharacterView({
         height: `${FIGURE_HEIGHT[actor.figure]}%`,
         transform: "translateX(-50%)",
         zIndex: actor.isTutor ? 3 : 2,
+        ...(cut ? { transition: "none" } : moveDelay ? { transitionDelay: `${moveDelay}ms` } : null),
       }}
       data-actor={actor.id}
       data-pose={pose}
+      data-facing={flip ? "left" : undefined}
     >
       <div
         className={`${styles.walkIn} h-full`}
-        style={{ "--walk-from": fromLeft ? "-320%" : "320%", animationDelay: `${enterDelay}s` } as CSSProperties}
+        style={
+          {
+            "--walk-from": fromLeft ? "-320%" : "320%",
+            animationDelay: `${cut ? 0 : enterDelay}s`,
+            ...(cut ? { animationDuration: "0s" } : null),
+          } as CSSProperties
+        }
       >
-        <div className={`${styles.walkHop} h-full`} style={{ animationDelay: `${enterDelay}s` }}>
+        <div className={`${styles.walkHop} h-full`} style={{ animationDelay: `${cut ? 0 : enterDelay}s`, ...(cut ? { animationDuration: "0s" } : null) }}
+        >
           <div ref={gestureRef} className="h-full">
-            <div ref={faceRef} className={`${styles.breathe} flex h-full items-end justify-center`}>
+            <div
+              ref={faceRef}
+              className={`${styles.breathe} flex h-full items-end justify-center`}
+              style={flip ? { scale: "-1 1" } : undefined}
+            >
               {picture ? (
                 // eslint-disable-next-line @next/next/no-img-element -- generated art from the story API, sized by the stage
                 <img
