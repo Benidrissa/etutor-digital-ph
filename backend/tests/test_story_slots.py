@@ -506,7 +506,8 @@ def digest(value: Any) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-async def test_the_chapter_built_from_slots_is_locked_by_a_digest():
+async def test_the_chapter_built_from_slots_is_locked_by_a_digest(story_golden_day):
+    # The built chapter carries the day its validator ran (#2771), pinned by the fixture.
     _ctx, made = await generate(SlotModel(), figure=True)
     assert digest(made.doc) == GOLDEN_SLOTS_CHAPTER, digest(made.doc)
 
