@@ -171,7 +171,7 @@ describe("service worker story media cache (#2681)", () => {
   });
 
   it("bumps the page cache with the service worker", () => {
-    expect(PAGES_CACHE_NAME).toBe("pages-v17-story-cues");
+    expect(PAGES_CACHE_NAME).toBe("pages-v18-story-machines");
     expect(rule(NetworkFirst).handler.options.cacheName).toBe(PAGES_CACHE_NAME);
   });
 });
@@ -199,6 +199,8 @@ describe("service worker clean-up of older caches (#2688)", () => {
     for (const stale of [
       "pages-v12-story-voice",
       "static-assets-v12-story-voice",
+      "pages-v17-story-cues",
+      "static-assets-v17-story-cues",
       "pages-v16-story-poses",
       "static-assets-v16-story-poses",
       "pages-v15-story-lazy-player",
@@ -222,11 +224,11 @@ describe("service worker clean-up of older caches (#2688)", () => {
       expect(isStaleRuntimeCache(stale)).toBe(true);
     }
     for (const kept of [
-      "pages-v17-story-cues",
-      "static-images-v17-story-cues",
-      "static-assets-v17-story-cues",
-      "api-responses-v17-story-cues",
-      "google-fonts-v17-story-cues",
+      "pages-v18-story-machines",
+      "static-images-v18-story-machines",
+      "static-assets-v18-story-machines",
+      "api-responses-v18-story-machines",
+      "google-fonts-v18-story-machines",
       "story-media-v1",
       "story-audio-v1",
       "course-figures-v1",

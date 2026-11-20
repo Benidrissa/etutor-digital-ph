@@ -2787,6 +2787,17 @@
     "publicDomain": "Public domain",
     "loadPhoto": "Show the photo ({kb} KB)",
     "loadPhotoUnsized": "Show the photo",
-    "imageCredits": "Image credits"
+    "imageCredits": "Image credits",
+    "machineGroup_billions": "{count} billion",
+    "machineGroup_millions": "{count} million",
+    "machineGroup_thousands": "{count} thousand",
+    "machinePlaceValueAlt": "{number}: {groups}",
+    "machineLineAlt": "Number line from {from} to {to}.",
+    "machineLineAltMark": "Number line from {from} to {to}. The ball stops at {mark}.",
+    "machineNext": "Next step",
+    "machineLabel_ones": "ones",
+    "machineLabel_thousands": "thousands",
+    "machineLabel_millions": "millions",
+    "machineLabel_billions": "billions"
   }
 }
