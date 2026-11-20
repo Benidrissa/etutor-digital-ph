@@ -2798,6 +2798,11 @@
     "machineLabel_ones": "unités",
     "machineLabel_thousands": "milliers",
     "machineLabel_millions": "millions",
-    "machineLabel_billions": "milliards"
+    "machineLabel_billions": "milliards",
+    "machineBalanceAltLeft": "Balance comparant {left} ({leftValue}) et {right} ({rightValue}). Le côté le plus lourd : {left}.",
+    "machineBalanceAltRight": "Balance comparant {left} ({leftValue}) et {right} ({rightValue}). Le côté le plus lourd : {right}.",
+    "machineBalanceAltEqual": "Balance comparant {left} ({leftValue}) et {right} ({rightValue}). Les deux côtés sont à l'équilibre.",
+    "machineCycleAlt": "Cycle de {count} étapes : {stages}, puis retour à {first}.",
+    "machineChainAlt": "Chaîne de {count} causes, chacune menant à la suivante : {links}."
   }
 }

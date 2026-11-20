@@ -32,7 +32,7 @@ import {
   treeDepth,
   type TreeNode,
 } from "@/lib/story-course/numbers";
-import { isMachineVisual, machineAlt, numberLineModel, placeValueModel } from "@/lib/story-course/machines";
+import { isMachineVisual, machineAlt, machineModel } from "@/lib/story-course/machines";
 
 import { useReducedMotion } from "./stage/prefs";
 
@@ -44,9 +44,14 @@ const DEMOS = {
   timeline: lazy(() => import("./demos/timeline")),
 } as const;
 
-// The two idea machines (#2740) are a chunk each too, inside their own Suspense.
-const PlaceValue = lazy(() => import("./demos/place-value"));
-const NumberLine = lazy(() => import("./demos/number-line"));
+// The idea machines (#2740, #2756) are a chunk each too, inside their own Suspense.
+const MACHINES = {
+  place_value: lazy(() => import("./demos/place-value")),
+  number_line: lazy(() => import("./demos/number-line")),
+  balance: lazy(() => import("./demos/balance")),
+  cycle: lazy(() => import("./demos/cycle")),
+  cause_chain: lazy(() => import("./demos/cause-chain")),
+} as const;
 
 /** Whether `visual` is one of the demo primitives (#2711). */
 export function isDemoVisual(visual: unknown): visual is keyof typeof DEMOS {
@@ -169,9 +174,12 @@ function DrawnVisual({
       case "venn_primes":
         return <VennPrimes a={num(params?.a, 12)} b={num(params?.b, 18)} />;
       case "place_value":
-      case "number_line": {
-        if (!(visual === "place_value" ? placeValueModel(params) : numberLineModel(params))) return null;
-        const Machine = visual === "place_value" ? PlaceValue : NumberLine;
+      case "number_line":
+      case "balance":
+      case "cycle":
+      case "cause_chain": {
+        if (!machineModel(visual, params)) return null;
+        const Machine = MACHINES[visual];
         return (
           <Suspense
             fallback={

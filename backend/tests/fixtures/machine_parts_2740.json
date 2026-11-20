@@ -171,5 +171,492 @@
     "visual": "image",
     "params": {},
     "parts": []
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 120
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 80
+      }
+    },
+    "parts": [
+      "left",
+      "right",
+      "beam"
+    ]
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 50
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 50
+      }
+    },
+    "parts": [
+      "left",
+      "right",
+      "beam"
+    ]
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 0
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 100000
+      },
+      "highlight": "beam"
+    },
+    "parts": [
+      "left",
+      "right",
+      "beam"
+    ]
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": -1
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 5
+      }
+    },
+    "parts": []
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 100001
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 5
+      }
+    },
+    "parts": []
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": true
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 5
+      }
+    },
+    "parts": []
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 5
+      }
+    },
+    "parts": []
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        }
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 5
+      }
+    },
+    "parts": []
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "Costs"
+        },
+        "value": 3
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 5
+      }
+    },
+    "parts": []
+  },
+  {
+    "visual": "balance",
+    "params": {
+      "left": {
+        "label": {
+          "en": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "fr": "Coûts"
+        },
+        "value": 3
+      },
+      "right": {
+        "label": {
+          "en": "Costs",
+          "fr": "Coûts"
+        },
+        "value": 5
+      }
+    },
+    "parts": []
+  },
+  {
+    "visual": "cycle",
+    "params": {
+      "stages": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        },
+        {
+          "en": "Stage 3",
+          "fr": "Étape 3"
+        }
+      ]
+    },
+    "parts": [
+      "stage1",
+      "stage2",
+      "stage3"
+    ]
+  },
+  {
+    "visual": "cycle",
+    "params": {
+      "stages": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        },
+        {
+          "en": "Stage 3",
+          "fr": "Étape 3"
+        },
+        {
+          "en": "Stage 4",
+          "fr": "Étape 4"
+        },
+        {
+          "en": "Stage 5",
+          "fr": "Étape 5"
+        },
+        {
+          "en": "Stage 6",
+          "fr": "Étape 6"
+        }
+      ],
+      "start": 2,
+      "highlight": "stage6"
+    },
+    "parts": [
+      "stage1",
+      "stage2",
+      "stage3",
+      "stage4",
+      "stage5",
+      "stage6"
+    ]
+  },
+  {
+    "visual": "cycle",
+    "params": {
+      "stages": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        }
+      ]
+    },
+    "parts": []
+  },
+  {
+    "visual": "cycle",
+    "params": {
+      "stages": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        },
+        {
+          "en": "Stage 3",
+          "fr": "Étape 3"
+        },
+        {
+          "en": "Stage 4",
+          "fr": "Étape 4"
+        },
+        {
+          "en": "Stage 5",
+          "fr": "Étape 5"
+        },
+        {
+          "en": "Stage 6",
+          "fr": "Étape 6"
+        },
+        {
+          "en": "Stage 7",
+          "fr": "Étape 7"
+        }
+      ]
+    },
+    "parts": []
+  },
+  {
+    "visual": "cycle",
+    "params": {
+      "stages": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        },
+        {
+          "en": "",
+          "fr": "vide"
+        }
+      ]
+    },
+    "parts": []
+  },
+  {
+    "visual": "cycle",
+    "params": {
+      "stages": "rain"
+    },
+    "parts": []
+  },
+  {
+    "visual": "cycle",
+    "params": {},
+    "parts": []
+  },
+  {
+    "visual": "cause_chain",
+    "params": {
+      "links": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        }
+      ]
+    },
+    "parts": [
+      "link1",
+      "link2"
+    ]
+  },
+  {
+    "visual": "cause_chain",
+    "params": {
+      "links": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        },
+        {
+          "en": "Stage 3",
+          "fr": "Étape 3"
+        },
+        {
+          "en": "Stage 4",
+          "fr": "Étape 4"
+        },
+        {
+          "en": "Stage 5",
+          "fr": "Étape 5"
+        }
+      ],
+      "highlight": "link5"
+    },
+    "parts": [
+      "link1",
+      "link2",
+      "link3",
+      "link4",
+      "link5"
+    ]
+  },
+  {
+    "visual": "cause_chain",
+    "params": {
+      "links": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        }
+      ]
+    },
+    "parts": []
+  },
+  {
+    "visual": "cause_chain",
+    "params": {
+      "links": [
+        {
+          "en": "Stage 1",
+          "fr": "Étape 1"
+        },
+        {
+          "en": "Stage 2",
+          "fr": "Étape 2"
+        },
+        {
+          "en": "Stage 3",
+          "fr": "Étape 3"
+        },
+        {
+          "en": "Stage 4",
+          "fr": "Étape 4"
+        },
+        {
+          "en": "Stage 5",
+          "fr": "Étape 5"
+        },
+        {
+          "en": "Stage 6",
+          "fr": "Étape 6"
+        }
+      ]
+    },
+    "parts": []
+  },
+  {
+    "visual": "cause_chain",
+    "params": {
+      "links": [
+        {
+          "en": "a",
+          "fr": "b"
+        },
+        {
+          "en": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "fr": "y"
+        }
+      ]
+    },
+    "parts": []
+  },
+  {
+    "visual": "cause_chain",
+    "params": {
+      "links": [
+        {
+          "en": "a",
+          "fr": "b"
+        },
+        {
+          "en": "only"
+        }
+      ]
+    },
+    "parts": []
+  },
+  {
+    "visual": "cause_chain",
+    "params": null,
+    "parts": []
   }
 ]
